@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from music_manager_backend.api.container import AppContainer
-from music_manager_backend.api.routers import environments, health
+from music_manager_backend.api.routers import environments, health, playback
 from music_manager_backend.infrastructure.persistence import (
     SqliteAudioFileRepository,
     SqliteEnvironmentRepository,
@@ -51,6 +51,7 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
     app.add_exception_handler(InfrastructureError, music_manager_infrastructure_handler)
     app.include_router(health.router)
     app.include_router(environments.router)
+    app.include_router(playback.router)
     return app
 
 
