@@ -1,5 +1,13 @@
+from music_manager_backend.application.dtos.api_error import ApiErrorRead
 from music_manager_backend.application.dtos.audio_file import AudioFileRead
-from music_manager_backend.application.dtos.environment import EnvironmentCreate, EnvironmentUpdate
+from music_manager_backend.application.dtos.environment import (
+    EnvironmentCreate,
+    EnvironmentOverviewRead,
+    EnvironmentRead,
+    EnvironmentUpdate,
+    ScanSummaryRead,
+    environment_read,
+)
 from music_manager_backend.application.dtos.export import (
     ExportApplyItemResultRead,
     ExportApplyRunRead,
@@ -15,6 +23,11 @@ from music_manager_backend.application.dtos.matching import (
     MatchingRunSummary,
     MatchReviewRow,
 )
+from music_manager_backend.application.dtos.playlist import (
+    PlaylistDetailRead,
+    PlaylistItemRead,
+    PlaylistSummaryRead,
+)
 from music_manager_backend.application.dtos.soundcloud import (
     SoundCloudPlaylistImportRequest,
     SoundCloudPlaylistImportResult,
@@ -22,7 +35,10 @@ from music_manager_backend.application.dtos.soundcloud import (
 
 __all__ = [
     "AudioFileRead",
+    "ApiErrorRead",
     "EnvironmentCreate",
+    "EnvironmentOverviewRead",
+    "EnvironmentRead",
     "EnvironmentUpdate",
     "ExportApplyItemResultRead",
     "ExportApplyRunRead",
@@ -33,8 +49,13 @@ __all__ = [
     "MatchCandidateRead",
     "MatchingRunSummary",
     "MatchReviewRow",
+    "PlaylistDetailRead",
+    "PlaylistItemRead",
+    "PlaylistSummaryRead",
+    "ScanSummaryRead",
     "SoundCloudPlaylistImportRequest",
     "SoundCloudPlaylistImportResult",
+    "environment_read",
     "export_apply_run_read",
     "export_plan_read",
 ]

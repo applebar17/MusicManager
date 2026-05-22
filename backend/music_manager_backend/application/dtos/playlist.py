@@ -1,0 +1,35 @@
+from pydantic import BaseModel
+
+
+class PlaylistSummaryRead(BaseModel):
+    id: str
+    name: str
+    remote_playlist_id: str | None = None
+    active_item_count: int
+    inactive_item_count: int
+    matched_count: int
+    missing_audio_count: int
+    ambiguous_count: int
+    manually_mapped_count: int
+
+
+class PlaylistItemRead(BaseModel):
+    song_id: str
+    position: int
+    title: str
+    artist: str | None = None
+    duration_seconds: int | None = None
+    remote_membership_active: bool
+    match_status: str
+    accepted_audio_file_id: str | None = None
+    playback_url: str | None = None
+
+
+class PlaylistDetailRead(BaseModel):
+    id: str
+    environment_id: str
+    name: str
+    remote_playlist_id: str | None = None
+    active_item_count: int
+    inactive_item_count: int
+    items: list[PlaylistItemRead]

@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from music_manager_backend.api.container import AppContainer
@@ -53,6 +54,7 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
     app.add_exception_handler(NotFoundError, music_manager_not_found_handler)
     app.add_exception_handler(ValidationError, music_manager_validation_handler)
     app.add_exception_handler(InfrastructureError, music_manager_infrastructure_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_handler)
     app.include_router(health.router)
     app.include_router(environments.router)
     app.include_router(playback.router)
@@ -69,6 +71,13 @@ def music_manager_validation_handler(_request: Request, exc: Exception) -> JSONR
 
 def music_manager_infrastructure_handler(_request: Request, exc: Exception) -> JSONResponse:
     return _music_manager_error_response(exc, status_code=502)
+
+
+def request_validation_handler(_request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={"code": "request_validation_error", "message": str(exc)},
+    )
 
 
 def _music_manager_error_response(exc: Exception, *, status_code: int) -> JSONResponse:

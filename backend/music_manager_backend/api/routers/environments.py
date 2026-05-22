@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
@@ -16,8 +16,11 @@ from music_manager_backend.api.dependencies import (
     get_sync_snapshot_repository,
 )
 from music_manager_backend.application.dtos import (
+    ApiErrorRead,
     AudioFileRead,
     EnvironmentCreate,
+    EnvironmentOverviewRead,
+    EnvironmentRead,
     EnvironmentUpdate,
     ExportApplyRunRead,
     ExportPlanCreate,
@@ -25,8 +28,12 @@ from music_manager_backend.application.dtos import (
     ManualMappingCreate,
     MatchingRunSummary,
     MatchReviewRow,
+    PlaylistDetailRead,
+    PlaylistSummaryRead,
+    ScanSummaryRead,
     SoundCloudPlaylistImportRequest,
     SoundCloudPlaylistImportResult,
+    environment_read,
     export_apply_run_read,
     export_plan_read,
 )
@@ -34,10 +41,18 @@ from music_manager_backend.application.use_cases.apply_export_plan import ApplyE
 from music_manager_backend.application.use_cases.archive_environment import ArchiveEnvironment
 from music_manager_backend.application.use_cases.create_environment import CreateEnvironment
 from music_manager_backend.application.use_cases.create_manual_mapping import CreateManualMapping
+from music_manager_backend.application.use_cases.get_environment_overview import (
+    GetEnvironmentOverview,
+)
+from music_manager_backend.application.use_cases.get_export_apply_run import GetExportApplyRun
+from music_manager_backend.application.use_cases.get_playlist_detail import GetPlaylistDetail
 from music_manager_backend.application.use_cases.import_soundcloud_playlist import (
     ImportSoundCloudPlaylist,
 )
 from music_manager_backend.application.use_cases.list_audio_files import ListAudioFiles
+from music_manager_backend.application.use_cases.list_environment_playlists import (
+    ListEnvironmentPlaylists,
+)
 from music_manager_backend.application.use_cases.list_export_plan import ListExportPlan
 from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
 from music_manager_backend.application.use_cases.list_unmanaged_files import ListUnmanagedFiles
@@ -45,7 +60,7 @@ from music_manager_backend.application.use_cases.plan_export import PlanExport
 from music_manager_backend.application.use_cases.run_matching import RunMatching
 from music_manager_backend.application.use_cases.scan_environment import ScanEnvironment
 from music_manager_backend.application.use_cases.update_environment import UpdateEnvironment
-from music_manager_backend.domain.entities import AudioFile, MusicEnvironment
+from music_manager_backend.domain.entities import AudioFile
 from music_manager_backend.infrastructure.audio import MetadataReader
 from music_manager_backend.infrastructure.filesystem import LocalAudioScanner
 from music_manager_backend.ports.repositories import (
@@ -61,6 +76,12 @@ from music_manager_backend.ports.repositories import (
     SyncSnapshotRepository,
 )
 from music_manager_backend.ports.soundcloud import SoundCloudPlaylistImporter
+
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {"model": ApiErrorRead},
+    404: {"model": ApiErrorRead},
+    422: {"model": ApiErrorRead},
+}
 
 router = APIRouter(prefix="/environments", tags=["environments"])
 EnvironmentRepositoryDependency = Annotated[
@@ -109,52 +130,52 @@ SoundCloudPlaylistImporterDependency = Annotated[
 ]
 
 
-@router.get("")
+@router.get("", response_model=list[EnvironmentRead], responses=ERROR_RESPONSES)
 def list_environments(
     repository: EnvironmentRepositoryDependency,
     include_archived: bool = False,
-) -> list[dict[str, str | None]]:
+) -> list[EnvironmentRead]:
     return [
-        _environment_response(item)
+        environment_read(item)
         for item in repository.list(include_archived=include_archived)
     ]
 
 
-@router.post("")
+@router.post("", response_model=EnvironmentRead, responses=ERROR_RESPONSES)
 def create_environment(
     data: EnvironmentCreate,
     repository: EnvironmentRepositoryDependency,
-) -> dict[str, str | None]:
+) -> EnvironmentRead:
     environment = CreateEnvironment(repository).execute(data)
-    return _environment_response(environment)
+    return environment_read(environment)
 
 
-@router.patch("/{environment_id}")
+@router.patch("/{environment_id}", response_model=EnvironmentRead, responses=ERROR_RESPONSES)
 def update_environment(
     environment_id: str,
     data: EnvironmentUpdate,
     repository: EnvironmentRepositoryDependency,
-) -> dict[str, str | None]:
+) -> EnvironmentRead:
     environment = UpdateEnvironment(repository).execute(environment_id, data)
-    return _environment_response(environment)
+    return environment_read(environment)
 
 
-@router.post("/{environment_id}/archive")
+@router.post("/{environment_id}/archive", response_model=EnvironmentRead, responses=ERROR_RESPONSES)
 def archive_environment(
     environment_id: str,
     repository: EnvironmentRepositoryDependency,
-) -> dict[str, str | None]:
+) -> EnvironmentRead:
     environment = ArchiveEnvironment(repository).execute(environment_id)
-    return _environment_response(environment)
+    return environment_read(environment)
 
 
-@router.post("/{environment_id}/scan")
+@router.post("/{environment_id}/scan", response_model=ScanSummaryRead, responses=ERROR_RESPONSES)
 def scan_environment(
     environment_id: str,
     environments: EnvironmentRepositoryDependency,
     audio_files: AudioFileRepositoryDependency,
     scan_runs: ScanRunRepositoryDependency,
-) -> dict[str, int | str]:
+) -> ScanSummaryRead:
     summary = ScanEnvironment(
         environments=environments,
         audio_files=audio_files,
@@ -162,19 +183,23 @@ def scan_environment(
         scanner_factory=LocalAudioScanner,
         metadata_reader=MetadataReader(),
     ).execute(environment_id)
-    return {
-        "scan_run_id": summary.scan_run_id,
-        "environment_id": summary.environment_id,
-        "added": summary.added,
-        "changed": summary.changed,
-        "removed": summary.removed,
-        "moved": summary.moved,
-        "unchanged": summary.unchanged,
-        "total_active": summary.total_active,
-    }
+    return ScanSummaryRead(
+        scan_run_id=summary.scan_run_id,
+        environment_id=summary.environment_id,
+        added=summary.added,
+        changed=summary.changed,
+        removed=summary.removed,
+        moved=summary.moved,
+        unchanged=summary.unchanged,
+        total_active=summary.total_active,
+    )
 
 
-@router.post("/{environment_id}/soundcloud/playlists")
+@router.post(
+    "/{environment_id}/soundcloud/playlists",
+    response_model=SoundCloudPlaylistImportResult,
+    responses=ERROR_RESPONSES,
+)
 def import_soundcloud_playlist(
     environment_id: str,
     data: SoundCloudPlaylistImportRequest,
@@ -195,7 +220,11 @@ def import_soundcloud_playlist(
     ).execute(environment_id, data.url)
 
 
-@router.post("/{environment_id}/matching/run")
+@router.post(
+    "/{environment_id}/matching/run",
+    response_model=MatchingRunSummary,
+    responses=ERROR_RESPONSES,
+)
 def run_matching(
     environment_id: str,
     environments: EnvironmentRepositoryDependency,
@@ -213,7 +242,11 @@ def run_matching(
     ).execute(environment_id)
 
 
-@router.get("/{environment_id}/matching/review")
+@router.get(
+    "/{environment_id}/matching/review",
+    response_model=list[MatchReviewRow],
+    responses=ERROR_RESPONSES,
+)
 def list_match_review(
     environment_id: str,
     environments: EnvironmentRepositoryDependency,
@@ -231,7 +264,11 @@ def list_match_review(
     ).execute(environment_id)
 
 
-@router.post("/{environment_id}/matching/manual-mappings")
+@router.post(
+    "/{environment_id}/matching/manual-mappings",
+    response_model=MatchReviewRow,
+    responses=ERROR_RESPONSES,
+)
 def create_manual_mapping(
     environment_id: str,
     data: ManualMappingCreate,
@@ -250,7 +287,78 @@ def create_manual_mapping(
     ).execute(environment_id, data.song_id, data.audio_file_id)
 
 
-@router.post("/{environment_id}/export-plans")
+@router.get(
+    "/{environment_id}/overview",
+    response_model=EnvironmentOverviewRead,
+    responses=ERROR_RESPONSES,
+)
+def get_environment_overview(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+) -> EnvironmentOverviewRead:
+    return GetEnvironmentOverview(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+    ).execute(environment_id)
+
+
+@router.get(
+    "/{environment_id}/playlists",
+    response_model=list[PlaylistSummaryRead],
+    responses=ERROR_RESPONSES,
+)
+def list_environment_playlists(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+) -> list[PlaylistSummaryRead]:
+    return ListEnvironmentPlaylists(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+    ).execute(environment_id)
+
+
+@router.get(
+    "/{environment_id}/playlists/{playlist_id}",
+    response_model=PlaylistDetailRead,
+    responses=ERROR_RESPONSES,
+)
+def get_playlist_detail(
+    environment_id: str,
+    playlist_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+) -> PlaylistDetailRead:
+    return GetPlaylistDetail(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+    ).execute(environment_id, playlist_id)
+
+
+@router.post(
+    "/{environment_id}/export-plans",
+    response_model=ExportPlanRead,
+    responses=ERROR_RESPONSES,
+)
 def create_export_plan(
     environment_id: str,
     environments: EnvironmentRepositoryDependency,
@@ -272,7 +380,11 @@ def create_export_plan(
     return export_plan_read(plan)
 
 
-@router.get("/{environment_id}/export-plans/{export_plan_id}")
+@router.get(
+    "/{environment_id}/export-plans/{export_plan_id}",
+    response_model=ExportPlanRead,
+    responses=ERROR_RESPONSES,
+)
 def get_export_plan(
     environment_id: str,
     export_plan_id: str,
@@ -286,7 +398,11 @@ def get_export_plan(
     return export_plan_read(plan)
 
 
-@router.post("/{environment_id}/export-plans/{export_plan_id}/apply")
+@router.post(
+    "/{environment_id}/export-plans/{export_plan_id}/apply",
+    response_model=ExportApplyRunRead,
+    responses=ERROR_RESPONSES,
+)
 def apply_export_plan(
     environment_id: str,
     export_plan_id: str,
@@ -304,7 +420,29 @@ def apply_export_plan(
     return export_apply_run_read(apply_run)
 
 
-@router.get("/{environment_id}/audio-files")
+@router.get(
+    "/{environment_id}/export-apply-runs/{apply_run_id}",
+    response_model=ExportApplyRunRead,
+    responses=ERROR_RESPONSES,
+)
+def get_export_apply_run(
+    environment_id: str,
+    apply_run_id: str,
+    environments: EnvironmentRepositoryDependency,
+    apply_runs: ExportApplyRunRepositoryDependency,
+) -> ExportApplyRunRead:
+    apply_run = GetExportApplyRun(
+        environments=environments,
+        apply_runs=apply_runs,
+    ).execute(environment_id, apply_run_id)
+    return export_apply_run_read(apply_run)
+
+
+@router.get(
+    "/{environment_id}/audio-files",
+    response_model=list[AudioFileRead],
+    responses=ERROR_RESPONSES,
+)
 def list_audio_files(
     environment_id: str,
     environments: EnvironmentRepositoryDependency,
@@ -315,7 +453,11 @@ def list_audio_files(
     return [_audio_file_response(item) for item in files]
 
 
-@router.get("/{environment_id}/unmanaged-files")
+@router.get(
+    "/{environment_id}/unmanaged-files",
+    response_model=list[AudioFileRead],
+    responses=ERROR_RESPONSES,
+)
 def list_unmanaged_files(
     environment_id: str,
     environments: EnvironmentRepositoryDependency,
@@ -323,16 +465,6 @@ def list_unmanaged_files(
 ) -> list[AudioFileRead]:
     files = ListUnmanagedFiles(environments, audio_files).execute(environment_id)
     return [_audio_file_response(item) for item in files]
-
-
-def _environment_response(environment: MusicEnvironment) -> dict[str, str | None]:
-    return {
-        "id": environment.id,
-        "name": environment.name,
-        "root_path": str(environment.root_path),
-        "deprecated_folder_name": environment.deprecated_folder_name,
-        "archived_at": environment.archived_at,
-    }
 
 
 def _audio_file_response(audio_file: AudioFile) -> AudioFileRead:
