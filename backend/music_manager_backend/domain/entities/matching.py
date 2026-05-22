@@ -17,3 +17,9 @@ class MatchLink:
     confidence: float
     reviewed: bool = False
 
+
+@dataclass(frozen=True)
+class MatchCandidate:
+    audio_file_id: str
+    method: str
+    confidence: float

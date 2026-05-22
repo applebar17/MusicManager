@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from music_manager_backend.infrastructure.persistence import (
     SqliteAudioFileRepository,
     SqliteEnvironmentRepository,
+    SqliteMatchLinkRepository,
     SqlitePlaylistRepository,
     SqliteRemotePlaylistRepository,
     SqliteScanRunRepository,
@@ -18,6 +19,7 @@ class AppContainer:
     settings: Settings
     audio_file_repository: SqliteAudioFileRepository
     environment_repository: SqliteEnvironmentRepository
+    match_link_repository: SqliteMatchLinkRepository
     playlist_repository: SqlitePlaylistRepository
     remote_playlist_repository: SqliteRemotePlaylistRepository
     scan_run_repository: SqliteScanRunRepository

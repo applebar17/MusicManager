@@ -6,6 +6,7 @@ from music_manager_backend.api.routers import environments, health
 from music_manager_backend.infrastructure.persistence import (
     SqliteAudioFileRepository,
     SqliteEnvironmentRepository,
+    SqliteMatchLinkRepository,
     SqlitePlaylistRepository,
     SqliteRemotePlaylistRepository,
     SqliteScanRunRepository,
@@ -34,6 +35,7 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
         settings=resolved_settings,
         audio_file_repository=SqliteAudioFileRepository(connection),
         environment_repository=SqliteEnvironmentRepository(connection),
+        match_link_repository=SqliteMatchLinkRepository(connection),
         playlist_repository=SqlitePlaylistRepository(connection),
         remote_playlist_repository=SqliteRemotePlaylistRepository(connection),
         scan_run_repository=SqliteScanRunRepository(connection),

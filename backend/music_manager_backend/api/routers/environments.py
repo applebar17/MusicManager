@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from music_manager_backend.api.dependencies import (
     get_audio_file_repository,
     get_environment_repository,
+    get_match_link_repository,
     get_playlist_repository,
     get_remote_playlist_repository,
     get_scan_run_repository,
@@ -16,16 +17,22 @@ from music_manager_backend.application.dtos import (
     AudioFileRead,
     EnvironmentCreate,
     EnvironmentUpdate,
+    ManualMappingCreate,
+    MatchingRunSummary,
+    MatchReviewRow,
     SoundCloudPlaylistImportRequest,
     SoundCloudPlaylistImportResult,
 )
 from music_manager_backend.application.use_cases.archive_environment import ArchiveEnvironment
 from music_manager_backend.application.use_cases.create_environment import CreateEnvironment
+from music_manager_backend.application.use_cases.create_manual_mapping import CreateManualMapping
 from music_manager_backend.application.use_cases.import_soundcloud_playlist import (
     ImportSoundCloudPlaylist,
 )
 from music_manager_backend.application.use_cases.list_audio_files import ListAudioFiles
+from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
 from music_manager_backend.application.use_cases.list_unmanaged_files import ListUnmanagedFiles
+from music_manager_backend.application.use_cases.run_matching import RunMatching
 from music_manager_backend.application.use_cases.scan_environment import ScanEnvironment
 from music_manager_backend.application.use_cases.update_environment import UpdateEnvironment
 from music_manager_backend.domain.entities import AudioFile, MusicEnvironment
@@ -34,6 +41,7 @@ from music_manager_backend.infrastructure.filesystem import LocalAudioScanner
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
+    MatchLinkRepository,
     PlaylistRepository,
     RemotePlaylistRepository,
     ScanRunRepository,
@@ -54,6 +62,10 @@ AudioFileRepositoryDependency = Annotated[
 ScanRunRepositoryDependency = Annotated[
     ScanRunRepository,
     Depends(get_scan_run_repository),
+]
+MatchLinkRepositoryDependency = Annotated[
+    MatchLinkRepository,
+    Depends(get_match_link_repository),
 ]
 RemotePlaylistRepositoryDependency = Annotated[
     RemotePlaylistRepository,
@@ -161,6 +173,61 @@ def import_soundcloud_playlist(
         sync_snapshots=sync_snapshots,
         importer=importer,
     ).execute(environment_id, data.url)
+
+
+@router.post("/{environment_id}/matching/run")
+def run_matching(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+) -> MatchingRunSummary:
+    return RunMatching(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+    ).execute(environment_id)
+
+
+@router.get("/{environment_id}/matching/review")
+def list_match_review(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+) -> list[MatchReviewRow]:
+    return ListMatchReview(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+    ).execute(environment_id)
+
+
+@router.post("/{environment_id}/matching/manual-mappings")
+def create_manual_mapping(
+    environment_id: str,
+    data: ManualMappingCreate,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+) -> MatchReviewRow:
+    return CreateManualMapping(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+    ).execute(environment_id, data.song_id, data.audio_file_id)
 
 
 @router.get("/{environment_id}/audio-files")

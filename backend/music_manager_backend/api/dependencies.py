@@ -6,6 +6,7 @@ from music_manager_backend.api.container import AppContainer
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
+    MatchLinkRepository,
     PlaylistRepository,
     RemotePlaylistRepository,
     ScanRunRepository,
@@ -29,6 +30,10 @@ def get_audio_file_repository(request: Request) -> AudioFileRepository:
 
 def get_scan_run_repository(request: Request) -> ScanRunRepository:
     return get_container(request).scan_run_repository
+
+
+def get_match_link_repository(request: Request) -> MatchLinkRepository:
+    return get_container(request).match_link_repository
 
 
 def get_remote_playlist_repository(request: Request) -> RemotePlaylistRepository:

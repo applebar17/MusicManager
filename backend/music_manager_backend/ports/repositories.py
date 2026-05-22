@@ -104,6 +104,12 @@ class MatchLinkRepository(Protocol):
     def list_by_song(self, song_id: str) -> list[MatchLink]:
         pass
 
+    def delete_automatic_by_song(self, song_id: str) -> None:
+        pass
+
+    def replace_for_song(self, match_link: MatchLink) -> None:
+        pass
+
 
 class SyncSnapshotRepository(Protocol):
     def save(self, snapshot: SyncSnapshot) -> None:

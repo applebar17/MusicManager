@@ -227,6 +227,91 @@ def test_match_repository_preserves_manual_review_flags(
     assert repository.list_by_song("song_1") == [match]
 
 
+def test_match_repository_replaces_links_for_song(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    _save_environment(sqlite_connection)
+    SqliteSongRepository(sqlite_connection).save(SongMaster(id="song_1", title="Track"))
+    audio_repository = SqliteAudioFileRepository(sqlite_connection)
+    audio_repository.save(
+        AudioFile(
+            id="file_1",
+            environment_id="env_1",
+            path=Path("/Volumes/GIG/track-1.mp3"),
+            size_bytes=123,
+            modified_at=12.5,
+        )
+    )
+    audio_repository.save(
+        AudioFile(
+            id="file_2",
+            environment_id="env_1",
+            path=Path("/Volumes/GIG/track-2.mp3"),
+            size_bytes=123,
+            modified_at=12.5,
+        )
+    )
+    repository = SqliteMatchLinkRepository(sqlite_connection)
+    repository.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="metadata_exact",
+            confidence=0.95,
+        )
+    )
+
+    replacement = MatchLink(
+        song_id="song_1",
+        audio_file_id="file_2",
+        method="manual",
+        confidence=1.0,
+        reviewed=True,
+    )
+    repository.replace_for_song(replacement)
+
+    assert repository.list_by_song("song_1") == [replacement]
+
+
+def test_match_repository_deletes_automatic_links_only(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    _save_environment(sqlite_connection)
+    SqliteSongRepository(sqlite_connection).save(SongMaster(id="song_1", title="Track"))
+    audio_repository = SqliteAudioFileRepository(sqlite_connection)
+    for audio_file_id in ("file_1", "file_2"):
+        audio_repository.save(
+            AudioFile(
+                id=audio_file_id,
+                environment_id="env_1",
+                path=Path(f"/Volumes/GIG/{audio_file_id}.mp3"),
+                size_bytes=123,
+                modified_at=12.5,
+            )
+        )
+    repository = SqliteMatchLinkRepository(sqlite_connection)
+    manual = MatchLink(
+        song_id="song_1",
+        audio_file_id="file_1",
+        method="manual",
+        confidence=1.0,
+        reviewed=True,
+    )
+    repository.save(manual)
+    repository.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_2",
+            method="metadata_exact",
+            confidence=0.95,
+        )
+    )
+
+    repository.delete_automatic_by_song("song_1")
+
+    assert repository.list_by_song("song_1") == [manual]
+
+
 def test_sync_snapshot_repository_round_trips_json_payload(
     sqlite_connection: sqlite3.Connection,
 ) -> None:
