@@ -6,6 +6,7 @@
     "desktop:build": "npm --workspace apps/desktop run build",
     "desktop:tauri": "npm --workspace apps/desktop run tauri",
     "backend:dev": "python3 -m uv run uvicorn music_manager_backend.api.app:app --app-dir backend --reload",
+    "db:migrate:backend": "python3 -m uv run alembic upgrade head",
     "test:backend": "python3 -m uv run pytest",
     "lint:backend": "python3 -m uv run ruff check backend",
     "typecheck:backend": "python3 -m uv run mypy backend"

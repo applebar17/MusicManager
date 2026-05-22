@@ -4,6 +4,7 @@ from music_manager_backend.domain.entities.export_plan import ExportPlan, Export
 from music_manager_backend.domain.entities.matching import MatchLink, MatchStatus
 from music_manager_backend.domain.entities.playlist import Playlist, PlaylistItem, RemotePlaylist
 from music_manager_backend.domain.entities.song import SongMaster
+from music_manager_backend.domain.entities.sync_snapshot import SyncSnapshot
 
 __all__ = [
     "AudioFile",
@@ -16,5 +17,5 @@ __all__ = [
     "PlaylistItem",
     "RemotePlaylist",
     "SongMaster",
+    "SyncSnapshot",
 ]
-

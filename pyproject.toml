@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Local-first DJ music library manager backend."
 requires-python = ">=3.11"
 dependencies = [
+  "alembic>=1.14",
   "fastapi>=0.115",
   "uvicorn>=0.30",
   "pydantic>=2.8",
