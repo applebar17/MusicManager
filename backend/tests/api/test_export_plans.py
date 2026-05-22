@@ -1,0 +1,116 @@
+from pathlib import Path
+from typing import cast
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from music_manager_backend.api.container import AppContainer
+from music_manager_backend.domain.entities import (
+    AudioFile,
+    MatchLink,
+    MusicEnvironment,
+    Playlist,
+    PlaylistItem,
+    SongMaster,
+)
+
+
+def test_create_and_get_export_plan(api_client: TestClient, tmp_path: Path) -> None:
+    container = _container(api_client)
+    root = tmp_path / "usb"
+    root.mkdir()
+    source = root / "track.mp3"
+    source.write_bytes(b"audio")
+    _seed_export_data(container, root=root, source=source)
+
+    create_response = api_client.post("/environments/env_1/export-plans")
+
+    assert create_response.status_code == 200
+    body = create_response.json()
+    assert body["environment_id"] == "env_1"
+    assert body["counts"]["copy_file"] == 1
+    assert body["items"][0]["action"] == "create_folder"
+
+    get_response = api_client.get(f"/environments/env_1/export-plans/{body['export_plan_id']}")
+
+    assert get_response.status_code == 200
+    assert get_response.json() == body
+
+
+def test_create_export_plan_accepts_selected_playlists(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    container = _container(api_client)
+    root = tmp_path / "usb"
+    root.mkdir()
+    source = root / "track.mp3"
+    source.write_bytes(b"audio")
+    _seed_export_data(container, root=root, source=source)
+
+    response = api_client.post(
+        "/environments/env_1/export-plans",
+        json={"playlist_ids": ["playlist_1"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["counts"]["copy_file"] == 1
+
+
+def test_get_export_plan_rejects_wrong_environment(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    container = _container(api_client)
+    root = tmp_path / "usb"
+    root.mkdir()
+    source = root / "track.mp3"
+    source.write_bytes(b"audio")
+    _seed_export_data(container, root=root, source=source)
+    container.environment_repository.save(
+        MusicEnvironment(id="env_2", name="Other", root_path=tmp_path / "other")
+    )
+    create_response = api_client.post("/environments/env_1/export-plans")
+
+    response = api_client.get(
+        f"/environments/env_2/export-plans/{create_response.json()['export_plan_id']}"
+    )
+
+    assert response.status_code == 400
+
+
+def _seed_export_data(container: AppContainer, *, root: Path, source: Path) -> None:
+    container.environment_repository.save(
+        MusicEnvironment(id="env_1", name="USB", root_path=root)
+    )
+    container.song_repository.save(SongMaster(id="song_1", title="Track", artist="Artist"))
+    container.playlist_repository.save(
+        Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        )
+    )
+    container.audio_file_repository.save(
+        AudioFile(
+            id="file_1",
+            environment_id="env_1",
+            path=source,
+            size_bytes=1,
+            modified_at=1.0,
+        )
+    )
+    container.match_link_repository.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="metadata_exact",
+            confidence=0.95,
+        )
+    )
+
+
+def _container(api_client: TestClient) -> AppContainer:
+    app = cast(FastAPI, api_client.app)
+    return cast(AppContainer, app.state.container)

@@ -344,9 +344,24 @@ def test_export_plan_repository_round_trips_items(sqlite_connection: sqlite3.Con
         environment_id="env_1",
         items=(
             ExportPlanItem(
+                action=ExportAction.CREATE_FOLDER,
+                target_path=Path("/target/Playlist"),
+            ),
+            ExportPlanItem(
                 action=ExportAction.COPY_FILE,
                 source_path=Path("/source/track.mp3"),
                 target_path=Path("/target/Playlist/track.mp3"),
+            ),
+            ExportPlanItem(
+                action=ExportAction.REMOVE_STALE_COPY,
+                target_path=Path("/target/Playlist/stale.mp3"),
+                reason="stale managed export copy",
+            ),
+            ExportPlanItem(
+                action=ExportAction.PRESERVE_DEPRECATED,
+                source_path=Path("/source/old.mp3"),
+                target_path=Path("/target/_deprecated/old.mp3"),
+                reason="song no longer belongs to any active playlist",
             ),
             ExportPlanItem(
                 action=ExportAction.SKIP,

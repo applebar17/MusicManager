@@ -1,0 +1,253 @@
+import sqlite3
+from pathlib import Path
+
+from music_manager_backend.application.use_cases.plan_export import PlanExport
+from music_manager_backend.domain.entities import (
+    AudioFile,
+    MatchLink,
+    MusicEnvironment,
+    Playlist,
+    PlaylistItem,
+    SongMaster,
+)
+from music_manager_backend.domain.entities.export_plan import ExportAction
+from music_manager_backend.infrastructure.persistence import (
+    SqliteAudioFileRepository,
+    SqliteEnvironmentRepository,
+    SqliteExportPlanRepository,
+    SqliteMatchLinkRepository,
+    SqlitePlaylistRepository,
+    SqliteSongRepository,
+)
+
+
+def test_export_plan_creates_folders_and_copy_items(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = _source_file(root, "source.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Track", artist="Artist"))
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+    repositories.audio_files.save(_audio_file("file_1", source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="metadata_exact",
+            confidence=0.95,
+        )
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    assert [item.action for item in plan.items].count(ExportAction.CREATE_FOLDER) == 3
+    copy_items = [item for item in plan.items if item.action == ExportAction.COPY_FILE]
+    assert copy_items[0].source_path == source
+    assert copy_items[0].target_path == root / "_music_manager_export" / "Set" / (
+        "001 - Artist - Track.mp3"
+    )
+    assert not (root / "_music_manager_export").exists()
+
+
+def test_export_plan_duplicates_shared_songs_per_playlist(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = _source_file(root, "shared.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Shared", artist="Artist"))
+    repositories.audio_files.save(_audio_file("file_1", source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="A",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_2",
+            environment_id="env_1",
+            name="B",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    copy_targets = [
+        item.target_path
+        for item in plan.items
+        if item.action == ExportAction.COPY_FILE
+    ]
+    assert copy_targets == [
+        root / "_music_manager_export" / "A" / "001 - Artist - Shared.mp3",
+        root / "_music_manager_export" / "B" / "001 - Artist - Shared.mp3",
+    ]
+
+
+def test_export_plan_skips_missing_and_ambiguous_tracks(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    candidate = _source_file(root, "candidate.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Missing", artist="Artist"))
+    repositories.songs.save(SongMaster(id="song_2", title="Candidate"))
+    repositories.audio_files.save(_audio_file("file_1", candidate, title="Candidate"))
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(
+                PlaylistItem(song_id="song_1", position=1),
+                PlaylistItem(song_id="song_2", position=2),
+            ),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    skip_reasons = [item.reason for item in plan.items if item.action == ExportAction.SKIP]
+    assert skip_reasons == ["missing audio", "ambiguous audio match"]
+
+
+def test_export_plan_detects_stale_files(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    stale = root / "_music_manager_export" / "Set" / "stale.mp3"
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"stale")
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(id="playlist_1", environment_id="env_1", name="Set"),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    assert any(
+        item.action == ExportAction.REMOVE_STALE_COPY and item.target_path == stale
+        for item in plan.items
+    )
+
+
+def test_export_plan_preserves_deprecated_matched_songs(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = _source_file(root, "old.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Old", artist="Artist"))
+    repositories.audio_files.save(_audio_file("file_1", source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1, remote_membership_active=False),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    deprecated = [item for item in plan.items if item.action == ExportAction.PRESERVE_DEPRECATED]
+    assert deprecated[0].source_path == source
+    assert deprecated[0].target_path == root / "_music_manager_export" / "_deprecated" / (
+        "Artist - Old.mp3"
+    )
+
+
+class _Repositories:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.environments = SqliteEnvironmentRepository(connection)
+        self.playlists = SqlitePlaylistRepository(connection)
+        self.songs = SqliteSongRepository(connection)
+        self.audio_files = SqliteAudioFileRepository(connection)
+        self.match_links = SqliteMatchLinkRepository(connection)
+        self.export_plans = SqliteExportPlanRepository(connection)
+
+
+def _repositories(connection: sqlite3.Connection) -> _Repositories:
+    return _Repositories(connection)
+
+
+def _seed_environment(repositories: _Repositories, tmp_path: Path) -> Path:
+    root = tmp_path / "usb"
+    root.mkdir()
+    repositories.environments.save(MusicEnvironment(id="env_1", name="USB", root_path=root))
+    return root
+
+
+def _seed_playlist(repositories: _Repositories, *, playlist: Playlist) -> None:
+    repositories.playlists.save(playlist)
+
+
+def _source_file(root: Path, filename: str) -> Path:
+    source = root / "source" / filename
+    source.parent.mkdir()
+    source.write_bytes(b"audio")
+    return source
+
+
+def _audio_file(
+    audio_file_id: str, path: Path, *, title: str | None = None
+) -> AudioFile:
+    return AudioFile(
+        id=audio_file_id,
+        environment_id="env_1",
+        path=path,
+        size_bytes=1,
+        modified_at=1.0,
+        title=title,
+    )
+
+
+def _plan_export(repositories: _Repositories) -> PlanExport:
+    return PlanExport(
+        environments=repositories.environments,
+        playlists=repositories.playlists,
+        songs=repositories.songs,
+        audio_files=repositories.audio_files,
+        match_links=repositories.match_links,
+        export_plans=repositories.export_plans,
+    )

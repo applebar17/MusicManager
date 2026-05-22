@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from music_manager_backend.api.dependencies import (
     get_audio_file_repository,
     get_environment_repository,
+    get_export_plan_repository,
     get_match_link_repository,
     get_playlist_repository,
     get_remote_playlist_repository,
@@ -17,11 +18,14 @@ from music_manager_backend.application.dtos import (
     AudioFileRead,
     EnvironmentCreate,
     EnvironmentUpdate,
+    ExportPlanCreate,
+    ExportPlanRead,
     ManualMappingCreate,
     MatchingRunSummary,
     MatchReviewRow,
     SoundCloudPlaylistImportRequest,
     SoundCloudPlaylistImportResult,
+    export_plan_read,
 )
 from music_manager_backend.application.use_cases.archive_environment import ArchiveEnvironment
 from music_manager_backend.application.use_cases.create_environment import CreateEnvironment
@@ -30,8 +34,10 @@ from music_manager_backend.application.use_cases.import_soundcloud_playlist impo
     ImportSoundCloudPlaylist,
 )
 from music_manager_backend.application.use_cases.list_audio_files import ListAudioFiles
+from music_manager_backend.application.use_cases.list_export_plan import ListExportPlan
 from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
 from music_manager_backend.application.use_cases.list_unmanaged_files import ListUnmanagedFiles
+from music_manager_backend.application.use_cases.plan_export import PlanExport
 from music_manager_backend.application.use_cases.run_matching import RunMatching
 from music_manager_backend.application.use_cases.scan_environment import ScanEnvironment
 from music_manager_backend.application.use_cases.update_environment import UpdateEnvironment
@@ -41,6 +47,7 @@ from music_manager_backend.infrastructure.filesystem import LocalAudioScanner
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
+    ExportPlanRepository,
     MatchLinkRepository,
     PlaylistRepository,
     RemotePlaylistRepository,
@@ -58,6 +65,10 @@ EnvironmentRepositoryDependency = Annotated[
 AudioFileRepositoryDependency = Annotated[
     AudioFileRepository,
     Depends(get_audio_file_repository),
+]
+ExportPlanRepositoryDependency = Annotated[
+    ExportPlanRepository,
+    Depends(get_export_plan_repository),
 ]
 ScanRunRepositoryDependency = Annotated[
     ScanRunRepository,
@@ -228,6 +239,42 @@ def create_manual_mapping(
         audio_files=audio_files,
         match_links=match_links,
     ).execute(environment_id, data.song_id, data.audio_file_id)
+
+
+@router.post("/{environment_id}/export-plans")
+def create_export_plan(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+    export_plans: ExportPlanRepositoryDependency,
+    data: ExportPlanCreate | None = None,
+) -> ExportPlanRead:
+    plan = PlanExport(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+        export_plans=export_plans,
+    ).execute(environment_id, data.playlist_ids if data is not None else None)
+    return export_plan_read(plan)
+
+
+@router.get("/{environment_id}/export-plans/{export_plan_id}")
+def get_export_plan(
+    environment_id: str,
+    export_plan_id: str,
+    environments: EnvironmentRepositoryDependency,
+    export_plans: ExportPlanRepositoryDependency,
+) -> ExportPlanRead:
+    plan = ListExportPlan(
+        environments=environments,
+        export_plans=export_plans,
+    ).execute(environment_id, export_plan_id)
+    return export_plan_read(plan)
 
 
 @router.get("/{environment_id}/audio-files")
