@@ -1,12 +1,8 @@
-from dataclasses import dataclass
-from pathlib import Path
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
-class DiscoveredAudioFile:
-    path: Path
-    size_bytes: int
-    modified_at: float
+class AudioMetadata:
     title: str | None = None
     artist: str | None = None
     album: str | None = None
@@ -14,4 +10,5 @@ class DiscoveredAudioFile:
     bpm: int | None = None
     key: str | None = None
     comment: str | None = None
-    raw_metadata: dict[str, object] | None = None
+    raw: dict[str, object] = field(default_factory=dict)
+    warnings: tuple[str, ...] = ()

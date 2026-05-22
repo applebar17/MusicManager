@@ -3,7 +3,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from music_manager_backend.application.use_cases.scan_environment import ScanEnvironment
-from music_manager_backend.domain.entities import MusicEnvironment
+from music_manager_backend.domain.entities import AudioMetadata, MusicEnvironment
 from music_manager_backend.domain.entities.audio_file import AudioFileStatus
 from music_manager_backend.infrastructure.filesystem import LocalAudioScanner
 from music_manager_backend.infrastructure.persistence import (
@@ -91,4 +91,59 @@ def _scan_use_case(sqlite_connection: sqlite3.Connection) -> ScanEnvironment:
         audio_files=SqliteAudioFileRepository(sqlite_connection),
         scan_runs=SqliteScanRunRepository(sqlite_connection),
         scanner_factory=LocalAudioScanner,
+        metadata_reader=FakeMetadataReader(),
     )
+
+
+def test_scan_persists_and_refreshes_metadata(
+    sqlite_connection: sqlite3.Connection,
+    music_environment_root: Path,
+    create_audio_file: Callable[[str], Path],
+) -> None:
+    track = create_audio_file("track.mp3")
+    _save_environment(sqlite_connection, music_environment_root)
+    reader = FakeMetadataReader()
+    reader.metadata_by_path[track] = AudioMetadata(
+        title="First Title",
+        artist="Artist",
+        album="Album",
+        duration_seconds=200,
+        bpm=124,
+        key="8A",
+        comment="Warmup",
+        raw={"title": "First Title"},
+    )
+    use_case = ScanEnvironment(
+        environments=SqliteEnvironmentRepository(sqlite_connection),
+        audio_files=SqliteAudioFileRepository(sqlite_connection),
+        scan_runs=SqliteScanRunRepository(sqlite_connection),
+        scanner_factory=LocalAudioScanner,
+        metadata_reader=reader,
+    )
+
+    use_case.execute("env_1")
+    persisted = SqliteAudioFileRepository(sqlite_connection).list_by_environment("env_1")[0]
+    assert persisted.title == "First Title"
+    assert persisted.bpm == 124
+    assert persisted.raw_metadata == {"title": "First Title"}
+
+    reader.metadata_by_path[track] = AudioMetadata(title="Ignored Title")
+    unchanged = use_case.execute("env_1")
+    persisted = SqliteAudioFileRepository(sqlite_connection).list_by_environment("env_1")[0]
+    assert unchanged.unchanged == 1
+    assert persisted.title == "First Title"
+
+    track.write_bytes(b"changed bytes")
+    reader.metadata_by_path[track] = AudioMetadata(title="Second Title")
+    changed = use_case.execute("env_1")
+    persisted = SqliteAudioFileRepository(sqlite_connection).list_by_environment("env_1")[0]
+    assert changed.changed == 1
+    assert persisted.title == "Second Title"
+
+
+class FakeMetadataReader:
+    def __init__(self) -> None:
+        self.metadata_by_path: dict[Path, AudioMetadata] = {}
+
+    def read(self, path: Path) -> AudioMetadata:
+        return self.metadata_by_path.get(path, AudioMetadata())

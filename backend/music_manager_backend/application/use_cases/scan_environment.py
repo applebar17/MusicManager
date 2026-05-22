@@ -1,13 +1,16 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from music_manager_backend.domain.entities import (
     AudioFile,
+    AudioMetadata,
     DiscoveredAudioFile,
     ScanRun,
     ScanSummary,
 )
 from music_manager_backend.domain.entities.audio_file import AudioFileStatus
+from music_manager_backend.ports.audio_metadata import AudioMetadataReader
 from music_manager_backend.ports.filesystem import AudioFileScanner
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
@@ -28,11 +31,13 @@ class ScanEnvironment:
         audio_files: AudioFileRepository,
         scan_runs: ScanRunRepository,
         scanner_factory: ScannerFactory,
+        metadata_reader: AudioMetadataReader,
     ) -> None:
         self.environments = environments
         self.audio_files = audio_files
         self.scan_runs = scan_runs
         self.scanner_factory = scanner_factory
+        self.metadata_reader = metadata_reader
 
     def execute(self, environment_id: str) -> ScanSummary:
         environment = self.environments.get(environment_id)
@@ -42,7 +47,10 @@ class ScanEnvironment:
         scan_id = new_id("scan")
         started_at = utc_now_iso()
         scanner = self.scanner_factory(environment.root_path)
-        discovered = scanner.scan()
+        discovered = [
+            _with_metadata(item, self.metadata_reader.read(item.path))
+            for item in scanner.scan()
+        ]
         active_files = self.audio_files.list_by_environment(
             environment_id,
             status=AudioFileStatus.ACTIVE,
@@ -63,16 +71,23 @@ class ScanEnvironment:
                     self.audio_files.save(_new_audio_file(environment_id, scan_id, discovered_file))
                     counts.added += 1
                 else:
-                    self.audio_files.save(_seen_audio_file(moved, scan_id, discovered_file))
+                    self.audio_files.save(
+                        _seen_audio_file(moved, scan_id, discovered_file, refresh_metadata=True)
+                    )
                     moved_old_ids.add(moved.id)
                     moved_new_paths.add(discovered_file.path)
                     counts.moved += 1
                 continue
 
-            self.audio_files.save(_seen_audio_file(existing, scan_id, discovered_file))
             if _same_file_state(existing, discovered_file):
+                self.audio_files.save(
+                    _seen_audio_file(existing, scan_id, discovered_file, refresh_metadata=False)
+                )
                 counts.unchanged += 1
             else:
+                self.audio_files.save(
+                    _seen_audio_file(existing, scan_id, discovered_file, refresh_metadata=True)
+                )
                 counts.changed += 1
 
         removed_at = utc_now_iso()
@@ -133,7 +148,12 @@ def _new_audio_file(
         modified_at=discovered_file.modified_at,
         title=discovered_file.title,
         artist=discovered_file.artist,
+        album=discovered_file.album,
         duration_seconds=discovered_file.duration_seconds,
+        bpm=discovered_file.bpm,
+        key=discovered_file.key,
+        comment=discovered_file.comment,
+        raw_metadata=discovered_file.raw_metadata,
         status=AudioFileStatus.ACTIVE,
         first_seen_scan_id=scan_id,
         last_seen_scan_id=scan_id,
@@ -144,16 +164,24 @@ def _seen_audio_file(
     existing: AudioFile,
     scan_id: str,
     discovered_file: DiscoveredAudioFile,
+    *,
+    refresh_metadata: bool,
 ) -> AudioFile:
+    metadata = _metadata_values(existing, discovered_file, refresh=refresh_metadata)
     return AudioFile(
         id=existing.id,
         environment_id=existing.environment_id,
         path=discovered_file.path,
         size_bytes=discovered_file.size_bytes,
         modified_at=discovered_file.modified_at,
-        title=existing.title or discovered_file.title,
-        artist=existing.artist or discovered_file.artist,
-        duration_seconds=existing.duration_seconds or discovered_file.duration_seconds,
+        title=metadata.title,
+        artist=metadata.artist,
+        album=metadata.album,
+        duration_seconds=metadata.duration_seconds,
+        bpm=metadata.bpm,
+        key=metadata.key,
+        comment=metadata.comment,
+        raw_metadata=metadata.raw_metadata,
         status=AudioFileStatus.ACTIVE,
         first_seen_scan_id=existing.first_seen_scan_id or scan_id,
         last_seen_scan_id=scan_id,
@@ -169,7 +197,12 @@ def _removed_audio_file(existing: AudioFile, removed_at: str) -> AudioFile:
         modified_at=existing.modified_at,
         title=existing.title,
         artist=existing.artist,
+        album=existing.album,
         duration_seconds=existing.duration_seconds,
+        bpm=existing.bpm,
+        key=existing.key,
+        comment=existing.comment,
+        raw_metadata=existing.raw_metadata,
         status=AudioFileStatus.REMOVED,
         first_seen_scan_id=existing.first_seen_scan_id,
         last_seen_scan_id=existing.last_seen_scan_id,
@@ -199,3 +232,63 @@ def _pop_moved_candidate(
         ):
             return existing
     return None
+
+
+def _with_metadata(
+    discovered_file: DiscoveredAudioFile,
+    metadata: AudioMetadata,
+) -> DiscoveredAudioFile:
+    return DiscoveredAudioFile(
+        path=discovered_file.path,
+        size_bytes=discovered_file.size_bytes,
+        modified_at=discovered_file.modified_at,
+        title=metadata.title,
+        artist=metadata.artist,
+        album=metadata.album,
+        duration_seconds=metadata.duration_seconds,
+        bpm=metadata.bpm,
+        key=metadata.key,
+        comment=metadata.comment,
+        raw_metadata=metadata.raw,
+    )
+
+
+@dataclass(frozen=True)
+class _MetadataValues:
+    title: str | None
+    artist: str | None
+    album: str | None
+    duration_seconds: int | None
+    bpm: int | None
+    key: str | None
+    comment: str | None
+    raw_metadata: dict[str, object] | None
+
+
+def _metadata_values(
+    existing: AudioFile,
+    discovered: DiscoveredAudioFile,
+    *,
+    refresh: bool,
+) -> _MetadataValues:
+    if refresh:
+        return _MetadataValues(
+            title=discovered.title,
+            artist=discovered.artist,
+            album=discovered.album,
+            duration_seconds=discovered.duration_seconds,
+            bpm=discovered.bpm,
+            key=discovered.key,
+            comment=discovered.comment,
+            raw_metadata=discovered.raw_metadata,
+        )
+    return _MetadataValues(
+        title=existing.title,
+        artist=existing.artist,
+        album=existing.album,
+        duration_seconds=existing.duration_seconds,
+        bpm=existing.bpm,
+        key=existing.key,
+        comment=existing.comment,
+        raw_metadata=existing.raw_metadata,
+    )

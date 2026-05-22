@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 from typing import cast
@@ -20,13 +21,18 @@ class SqliteAudioFileRepository:
                 modified_at,
                 title,
                 artist,
+                album,
                 duration_seconds,
+                bpm,
+                key,
+                comment,
+                raw_metadata_json,
                 status,
                 first_seen_scan_id,
                 last_seen_scan_id,
                 removed_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 environment_id = excluded.environment_id,
                 path = excluded.path,
@@ -34,7 +40,12 @@ class SqliteAudioFileRepository:
                 modified_at = excluded.modified_at,
                 title = excluded.title,
                 artist = excluded.artist,
+                album = excluded.album,
                 duration_seconds = excluded.duration_seconds,
+                bpm = excluded.bpm,
+                key = excluded.key,
+                comment = excluded.comment,
+                raw_metadata_json = excluded.raw_metadata_json,
                 status = excluded.status,
                 first_seen_scan_id = excluded.first_seen_scan_id,
                 last_seen_scan_id = excluded.last_seen_scan_id,
@@ -48,7 +59,14 @@ class SqliteAudioFileRepository:
                 audio_file.modified_at,
                 audio_file.title,
                 audio_file.artist,
+                audio_file.album,
                 audio_file.duration_seconds,
+                audio_file.bpm,
+                audio_file.key,
+                audio_file.comment,
+                json.dumps(audio_file.raw_metadata, sort_keys=True)
+                if audio_file.raw_metadata is not None
+                else None,
                 audio_file.status.value,
                 audio_file.first_seen_scan_id,
                 audio_file.last_seen_scan_id,
@@ -126,9 +144,21 @@ def _audio_file_from_row(row: sqlite3.Row) -> AudioFile:
         modified_at=cast(float, row["modified_at"]),
         title=cast(str | None, row["title"]),
         artist=cast(str | None, row["artist"]),
+        album=cast(str | None, row["album"]),
         duration_seconds=cast(int | None, row["duration_seconds"]),
+        bpm=cast(int | None, row["bpm"]),
+        key=cast(str | None, row["key"]),
+        comment=cast(str | None, row["comment"]),
+        raw_metadata=_raw_metadata_from_row(row),
         status=AudioFileStatus(cast(str, row["status"])),
         first_seen_scan_id=cast(str | None, row["first_seen_scan_id"]),
         last_seen_scan_id=cast(str | None, row["last_seen_scan_id"]),
         removed_at=cast(str | None, row["removed_at"]),
     )
+
+
+def _raw_metadata_from_row(row: sqlite3.Row) -> dict[str, object] | None:
+    raw_metadata_json = cast(str | None, row["raw_metadata_json"])
+    if raw_metadata_json is None:
+        return None
+    return cast(dict[str, object], json.loads(raw_metadata_json))

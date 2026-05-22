@@ -10,4 +10,8 @@ class AudioFileRead(BaseModel):
     status: str
     title: str | None = None
     artist: str | None = None
+    album: str | None = None
     duration_seconds: int | None = None
+    bpm: int | None = None
+    key: str | None = None
+    comment: str | None = None

@@ -19,6 +19,7 @@ from music_manager_backend.application.use_cases.list_unmanaged_files import Lis
 from music_manager_backend.application.use_cases.scan_environment import ScanEnvironment
 from music_manager_backend.application.use_cases.update_environment import UpdateEnvironment
 from music_manager_backend.domain.entities import AudioFile, MusicEnvironment
+from music_manager_backend.infrastructure.audio import MetadataReader
 from music_manager_backend.infrastructure.filesystem import LocalAudioScanner
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
@@ -92,6 +93,7 @@ def scan_environment(
         audio_files=audio_files,
         scan_runs=scan_runs,
         scanner_factory=LocalAudioScanner,
+        metadata_reader=MetadataReader(),
     ).execute(environment_id)
     return {
         "scan_run_id": summary.scan_run_id,
@@ -146,5 +148,9 @@ def _audio_file_response(audio_file: AudioFile) -> AudioFileRead:
         status=audio_file.status.value,
         title=audio_file.title,
         artist=audio_file.artist,
+        album=audio_file.album,
         duration_seconds=audio_file.duration_seconds,
+        bpm=audio_file.bpm,
+        key=audio_file.key,
+        comment=audio_file.comment,
     )

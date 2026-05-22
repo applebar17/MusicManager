@@ -1,4 +1,5 @@
 from music_manager_backend.domain.entities.audio_file import AudioFile, AudioFileStatus
+from music_manager_backend.domain.entities.audio_metadata import AudioMetadata
 from music_manager_backend.domain.entities.discovered_audio_file import DiscoveredAudioFile
 from music_manager_backend.domain.entities.environment import MusicEnvironment
 from music_manager_backend.domain.entities.export_plan import ExportPlan, ExportPlanItem
@@ -10,6 +11,7 @@ from music_manager_backend.domain.entities.sync_snapshot import SyncSnapshot
 
 __all__ = [
     "AudioFile",
+    "AudioMetadata",
     "AudioFileStatus",
     "DiscoveredAudioFile",
     "ExportPlan",

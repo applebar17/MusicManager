@@ -109,7 +109,12 @@ def test_audio_file_repository_round_trips_metadata(sqlite_connection: sqlite3.C
         modified_at=12.5,
         title="Track",
         artist="Artist",
+        album="Album",
         duration_seconds=300,
+        bpm=128,
+        key="9A",
+        comment="Peak",
+        raw_metadata={"title": "Track", "bpm": 128},
     )
 
     repository.save(audio_file)
