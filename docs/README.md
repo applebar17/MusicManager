@@ -15,6 +15,7 @@ requirements and implementation plans are produced.
 - [Sync and Source of Truth](domain/sync-and-source-of-truth.md) - ownership of remote and local state.
 - [Architecture Overview](architecture/overview.md) - proposed system layers and data flow.
 - [Technology Stack](architecture/tech-stack.md) - selected desktop stack and implementation direction.
+- [Scaffold Notes](development/scaffold.md) - current repository layout and layer boundaries.
 - [SoundCloud Ingestion](features/soundcloud-ingestion.md) - playlist import and sync.
 - [Local Library and Matching](features/local-library-and-matching.md) - matching remote tracks to local audio files.
 - [USB Export](features/usb-export.md) - drive reorganization and duplicate handling.

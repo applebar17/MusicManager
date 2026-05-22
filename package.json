@@ -1,0 +1,16 @@
+{
+  "name": "music-manager-workspace",
+  "private": true,
+  "scripts": {
+    "desktop:dev": "npm --workspace apps/desktop run dev",
+    "desktop:build": "npm --workspace apps/desktop run build",
+    "desktop:tauri": "npm --workspace apps/desktop run tauri",
+    "backend:dev": "uvicorn music_manager_backend.api.app:app --app-dir backend --reload",
+    "test:backend": "pytest",
+    "lint:backend": "ruff check backend"
+  },
+  "workspaces": [
+    "apps/desktop"
+  ]
+}
+

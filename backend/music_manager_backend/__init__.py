@@ -1,0 +1,2 @@
+"""Music Manager backend package."""
+
