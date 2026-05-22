@@ -16,6 +16,8 @@ requirements and implementation plans are produced.
 - [Architecture Overview](architecture/overview.md) - proposed system layers and data flow.
 - [Technology Stack](architecture/tech-stack.md) - selected desktop stack and implementation direction.
 - [Scaffold Notes](development/scaffold.md) - current repository layout and layer boundaries.
+- [Coding Plans](coding-plans/README.md) - staged implementation plans.
+- [Backend Multiwave Plan](coding-plans/backend-multiwave-plan.md) - backend-first implementation roadmap.
 - [SoundCloud Ingestion](features/soundcloud-ingestion.md) - playlist import and sync.
 - [Local Library and Matching](features/local-library-and-matching.md) - matching remote tracks to local audio files.
 - [USB Export](features/usb-export.md) - drive reorganization and duplicate handling.
