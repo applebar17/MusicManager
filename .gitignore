@@ -12,4 +12,4 @@ apps/desktop/src-tauri/target/
 *.sqlite
 *.sqlite3
 *.db
-
+local/*
