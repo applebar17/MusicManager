@@ -3,7 +3,6 @@ from pathlib import Path
 from music_manager_backend.domain.entities import AudioFile
 from music_manager_backend.shared.ids import new_id
 
-
 SUPPORTED_AUDIO_EXTENSIONS = {".aiff", ".flac", ".m4a", ".mp3", ".wav"}
 
 
@@ -28,4 +27,3 @@ class LocalAudioScanner:
                 )
             )
         return files
-
