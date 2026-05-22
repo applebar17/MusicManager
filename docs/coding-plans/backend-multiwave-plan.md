@@ -155,45 +155,82 @@ Exit criteria:
 
 ## Wave 4: SoundCloud Public Playlist Discovery
 
-Goal: support no-key public playlist import discovery before deciding how much can be
-reliably automated.
+Goal: support no-key public playlist discovery from saved/public SoundCloud playlist
+HTML, while learning exactly how reliable this path is before API-auth ingestion.
 
 Important note:
 
-We likely need one or more saved HTML references from real public SoundCloud playlist
-pages. Those references should be kept as fixtures so parser behavior can be tested
-without network access or API keys.
+The provided SoundCloud playlist HTML exposes useful track-list data in the rendered
+page, but it should be treated as an unstable public page contract, not a stable API.
+Parser behavior must be covered by saved fixtures so tests do not require network
+access or API keys.
+
+Observed public HTML extraction points:
+
+- Track rows are under `li.trackList__item`.
+- Track order is available from `.trackItem__number .trackItem__separator`, with list
+  index as a fallback.
+- Uploader/artist display text is available from `a.trackItem__username`.
+- Uploader profile path is available from the same anchor's `href`.
+- Track display title is available from `a.trackItem__trackTitle`.
+- Track URL is available from the track-title anchor's `href`; query parameters such
+  as `?in=...` should be preserved in raw data but stripped for canonical track URL
+  identity.
+- Artwork is usually available on a nearby `span.sc-artwork` as a CSS
+  `background-image` URL.
+- Play count may be present in `.trackItem__playCount`, but this is nonessential.
+- Duration is not present in the provided fragment, so it must remain optional for
+  public HTML imports.
 
 Deliverables:
 
-- Define `SoundCloudPlaylistImporter` behavior for public playlist URLs.
-- Add fixture location for captured HTML references.
-- Parse public playlist metadata from saved HTML if feasible.
-- Extract playlist title, track order, track title, artist/uploader, duration, and
-  public track URLs when present.
-- Record parser limitations clearly.
-- Add a fallback path for API-based ingestion if public HTML is insufficient or too
-  unstable.
+- Add a small parsed-data model for public SoundCloud playlists and tracks, separate
+  from persistence entities.
+- Add a public HTML parser that accepts an HTML string and optional source URL.
+- Add a public playlist importer that can parse saved HTML now and leave live fetching
+  behind a small fetcher port for later.
+- Add `beautifulsoup4` as the parser dependency unless implementation proves the
+  standard library parser is enough.
+- Extract playlist source URL, playlist title when available, track order, track title,
+  uploader display name, uploader URL, canonical track URL, playlist-scoped track URL,
+  artwork URL, optional play count, and optional duration.
+- Normalize relative SoundCloud paths to absolute `https://soundcloud.com/...` URLs.
+- Strip playlist query parameters from canonical track identity URLs, while retaining
+  the original raw URL for traceability.
+- Detect partial or suspicious parses, such as zero track rows, missing track links, or
+  lazy-loaded pages where only a subset of tracks is present.
+- Return parser warnings instead of raising for missing optional fields.
+- Record parser limitations clearly in SoundCloud ingestion docs.
+- Keep persistence/import-to-library mapping thin in this wave; full sync semantics stay
+  in Wave 5.
 
 Suggested modules:
 
-- `infrastructure/soundcloud/public_playlist_importer.py`
 - `infrastructure/soundcloud/public_html_parser.py`
+- `infrastructure/soundcloud/public_playlist_importer.py`
 - `infrastructure/soundcloud/soundcloud_models.py`
+- `ports/soundcloud.py`
 - `tests/fixtures/soundcloud_html/`
 
 Tests:
 
-- Parser extracts playlist metadata from saved HTML fixtures.
-- Parser reports missing fields without crashing.
-- Importer maps parsed data into `RemotePlaylist`, `Playlist`, `SongMaster`, and
-  `PlaylistItem` records.
+- Parser extracts the sample track-list fixture, including order, uploader, title,
+  canonical URL, playlist-scoped URL, artwork URL, and play count where present.
+- Parser preserves non-ASCII titles and uploader names.
+- Parser strips `?in=...` from canonical track URLs while preserving raw URLs.
+- Parser reports missing optional fields without crashing.
+- Parser returns warnings for empty pages, missing track-title anchors, or partial
+  lazy-loaded pages where detection is possible.
+- Importer maps parsed playlist data into a `RemotePlaylist`-shaped discovery result
+  without creating durable library state yet.
 
 Exit criteria:
 
-- We know whether public playlist import is viable for v1.
-- If viable, import works from saved HTML fixtures.
-- If not viable, the API-auth path becomes the required ingestion path.
+- Backend can parse saved public SoundCloud playlist HTML into a deterministic
+  playlist discovery result.
+- We know which fields are reliable from public HTML and which remain optional.
+- If public HTML proves too partial or unstable, the API-auth path becomes the required
+  ingestion path for complete sync.
 
 ## Wave 5: SoundCloud Ingestion Persistence and Sync
 
@@ -413,4 +450,3 @@ This slice avoids SoundCloud uncertainty while proving the local-first foundatio
 - Choose the audio metadata library.
 - Confirm v1 supported audio formats.
 - Decide deprecated folder default name and path convention.
-
