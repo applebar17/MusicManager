@@ -1,5 +1,11 @@
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
+
+
+class AudioFileStatus(StrEnum):
+    ACTIVE = "active"
+    REMOVED = "removed"
 
 
 @dataclass(frozen=True)
@@ -12,4 +18,7 @@ class AudioFile:
     title: str | None = None
     artist: str | None = None
     duration_seconds: int | None = None
-
+    status: AudioFileStatus = AudioFileStatus.ACTIVE
+    first_seen_scan_id: str | None = None
+    last_seen_scan_id: str | None = None
+    removed_at: str | None = None

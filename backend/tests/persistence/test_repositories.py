@@ -13,7 +13,9 @@ from music_manager_backend.domain.entities import (
     SongMaster,
     SyncSnapshot,
 )
+from music_manager_backend.domain.entities.audio_file import AudioFileStatus
 from music_manager_backend.domain.entities.export_plan import ExportAction
+from music_manager_backend.domain.entities.scan_run import ScanRun
 from music_manager_backend.infrastructure.persistence import (
     SqliteAudioFileRepository,
     SqliteEnvironmentRepository,
@@ -21,6 +23,7 @@ from music_manager_backend.infrastructure.persistence import (
     SqliteMatchLinkRepository,
     SqlitePlaylistRepository,
     SqliteRemotePlaylistRepository,
+    SqliteScanRunRepository,
     SqliteSongRepository,
     SqliteSyncSnapshotRepository,
 )
@@ -34,6 +37,19 @@ def test_environment_repository_round_trips_paths(sqlite_connection: sqlite3.Con
 
     assert repository.get("env_1") == environment
     assert repository.list() == [environment]
+
+
+def test_environment_repository_soft_archives(sqlite_connection: sqlite3.Connection) -> None:
+    repository = SqliteEnvironmentRepository(sqlite_connection)
+    environment = MusicEnvironment(id="env_1", name="Gig USB", root_path=Path("/Volumes/GIG"))
+    repository.save(environment)
+
+    archived = repository.archive("env_1", "2026-05-22T10:00:00+00:00")
+
+    assert archived is not None
+    assert archived.archived_at == "2026-05-22T10:00:00+00:00"
+    assert repository.list() == []
+    assert repository.list(include_archived=True) == [archived]
 
 
 def test_song_repository_preserves_local_overrides(sqlite_connection: sqlite3.Connection) -> None:
@@ -100,6 +116,62 @@ def test_audio_file_repository_round_trips_metadata(sqlite_connection: sqlite3.C
 
     assert repository.get("file_1") == audio_file
     assert repository.list_by_environment("env_1") == [audio_file]
+    assert repository.list_by_environment("env_1", status=AudioFileStatus.ACTIVE) == [audio_file]
+
+
+def test_audio_file_repository_lists_unmanaged_active_files(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    _save_environment(sqlite_connection)
+    SqliteSongRepository(sqlite_connection).save(SongMaster(id="song_1", title="Track"))
+    audio_repository = SqliteAudioFileRepository(sqlite_connection)
+    matched = AudioFile(
+        id="file_1",
+        environment_id="env_1",
+        path=Path("/Volumes/GIG/matched.mp3"),
+        size_bytes=123,
+        modified_at=12.5,
+    )
+    unmanaged = AudioFile(
+        id="file_2",
+        environment_id="env_1",
+        path=Path("/Volumes/GIG/unmanaged.mp3"),
+        size_bytes=456,
+        modified_at=13.5,
+    )
+    audio_repository.save(matched)
+    audio_repository.save(unmanaged)
+    SqliteMatchLinkRepository(sqlite_connection).save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+        )
+    )
+
+    assert audio_repository.list_unmanaged_active_by_environment("env_1") == [unmanaged]
+
+
+def test_scan_run_repository_round_trips_summary(sqlite_connection: sqlite3.Connection) -> None:
+    _save_environment(sqlite_connection)
+    repository = SqliteScanRunRepository(sqlite_connection)
+    scan_run = ScanRun(
+        id="scan_1",
+        environment_id="env_1",
+        started_at="2026-05-22T10:00:00+00:00",
+        finished_at="2026-05-22T10:00:01+00:00",
+        added_count=1,
+        changed_count=2,
+        removed_count=3,
+        moved_count=4,
+        unchanged_count=5,
+        total_active_count=6,
+    )
+
+    repository.save(scan_run)
+
+    assert repository.get("scan_1") == scan_run
 
 
 def test_match_repository_preserves_manual_review_flags(

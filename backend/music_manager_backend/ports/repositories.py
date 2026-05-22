@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Protocol
 
 from music_manager_backend.domain.entities import (
@@ -7,9 +8,11 @@ from music_manager_backend.domain.entities import (
     MusicEnvironment,
     Playlist,
     RemotePlaylist,
+    ScanRun,
     SongMaster,
     SyncSnapshot,
 )
+from music_manager_backend.domain.entities.audio_file import AudioFileStatus
 
 
 class EnvironmentRepository(Protocol):
@@ -19,7 +22,10 @@ class EnvironmentRepository(Protocol):
     def get(self, environment_id: str) -> MusicEnvironment | None:
         pass
 
-    def list(self) -> list[MusicEnvironment]:
+    def list(self, *, include_archived: bool = False) -> list[MusicEnvironment]:
+        pass
+
+    def archive(self, environment_id: str, archived_at: str) -> MusicEnvironment | None:
         pass
 
 
@@ -57,7 +63,26 @@ class AudioFileRepository(Protocol):
     def get(self, audio_file_id: str) -> AudioFile | None:
         pass
 
-    def list_by_environment(self, environment_id: str) -> list[AudioFile]:
+    def get_by_environment_path(self, environment_id: str, path: Path) -> AudioFile | None:
+        pass
+
+    def list_by_environment(
+        self,
+        environment_id: str,
+        *,
+        status: AudioFileStatus | None = None,
+    ) -> list[AudioFile]:
+        pass
+
+    def list_unmanaged_active_by_environment(self, environment_id: str) -> list[AudioFile]:
+        pass
+
+
+class ScanRunRepository(Protocol):
+    def save(self, scan_run: ScanRun) -> None:
+        pass
+
+    def get(self, scan_run_id: str) -> ScanRun | None:
         pass
 
 

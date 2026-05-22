@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 from typing import cast
 
-from music_manager_backend.domain.entities import AudioFile
+from music_manager_backend.domain.entities import AudioFile, AudioFileStatus
 
 
 class SqliteAudioFileRepository:
@@ -20,9 +20,13 @@ class SqliteAudioFileRepository:
                 modified_at,
                 title,
                 artist,
-                duration_seconds
+                duration_seconds,
+                status,
+                first_seen_scan_id,
+                last_seen_scan_id,
+                removed_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 environment_id = excluded.environment_id,
                 path = excluded.path,
@@ -30,7 +34,11 @@ class SqliteAudioFileRepository:
                 modified_at = excluded.modified_at,
                 title = excluded.title,
                 artist = excluded.artist,
-                duration_seconds = excluded.duration_seconds
+                duration_seconds = excluded.duration_seconds,
+                status = excluded.status,
+                first_seen_scan_id = excluded.first_seen_scan_id,
+                last_seen_scan_id = excluded.last_seen_scan_id,
+                removed_at = excluded.removed_at
             """,
             (
                 audio_file.id,
@@ -41,6 +49,10 @@ class SqliteAudioFileRepository:
                 audio_file.title,
                 audio_file.artist,
                 audio_file.duration_seconds,
+                audio_file.status.value,
+                audio_file.first_seen_scan_id,
+                audio_file.last_seen_scan_id,
+                audio_file.removed_at,
             ),
         )
         self.connection.commit()
@@ -54,10 +66,53 @@ class SqliteAudioFileRepository:
             return None
         return _audio_file_from_row(row)
 
-    def list_by_environment(self, environment_id: str) -> list[AudioFile]:
+    def get_by_environment_path(self, environment_id: str, path: Path) -> AudioFile | None:
+        row = self.connection.execute(
+            """
+            SELECT * FROM audio_files
+            WHERE environment_id = ? AND path = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (environment_id, str(path)),
+        ).fetchone()
+        if row is None:
+            return None
+        return _audio_file_from_row(row)
+
+    def list_by_environment(
+        self,
+        environment_id: str,
+        *,
+        status: AudioFileStatus | None = None,
+    ) -> list[AudioFile]:
+        if status is None:
+            rows = self.connection.execute(
+                "SELECT * FROM audio_files WHERE environment_id = ? ORDER BY path, id",
+                (environment_id,),
+            ).fetchall()
+        else:
+            rows = self.connection.execute(
+                """
+                SELECT * FROM audio_files
+                WHERE environment_id = ? AND status = ?
+                ORDER BY path, id
+                """,
+                (environment_id, status.value),
+            ).fetchall()
+        return [_audio_file_from_row(row) for row in rows]
+
+    def list_unmanaged_active_by_environment(self, environment_id: str) -> list[AudioFile]:
         rows = self.connection.execute(
-            "SELECT * FROM audio_files WHERE environment_id = ? ORDER BY path, id",
-            (environment_id,),
+            """
+            SELECT audio_files.* FROM audio_files
+            LEFT JOIN match_links ON match_links.audio_file_id = audio_files.id
+            WHERE audio_files.environment_id = ?
+                AND audio_files.status = ?
+                AND match_links.audio_file_id IS NULL
+            ORDER BY audio_files.path, audio_files.id
+            """,
+            (environment_id, AudioFileStatus.ACTIVE.value),
         ).fetchall()
         return [_audio_file_from_row(row) for row in rows]
 
@@ -72,4 +127,8 @@ def _audio_file_from_row(row: sqlite3.Row) -> AudioFile:
         title=cast(str | None, row["title"]),
         artist=cast(str | None, row["artist"]),
         duration_seconds=cast(int | None, row["duration_seconds"]),
+        status=AudioFileStatus(cast(str, row["status"])),
+        first_seen_scan_id=cast(str | None, row["first_seen_scan_id"]),
+        last_seen_scan_id=cast(str | None, row["last_seen_scan_id"]),
+        removed_at=cast(str | None, row["removed_at"]),
     )

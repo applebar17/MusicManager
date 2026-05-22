@@ -17,14 +17,16 @@ class SqliteEnvironmentRepository:
                 name,
                 root_path,
                 deprecated_folder_name,
-                default_export_profile
+                default_export_profile,
+                archived_at
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 root_path = excluded.root_path,
                 deprecated_folder_name = excluded.deprecated_folder_name,
-                default_export_profile = excluded.default_export_profile
+                default_export_profile = excluded.default_export_profile,
+                archived_at = excluded.archived_at
             """,
             (
                 environment.id,
@@ -32,6 +34,7 @@ class SqliteEnvironmentRepository:
                 str(environment.root_path),
                 environment.deprecated_folder_name,
                 environment.default_export_profile,
+                environment.archived_at,
             ),
         )
         self.connection.commit()
@@ -45,9 +48,24 @@ class SqliteEnvironmentRepository:
             return None
         return _environment_from_row(row)
 
-    def list(self) -> list[MusicEnvironment]:
-        rows = self.connection.execute("SELECT * FROM environments ORDER BY name, id").fetchall()
+    def list(self, *, include_archived: bool = False) -> list[MusicEnvironment]:
+        if include_archived:
+            rows = self.connection.execute(
+                "SELECT * FROM environments ORDER BY name, id"
+            ).fetchall()
+        else:
+            rows = self.connection.execute(
+                "SELECT * FROM environments WHERE archived_at IS NULL ORDER BY name, id"
+            ).fetchall()
         return [_environment_from_row(row) for row in rows]
+
+    def archive(self, environment_id: str, archived_at: str) -> MusicEnvironment | None:
+        self.connection.execute(
+            "UPDATE environments SET archived_at = ? WHERE id = ?",
+            (archived_at, environment_id),
+        )
+        self.connection.commit()
+        return self.get(environment_id)
 
 
 def _environment_from_row(row: sqlite3.Row) -> MusicEnvironment:
@@ -57,4 +75,5 @@ def _environment_from_row(row: sqlite3.Row) -> MusicEnvironment:
         root_path=Path(cast(str, row["root_path"])),
         deprecated_folder_name=cast(str, row["deprecated_folder_name"]),
         default_export_profile=cast(str, row["default_export_profile"]),
+        archived_at=cast(str | None, row["archived_at"]),
     )
