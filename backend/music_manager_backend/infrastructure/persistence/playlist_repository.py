@@ -68,6 +68,22 @@ class SqlitePlaylistRepository:
             for row in rows
         ]
 
+    def get_by_environment_remote_playlist(
+        self, environment_id: str, remote_playlist_id: str
+    ) -> Playlist | None:
+        row = self.connection.execute(
+            """
+            SELECT * FROM playlists
+            WHERE environment_id = ? AND remote_playlist_id = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (environment_id, remote_playlist_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return _playlist_from_row(row, self._items_for_playlist(cast(str, row["id"])))
+
     def _items_for_playlist(self, playlist_id: str) -> tuple[PlaylistItem, ...]:
         rows = self.connection.execute(
             """

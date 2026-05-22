@@ -36,6 +36,9 @@ class RemotePlaylistRepository(Protocol):
     def get(self, remote_playlist_id: str) -> RemotePlaylist | None:
         pass
 
+    def get_by_source_url(self, source: str, source_url: str) -> RemotePlaylist | None:
+        pass
+
 
 class PlaylistRepository(Protocol):
     def save(self, playlist: Playlist) -> None:
@@ -47,12 +50,20 @@ class PlaylistRepository(Protocol):
     def list_by_environment(self, environment_id: str) -> list[Playlist]:
         pass
 
+    def get_by_environment_remote_playlist(
+        self, environment_id: str, remote_playlist_id: str
+    ) -> Playlist | None:
+        pass
+
 
 class SongRepository(Protocol):
     def save(self, song: SongMaster) -> None:
         pass
 
     def get(self, song_id: str) -> SongMaster | None:
+        pass
+
+    def get_by_source_url(self, source_url: str) -> SongMaster | None:
         pass
 
 

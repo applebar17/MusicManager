@@ -46,15 +46,31 @@ class SqliteSongRepository:
 
     def get(self, song_id: str) -> SongMaster | None:
         row = self.connection.execute("SELECT * FROM songs WHERE id = ?", (song_id,)).fetchone()
-        if row is None:
-            return None
-        return SongMaster(
-            id=cast(str, row["id"]),
-            title=cast(str, row["title"]),
-            artist=cast(str | None, row["artist"]),
-            duration_seconds=cast(int | None, row["duration_seconds"]),
-            source_track_id=cast(str | None, row["source_track_id"]),
-            source_url=cast(str | None, row["source_url"]),
-            local_title_override=cast(str | None, row["local_title_override"]),
-            local_artist_override=cast(str | None, row["local_artist_override"]),
-        )
+        return _song_from_row(row)
+
+    def get_by_source_url(self, source_url: str) -> SongMaster | None:
+        row = self.connection.execute(
+            """
+            SELECT * FROM songs
+            WHERE source_url = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (source_url,),
+        ).fetchone()
+        return _song_from_row(row)
+
+
+def _song_from_row(row: sqlite3.Row | None) -> SongMaster | None:
+    if row is None:
+        return None
+    return SongMaster(
+        id=cast(str, row["id"]),
+        title=cast(str, row["title"]),
+        artist=cast(str | None, row["artist"]),
+        duration_seconds=cast(int | None, row["duration_seconds"]),
+        source_track_id=cast(str | None, row["source_track_id"]),
+        source_url=cast(str | None, row["source_url"]),
+        local_title_override=cast(str | None, row["local_title_override"]),
+        local_artist_override=cast(str | None, row["local_artist_override"]),
+    )

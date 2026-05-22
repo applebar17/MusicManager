@@ -68,6 +68,7 @@ def test_song_repository_preserves_local_overrides(sqlite_connection: sqlite3.Co
     repository.save(song)
 
     assert repository.get("song_1") == song
+    assert repository.get_by_source_url("https://soundcloud.example/track") == song
 
 
 def test_playlist_repository_preserves_items_and_overrides(
@@ -96,6 +97,25 @@ def test_playlist_repository_preserves_items_and_overrides(
 
     assert repository.get("playlist_1") == playlist
     assert repository.list_by_environment("env_1") == [playlist]
+    assert repository.get_by_environment_remote_playlist("env_1", "remote_1") == playlist
+
+
+def test_remote_playlist_repository_gets_by_source_url(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repository = SqliteRemotePlaylistRepository(sqlite_connection)
+    remote_playlist = RemotePlaylist(
+        id="remote_1",
+        source="soundcloud",
+        source_url="https://soundcloud.example/playlist",
+        name="Remote",
+    )
+
+    repository.save(remote_playlist)
+
+    assert repository.get_by_source_url(
+        "soundcloud", "https://soundcloud.example/playlist"
+    ) == remote_playlist
 
 
 def test_audio_file_repository_round_trips_metadata(sqlite_connection: sqlite3.Connection) -> None:

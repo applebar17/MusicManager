@@ -32,11 +32,27 @@ class SqliteRemotePlaylistRepository:
             "SELECT * FROM remote_playlists WHERE id = ?",
             (remote_playlist_id,),
         ).fetchone()
-        if row is None:
-            return None
-        return RemotePlaylist(
-            id=cast(str, row["id"]),
-            source=cast(str, row["source"]),
-            source_url=cast(str, row["source_url"]),
-            name=cast(str, row["name"]),
-        )
+        return _remote_playlist_from_row(row)
+
+    def get_by_source_url(self, source: str, source_url: str) -> RemotePlaylist | None:
+        row = self.connection.execute(
+            """
+            SELECT * FROM remote_playlists
+            WHERE source = ? AND source_url = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (source, source_url),
+        ).fetchone()
+        return _remote_playlist_from_row(row)
+
+
+def _remote_playlist_from_row(row: sqlite3.Row | None) -> RemotePlaylist | None:
+    if row is None:
+        return None
+    return RemotePlaylist(
+        id=cast(str, row["id"]),
+        source=cast(str, row["source"]),
+        source_url=cast(str, row["source_url"]),
+        name=cast(str, row["name"]),
+    )

@@ -3,8 +3,13 @@ from dataclasses import dataclass
 from music_manager_backend.infrastructure.persistence import (
     SqliteAudioFileRepository,
     SqliteEnvironmentRepository,
+    SqlitePlaylistRepository,
+    SqliteRemotePlaylistRepository,
     SqliteScanRunRepository,
+    SqliteSongRepository,
+    SqliteSyncSnapshotRepository,
 )
+from music_manager_backend.ports.soundcloud import SoundCloudPlaylistImporter
 from music_manager_backend.shared.settings import Settings
 
 
@@ -13,4 +18,9 @@ class AppContainer:
     settings: Settings
     audio_file_repository: SqliteAudioFileRepository
     environment_repository: SqliteEnvironmentRepository
+    playlist_repository: SqlitePlaylistRepository
+    remote_playlist_repository: SqliteRemotePlaylistRepository
     scan_run_repository: SqliteScanRunRepository
+    song_repository: SqliteSongRepository
+    sync_snapshot_repository: SqliteSyncSnapshotRepository
+    soundcloud_playlist_importer: SoundCloudPlaylistImporter

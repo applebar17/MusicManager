@@ -5,15 +5,25 @@ from fastapi import APIRouter, Depends, Query
 from music_manager_backend.api.dependencies import (
     get_audio_file_repository,
     get_environment_repository,
+    get_playlist_repository,
+    get_remote_playlist_repository,
     get_scan_run_repository,
+    get_song_repository,
+    get_soundcloud_playlist_importer,
+    get_sync_snapshot_repository,
 )
 from music_manager_backend.application.dtos import (
     AudioFileRead,
     EnvironmentCreate,
     EnvironmentUpdate,
+    SoundCloudPlaylistImportRequest,
+    SoundCloudPlaylistImportResult,
 )
 from music_manager_backend.application.use_cases.archive_environment import ArchiveEnvironment
 from music_manager_backend.application.use_cases.create_environment import CreateEnvironment
+from music_manager_backend.application.use_cases.import_soundcloud_playlist import (
+    ImportSoundCloudPlaylist,
+)
 from music_manager_backend.application.use_cases.list_audio_files import ListAudioFiles
 from music_manager_backend.application.use_cases.list_unmanaged_files import ListUnmanagedFiles
 from music_manager_backend.application.use_cases.scan_environment import ScanEnvironment
@@ -24,8 +34,13 @@ from music_manager_backend.infrastructure.filesystem import LocalAudioScanner
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
+    PlaylistRepository,
+    RemotePlaylistRepository,
     ScanRunRepository,
+    SongRepository,
+    SyncSnapshotRepository,
 )
+from music_manager_backend.ports.soundcloud import SoundCloudPlaylistImporter
 
 router = APIRouter(prefix="/environments", tags=["environments"])
 EnvironmentRepositoryDependency = Annotated[
@@ -39,6 +54,26 @@ AudioFileRepositoryDependency = Annotated[
 ScanRunRepositoryDependency = Annotated[
     ScanRunRepository,
     Depends(get_scan_run_repository),
+]
+RemotePlaylistRepositoryDependency = Annotated[
+    RemotePlaylistRepository,
+    Depends(get_remote_playlist_repository),
+]
+PlaylistRepositoryDependency = Annotated[
+    PlaylistRepository,
+    Depends(get_playlist_repository),
+]
+SongRepositoryDependency = Annotated[
+    SongRepository,
+    Depends(get_song_repository),
+]
+SyncSnapshotRepositoryDependency = Annotated[
+    SyncSnapshotRepository,
+    Depends(get_sync_snapshot_repository),
+]
+SoundCloudPlaylistImporterDependency = Annotated[
+    SoundCloudPlaylistImporter,
+    Depends(get_soundcloud_playlist_importer),
 ]
 
 
@@ -105,6 +140,27 @@ def scan_environment(
         "unchanged": summary.unchanged,
         "total_active": summary.total_active,
     }
+
+
+@router.post("/{environment_id}/soundcloud/playlists")
+def import_soundcloud_playlist(
+    environment_id: str,
+    data: SoundCloudPlaylistImportRequest,
+    environments: EnvironmentRepositoryDependency,
+    remote_playlists: RemotePlaylistRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    sync_snapshots: SyncSnapshotRepositoryDependency,
+    importer: SoundCloudPlaylistImporterDependency,
+) -> SoundCloudPlaylistImportResult:
+    return ImportSoundCloudPlaylist(
+        environments=environments,
+        remote_playlists=remote_playlists,
+        playlists=playlists,
+        songs=songs,
+        sync_snapshots=sync_snapshots,
+        importer=importer,
+    ).execute(environment_id, data.url)
 
 
 @router.get("/{environment_id}/audio-files")
