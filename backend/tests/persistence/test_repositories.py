@@ -3,6 +3,10 @@ from pathlib import Path
 
 from music_manager_backend.domain.entities import (
     AudioFile,
+    ExportApplyItemResult,
+    ExportApplyItemStatus,
+    ExportApplyRun,
+    ExportApplyRunStatus,
     ExportPlan,
     ExportPlanItem,
     MatchLink,
@@ -19,6 +23,7 @@ from music_manager_backend.domain.entities.scan_run import ScanRun
 from music_manager_backend.infrastructure.persistence import (
     SqliteAudioFileRepository,
     SqliteEnvironmentRepository,
+    SqliteExportApplyRunRepository,
     SqliteExportPlanRepository,
     SqliteMatchLinkRepository,
     SqlitePlaylistRepository,
@@ -374,6 +379,45 @@ def test_export_plan_repository_round_trips_items(sqlite_connection: sqlite3.Con
     repository.save(plan)
 
     assert repository.get("plan_1") == plan
+
+
+def test_export_apply_run_repository_round_trips_results(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    _save_environment(sqlite_connection)
+    SqliteExportPlanRepository(sqlite_connection).save(
+        ExportPlan(id="plan_1", environment_id="env_1")
+    )
+    repository = SqliteExportApplyRunRepository(sqlite_connection)
+    apply_run = ExportApplyRun(
+        id="apply_1",
+        export_plan_id="plan_1",
+        environment_id="env_1",
+        status=ExportApplyRunStatus.COMPLETED_WITH_FAILURES,
+        started_at="2026-05-22T10:00:00+00:00",
+        finished_at="2026-05-22T10:00:01+00:00",
+        item_results=(
+            ExportApplyItemResult(
+                action=ExportAction.COPY_FILE,
+                source_path=Path("/source/track.mp3"),
+                target_path=Path("/target/track.mp3"),
+                status=ExportApplyItemStatus.SUCCEEDED,
+                created_at="2026-05-22T10:00:00+00:00",
+            ),
+            ExportApplyItemResult(
+                action=ExportAction.SKIP,
+                target_path=Path("/target/missing.mp3"),
+                status=ExportApplyItemStatus.SKIPPED,
+                error_code="skipped",
+                error_message="missing audio",
+                created_at="2026-05-22T10:00:01+00:00",
+            ),
+        ),
+    )
+
+    repository.save(apply_run)
+
+    assert repository.get("apply_1") == apply_run
 
 
 def _save_environment(connection: sqlite3.Connection) -> None:

@@ -2,6 +2,12 @@ from music_manager_backend.domain.entities.audio_file import AudioFile, AudioFil
 from music_manager_backend.domain.entities.audio_metadata import AudioMetadata
 from music_manager_backend.domain.entities.discovered_audio_file import DiscoveredAudioFile
 from music_manager_backend.domain.entities.environment import MusicEnvironment
+from music_manager_backend.domain.entities.export_apply import (
+    ExportApplyItemResult,
+    ExportApplyItemStatus,
+    ExportApplyRun,
+    ExportApplyRunStatus,
+)
 from music_manager_backend.domain.entities.export_plan import ExportPlan, ExportPlanItem
 from music_manager_backend.domain.entities.matching import MatchCandidate, MatchLink, MatchStatus
 from music_manager_backend.domain.entities.playlist import Playlist, PlaylistItem, RemotePlaylist
@@ -14,6 +20,10 @@ __all__ = [
     "AudioMetadata",
     "AudioFileStatus",
     "DiscoveredAudioFile",
+    "ExportApplyItemResult",
+    "ExportApplyItemStatus",
+    "ExportApplyRun",
+    "ExportApplyRunStatus",
     "ExportPlan",
     "ExportPlanItem",
     "MatchLink",

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from music_manager_backend.api.dependencies import (
     get_audio_file_repository,
     get_environment_repository,
+    get_export_apply_run_repository,
     get_export_plan_repository,
     get_match_link_repository,
     get_playlist_repository,
@@ -18,6 +19,7 @@ from music_manager_backend.application.dtos import (
     AudioFileRead,
     EnvironmentCreate,
     EnvironmentUpdate,
+    ExportApplyRunRead,
     ExportPlanCreate,
     ExportPlanRead,
     ManualMappingCreate,
@@ -25,8 +27,10 @@ from music_manager_backend.application.dtos import (
     MatchReviewRow,
     SoundCloudPlaylistImportRequest,
     SoundCloudPlaylistImportResult,
+    export_apply_run_read,
     export_plan_read,
 )
+from music_manager_backend.application.use_cases.apply_export_plan import ApplyExportPlan
 from music_manager_backend.application.use_cases.archive_environment import ArchiveEnvironment
 from music_manager_backend.application.use_cases.create_environment import CreateEnvironment
 from music_manager_backend.application.use_cases.create_manual_mapping import CreateManualMapping
@@ -47,6 +51,7 @@ from music_manager_backend.infrastructure.filesystem import LocalAudioScanner
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
+    ExportApplyRunRepository,
     ExportPlanRepository,
     MatchLinkRepository,
     PlaylistRepository,
@@ -69,6 +74,10 @@ AudioFileRepositoryDependency = Annotated[
 ExportPlanRepositoryDependency = Annotated[
     ExportPlanRepository,
     Depends(get_export_plan_repository),
+]
+ExportApplyRunRepositoryDependency = Annotated[
+    ExportApplyRunRepository,
+    Depends(get_export_apply_run_repository),
 ]
 ScanRunRepositoryDependency = Annotated[
     ScanRunRepository,
@@ -275,6 +284,24 @@ def get_export_plan(
         export_plans=export_plans,
     ).execute(environment_id, export_plan_id)
     return export_plan_read(plan)
+
+
+@router.post("/{environment_id}/export-plans/{export_plan_id}/apply")
+def apply_export_plan(
+    environment_id: str,
+    export_plan_id: str,
+    environments: EnvironmentRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    export_plans: ExportPlanRepositoryDependency,
+    apply_runs: ExportApplyRunRepositoryDependency,
+) -> ExportApplyRunRead:
+    apply_run = ApplyExportPlan(
+        environments=environments,
+        audio_files=audio_files,
+        export_plans=export_plans,
+        apply_runs=apply_runs,
+    ).execute(environment_id, export_plan_id)
+    return export_apply_run_read(apply_run)
 
 
 @router.get("/{environment_id}/audio-files")

@@ -3,6 +3,7 @@ from typing import Protocol
 
 from music_manager_backend.domain.entities import (
     AudioFile,
+    ExportApplyRun,
     ExportPlan,
     MatchLink,
     MusicEnvironment,
@@ -124,4 +125,12 @@ class ExportPlanRepository(Protocol):
         pass
 
     def get(self, export_plan_id: str) -> ExportPlan | None:
+        pass
+
+
+class ExportApplyRunRepository(Protocol):
+    def save(self, apply_run: ExportApplyRun) -> None:
+        pass
+
+    def get(self, apply_run_id: str) -> ExportApplyRun | None:
         pass

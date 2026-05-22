@@ -7,12 +7,15 @@ from fastapi.testclient import TestClient
 from music_manager_backend.api.container import AppContainer
 from music_manager_backend.domain.entities import (
     AudioFile,
+    ExportPlan,
+    ExportPlanItem,
     MatchLink,
     MusicEnvironment,
     Playlist,
     PlaylistItem,
     SongMaster,
 )
+from music_manager_backend.domain.entities.export_plan import ExportAction
 
 
 def test_create_and_get_export_plan(api_client: TestClient, tmp_path: Path) -> None:
@@ -75,6 +78,73 @@ def test_get_export_plan_rejects_wrong_environment(
     response = api_client.get(
         f"/environments/env_2/export-plans/{create_response.json()['export_plan_id']}"
     )
+
+    assert response.status_code == 400
+
+
+def test_apply_export_plan_streams_results_and_persists_run(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    container = _container(api_client)
+    root = tmp_path / "usb"
+    root.mkdir()
+    source = root / "track.mp3"
+    source.write_bytes(b"audio")
+    _seed_export_data(container, root=root, source=source)
+    create_response = api_client.post("/environments/env_1/export-plans")
+
+    response = api_client.post(
+        f"/environments/env_1/export-plans/"
+        f"{create_response.json()['export_plan_id']}/apply"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["environment_id"] == "env_1"
+    assert body["export_plan_id"] == create_response.json()["export_plan_id"]
+    assert body["status"] == "completed"
+    assert body["counts"]["succeeded"] >= 1
+    assert (root / "_music_manager_export" / "Set" / "001 - Artist - Track.mp3").read_bytes() == (
+        b"audio"
+    )
+    assert container.export_apply_run_repository.get(body["apply_run_id"]) is not None
+
+
+def test_apply_export_plan_rejects_missing_plan(api_client: TestClient, tmp_path: Path) -> None:
+    container = _container(api_client)
+    root = tmp_path / "usb"
+    root.mkdir()
+    container.environment_repository.save(
+        MusicEnvironment(id="env_1", name="USB", root_path=root)
+    )
+
+    response = api_client.post("/environments/env_1/export-plans/missing/apply")
+
+    assert response.status_code == 404
+
+
+def test_apply_export_plan_rejects_unsafe_plan(api_client: TestClient, tmp_path: Path) -> None:
+    container = _container(api_client)
+    root = tmp_path / "usb"
+    root.mkdir()
+    container.environment_repository.save(
+        MusicEnvironment(id="env_1", name="USB", root_path=root)
+    )
+    container.export_plan_repository.save(
+        ExportPlan(
+            id="plan_1",
+            environment_id="env_1",
+            items=(
+                ExportPlanItem(
+                    action=ExportAction.CREATE_FOLDER,
+                    target_path=root / "outside",
+                ),
+            ),
+        )
+    )
+
+    response = api_client.post("/environments/env_1/export-plans/plan_1/apply")
 
     assert response.status_code == 400
 

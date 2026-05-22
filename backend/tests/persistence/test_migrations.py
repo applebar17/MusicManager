@@ -7,6 +7,8 @@ EXPECTED_TABLES = {
     "alembic_version",
     "audio_files",
     "environments",
+    "export_apply_item_results",
+    "export_apply_runs",
     "export_plan_items",
     "export_plans",
     "match_links",
@@ -37,4 +39,4 @@ def test_migrations_are_idempotent(database_path: Path) -> None:
     with sqlite3.connect(database_path) as connection:
         version = connection.execute("SELECT version_num FROM alembic_version").fetchone()
 
-    assert version == ("0003",)
+    assert version == ("0004",)

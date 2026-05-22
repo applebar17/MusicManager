@@ -4,6 +4,9 @@ from music_manager_backend.infrastructure.persistence.audio_file_repository impo
 from music_manager_backend.infrastructure.persistence.environment_repository import (
     SqliteEnvironmentRepository,
 )
+from music_manager_backend.infrastructure.persistence.export_apply_repository import (
+    SqliteExportApplyRunRepository,
+)
 from music_manager_backend.infrastructure.persistence.export_plan_repository import (
     SqliteExportPlanRepository,
 )
@@ -31,6 +34,7 @@ __all__ = [
     "InMemoryEnvironmentRepository",
     "SqliteAudioFileRepository",
     "SqliteEnvironmentRepository",
+    "SqliteExportApplyRunRepository",
     "SqliteExportPlanRepository",
     "SqliteMatchLinkRepository",
     "SqlitePlaylistRepository",
