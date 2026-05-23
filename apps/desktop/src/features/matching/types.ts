@@ -1,9 +1,7 @@
-export type MatchStatus = "matched" | "missing_audio" | "ambiguous" | "manually_mapped";
-
-export type MatchCandidate = {
-  songId: string;
-  audioFileId: string;
-  confidence: number;
-  status: MatchStatus;
-};
-
+export type {
+  ManualMappingCreate,
+  MatchCandidateRead as MatchCandidate,
+  MatchingRunSummary,
+  MatchReviewRow,
+  MatchStatus,
+} from "../../shared/api/types";

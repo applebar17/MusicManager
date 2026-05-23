@@ -1,7 +1,5 @@
-export type Playlist = {
-  id: string;
-  environmentId: string;
-  displayName: string;
-  trackCount: number;
-};
-
+export type {
+  PlaylistDetailRead,
+  PlaylistItemRead,
+  PlaylistSummaryRead as Playlist,
+} from "../../shared/api/types";

@@ -2,6 +2,12 @@
 
 Tauri desktop shell with a TypeScript frontend.
 
+## Runtime
+
+The desktop workspace targets Node 20 or newer. Older local Node versions may still
+run TypeScript checks, but the Vite build should be verified in a Node 20 shell or
+container.
+
 ## Frontend Folders
 
 - `src/app/` - app shell and top-level composition.
@@ -13,4 +19,3 @@ Tauri desktop shell with a TypeScript frontend.
 - `src/shared/` - reusable API clients and small UI primitives.
 
 The UI should stay feature-oriented. Avoid large all-in-one screens as the product grows.
-

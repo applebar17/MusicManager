@@ -27,6 +27,8 @@ Goal: make the desktop scaffold reliable and ready to consume the backend API.
 Deliverables:
 
 - Confirm React, Vite, TypeScript, Tauri, and workspace scripts run cleanly.
+- Keep the desktop toolchain on Node 20 or newer; use a containerized Node 20
+  environment when local machines cannot run that version.
 - Expand the shared HTTP client with `GET`, `POST`, `PATCH`, typed request/response
   helpers, backend error parsing, and configurable API base URL.
 - Add TypeScript types matching Wave 10 backend DTOs.

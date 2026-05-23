@@ -1,7 +1,7 @@
-export type MusicEnvironment = {
-  id: string;
-  name: string;
-  rootPath: string;
-  deprecatedFolderName: string;
-};
-
+export type {
+  EnvironmentCreate,
+  EnvironmentOverviewRead,
+  EnvironmentRead as MusicEnvironment,
+  EnvironmentUpdate,
+  ScanSummaryRead,
+} from "../../shared/api/types";
