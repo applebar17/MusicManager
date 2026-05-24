@@ -26,7 +26,7 @@ export function AppShell({ children }: AppShellProps) {
   }> = [
     { label: "Dashboard", icon: LayoutDashboard, view: "dashboard" },
     { label: "Playlists", icon: ListMusic, view: "playlists" },
-    { label: "Matching Review", icon: ClipboardCheck, view: "matching", disabled: true },
+    { label: "Matching Review", icon: ClipboardCheck, view: "matching" },
     { label: "Export", icon: Upload, view: "export", disabled: true },
     { label: "Settings", icon: Settings, view: "settings", bottom: true, disabled: true },
   ];

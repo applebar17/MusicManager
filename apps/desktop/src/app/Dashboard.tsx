@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { EnvironmentPanel } from "../features/environments/EnvironmentPanel";
+import { MatchingPanel } from "../features/matching/MatchingPanel";
 import { PlaylistPanel } from "../features/playlists/PlaylistPanel";
 import { ApiError, apiGet } from "../shared/api/http";
 import type { HealthRead } from "../shared/api/types";
@@ -48,7 +49,13 @@ export function Dashboard() {
           onAction={checkBackend}
         />
       ) : null}
-      {activeView === "playlists" ? <PlaylistPanel /> : <EnvironmentPanel />}
+      {activeView === "playlists" ? (
+        <PlaylistPanel />
+      ) : activeView === "matching" ? (
+        <MatchingPanel />
+      ) : (
+        <EnvironmentPanel />
+      )}
     </div>
   );
 }
