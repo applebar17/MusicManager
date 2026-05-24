@@ -4,6 +4,7 @@ import {
   Link2,
   ListMusic,
   RefreshCw,
+  Search,
   TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -27,6 +28,9 @@ export function PlaylistPanel() {
   const [playlistDetail, setPlaylistDetail] = useState<PlaylistDetailRead | null>(null);
   const [importResult, setImportResult] = useState<SoundCloudPlaylistImportResult | null>(null);
   const [importUrl, setImportUrl] = useState("");
+  const [playlistSearch, setPlaylistSearch] = useState("");
+  const [trackSearch, setTrackSearch] = useState("");
+  const [trackStatusFilter, setTrackStatusFilter] = useState<TrackStatusFilter>("all");
   const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -35,6 +39,13 @@ export function PlaylistPanel() {
   const selectedPlaylist = useMemo(
     () => playlists.find((playlist) => playlist.id === selectedPlaylistId) ?? null,
     [playlists, selectedPlaylistId],
+  );
+  const filteredPlaylists = useMemo(
+    () =>
+      playlists.filter((playlist) =>
+        playlist.name.toLowerCase().includes(playlistSearch.trim().toLowerCase()),
+      ),
+    [playlistSearch, playlists],
   );
 
   const loadPlaylists = useCallback(
@@ -85,6 +96,9 @@ export function PlaylistPanel() {
   useEffect(() => {
     setImportResult(null);
     setImportUrl("");
+    setPlaylistSearch("");
+    setTrackSearch("");
+    setTrackStatusFilter("all");
   }, [selectedEnvironmentId]);
 
   useEffect(() => {
@@ -160,9 +174,18 @@ export function PlaylistPanel() {
             <div className="playlist-sidebar-header">
               <span>Your Playlists</span>
             </div>
+            <label className="playlist-search-field">
+              <Search size={14} />
+              <input
+                aria-label="Search playlists"
+                placeholder="Search playlists..."
+                value={playlistSearch}
+                onChange={(event) => setPlaylistSearch(event.target.value)}
+              />
+            </label>
             {isLoadingPlaylists ? <LoadingState label="Loading playlists" /> : null}
             <div className="playlist-nav-list">
-              {playlists.map((playlist) => (
+              {filteredPlaylists.map((playlist) => (
                 <PlaylistNavItem
                   isSelected={playlist.id === selectedPlaylistId}
                   key={playlist.id}
@@ -170,6 +193,9 @@ export function PlaylistPanel() {
                   onSelect={() => selectPlaylist(playlist.id)}
                 />
               ))}
+              {!isLoadingPlaylists && playlists.length > 0 && filteredPlaylists.length === 0 ? (
+                <div className="playlist-filter-empty">No playlists match this search.</div>
+              ) : null}
             </div>
           </aside>
 
@@ -194,7 +220,14 @@ export function PlaylistPanel() {
             {isLoadingDetail ? <LoadingState label="Loading playlist detail" /> : null}
 
             {selectedPlaylist && playlistDetail ? (
-              <PlaylistDetailView detail={playlistDetail} summary={selectedPlaylist} />
+              <PlaylistDetailView
+                detail={playlistDetail}
+                statusFilter={trackStatusFilter}
+                summary={selectedPlaylist}
+                trackSearch={trackSearch}
+                onStatusFilterChange={setTrackStatusFilter}
+                onTrackSearchChange={setTrackSearch}
+              />
             ) : null}
           </main>
         </div>
@@ -306,10 +339,42 @@ function ImportResultSummary({ result }: { result: SoundCloudPlaylistImportResul
 
 type PlaylistDetailViewProps = {
   detail: PlaylistDetailRead;
+  statusFilter: TrackStatusFilter;
   summary: PlaylistSummaryRead;
+  trackSearch: string;
+  onStatusFilterChange: (filter: TrackStatusFilter) => void;
+  onTrackSearchChange: (query: string) => void;
 };
 
-function PlaylistDetailView({ detail, summary }: PlaylistDetailViewProps) {
+type TrackStatusFilter = "all" | MatchStatus | "inactive";
+
+function PlaylistDetailView({
+  detail,
+  statusFilter,
+  summary,
+  trackSearch,
+  onStatusFilterChange,
+  onTrackSearchChange,
+}: PlaylistDetailViewProps) {
+  const filteredItems = useMemo(
+    () =>
+      detail.items.filter((item) => {
+        const query = trackSearch.trim().toLowerCase();
+        const matchesText =
+          query.length === 0 ||
+          item.title.toLowerCase().includes(query) ||
+          (item.artist ?? "").toLowerCase().includes(query) ||
+          item.song_id.toLowerCase().includes(query);
+        const matchesStatus =
+          statusFilter === "all" ||
+          (statusFilter === "inactive"
+            ? !item.remote_membership_active
+            : item.match_status === statusFilter);
+        return matchesText && matchesStatus;
+      }),
+    [detail.items, statusFilter, trackSearch],
+  );
+
   return (
     <section className="playlist-detail">
       <header className="playlist-detail-header">
@@ -341,6 +406,31 @@ function PlaylistDetailView({ detail, summary }: PlaylistDetailViewProps) {
         </div>
       </header>
 
+      <div className="playlist-detail-tools">
+        <label className="playlist-search-field playlist-search-field--wide">
+          <Search size={14} />
+          <input
+            aria-label="Search playlist tracks"
+            placeholder="Search title, artist, or song id..."
+            value={trackSearch}
+            onChange={(event) => onTrackSearchChange(event.target.value)}
+          />
+        </label>
+        <select
+          aria-label="Filter playlist tracks by status"
+          value={statusFilter}
+          onChange={(event) => onStatusFilterChange(event.target.value as TrackStatusFilter)}
+        >
+          <option value="all">All tracks</option>
+          <option value="matched">Matched</option>
+          <option value="manually_mapped">Manual</option>
+          <option value="missing_audio">Missing</option>
+          <option value="ambiguous">Ambiguous</option>
+          <option value="inactive">Inactive membership</option>
+        </select>
+        <span>{formatNumber(filteredItems.length)} visible</span>
+      </div>
+
       <div className="playlist-table-wrap">
         <table className="playlist-table">
           <thead>
@@ -353,11 +443,16 @@ function PlaylistDetailView({ detail, summary }: PlaylistDetailViewProps) {
             </tr>
           </thead>
           <tbody>
-            {detail.items.map((item) => (
+            {filteredItems.map((item) => (
               <PlaylistTrackRow item={item} key={`${item.song_id}-${item.position}`} />
             ))}
           </tbody>
         </table>
+        {filteredItems.length === 0 ? (
+          <div className="playlist-filter-empty playlist-filter-empty--table">
+            No tracks match the current filters.
+          </div>
+        ) : null}
       </div>
     </section>
   );

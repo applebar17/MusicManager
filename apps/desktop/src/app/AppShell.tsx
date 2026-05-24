@@ -54,6 +54,7 @@ export function AppShell({ children }: AppShellProps) {
                   .filter(Boolean)
                   .join(" ")}
                 disabled={item.disabled}
+                aria-current={activeView === item.view ? "page" : undefined}
                 onClick={() => selectView(item.view)}
                 type="button"
                 key={item.label}

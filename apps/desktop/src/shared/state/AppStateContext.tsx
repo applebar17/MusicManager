@@ -1,5 +1,7 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+
+import { loadPreferences, savePreferences } from "../preferences";
 
 export type AppView = "dashboard" | "playlists" | "matching" | "export" | "settings";
 
@@ -26,13 +28,28 @@ type AppStateProviderProps = {
 };
 
 export function AppStateProvider({ children }: AppStateProviderProps) {
+  const preferences = useMemo(() => loadPreferences(), []);
   const [selection, setSelection] = useState<AppSelection>({
     activeView: "dashboard",
-    selectedEnvironmentId: null,
-    selectedPlaylistId: null,
-    selectedExportPlanId: null,
-    selectedExportApplyRunId: null,
+    selectedEnvironmentId: preferences.selectedEnvironmentId,
+    selectedPlaylistId: preferences.selectedPlaylistId,
+    selectedExportPlanId: preferences.selectedExportPlanId,
+    selectedExportApplyRunId: preferences.selectedExportApplyRunId,
   });
+
+  useEffect(() => {
+    savePreferences({
+      selectedEnvironmentId: selection.selectedEnvironmentId,
+      selectedPlaylistId: selection.selectedPlaylistId,
+      selectedExportPlanId: selection.selectedExportPlanId,
+      selectedExportApplyRunId: selection.selectedExportApplyRunId,
+    });
+  }, [
+    selection.selectedEnvironmentId,
+    selection.selectedExportApplyRunId,
+    selection.selectedExportPlanId,
+    selection.selectedPlaylistId,
+  ]);
 
   const value = useMemo<AppStateContextValue>(
     () => ({

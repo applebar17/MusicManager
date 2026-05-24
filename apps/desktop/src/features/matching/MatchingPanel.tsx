@@ -45,8 +45,10 @@ type PreviewState = {
 export function MatchingPanel() {
   const { selectedEnvironmentId } = useAppState();
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [rows, setRows] = useState<MatchReviewRow[]>([]);
   const [filter, setFilter] = useState<ReviewFilter>("needs_review");
+  const [reviewSearch, setReviewSearch] = useState("");
   const [runSummary, setRunSummary] = useState<MatchingRunSummary | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -94,19 +96,75 @@ export function MatchingPanel() {
     });
   }, [preview]);
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+      if (event.key === "/") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+      if (event.key.toLowerCase() === "r") {
+        event.preventDefault();
+        if (!isRunning && selectedEnvironmentId) {
+          void handleRunMatching();
+        }
+        return;
+      }
+      if (event.key === "Escape") {
+        setReviewSearch("");
+        setPreview(null);
+        setPlaybackError(null);
+        audioRef.current?.pause();
+        return;
+      }
+      const shortcutFilters: ReviewFilter[] = [
+        "needs_review",
+        "all",
+        "matched",
+        "missing_audio",
+        "ambiguous",
+      ];
+      const shortcutIndex = Number(event.key) - 1;
+      if (shortcutIndex >= 0 && shortcutIndex < shortcutFilters.length) {
+        event.preventDefault();
+        setFilter(shortcutFilters[shortcutIndex]);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isRunning, selectedEnvironmentId]);
+
   const counts = useMemo(() => reviewCounts(rows), [rows]);
   const filteredRows = useMemo(
     () =>
       rows.filter((row) => {
+        const query = reviewSearch.trim().toLowerCase();
+        const matchesText =
+          query.length === 0 ||
+          row.title.toLowerCase().includes(query) ||
+          (row.artist ?? "").toLowerCase().includes(query) ||
+          row.song_id.toLowerCase().includes(query) ||
+          row.candidates.some((candidate) =>
+            [
+              candidate.path,
+              candidate.title ?? "",
+              candidate.artist ?? "",
+              candidate.method,
+            ].some((value) => value.toLowerCase().includes(query)),
+          );
         if (filter === "all") {
-          return true;
+          return matchesText;
         }
         if (filter === "needs_review") {
-          return row.status === "missing_audio" || row.status === "ambiguous";
+          return matchesText && (row.status === "missing_audio" || row.status === "ambiguous");
         }
-        return row.status === filter;
+        return matchesText && row.status === filter;
       }),
-    [filter, rows],
+    [filter, reviewSearch, rows],
   );
 
   async function handleRunMatching() {
@@ -233,6 +291,17 @@ export function MatchingPanel() {
           {runSummary ? <RunSummary summary={runSummary} /> : null}
 
           <ReviewFilters counts={counts} filter={filter} onFilterChange={setFilter} />
+
+          <label className="matching-search-field">
+            <Search size={15} />
+            <input
+              ref={searchInputRef}
+              aria-label="Search matching review"
+              placeholder="Search title, artist, candidate path, or method... (/)"
+              value={reviewSearch}
+              onChange={(event) => setReviewSearch(event.target.value)}
+            />
+          </label>
 
           {isLoading ? <LoadingState label="Loading review rows" /> : null}
 
@@ -620,4 +689,17 @@ function errorMessage(error: unknown) {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat().format(value);
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return (
+    tagName === "input" ||
+    tagName === "select" ||
+    tagName === "textarea" ||
+    target.isContentEditable
+  );
 }

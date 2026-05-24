@@ -106,6 +106,7 @@ export function ExportPanel() {
       })
       .catch((loadError: unknown) => {
         setPlan(null);
+        selectExportPlan(null);
         setError(errorMessage(loadError));
       })
       .finally(() => {
@@ -129,6 +130,7 @@ export function ExportPanel() {
       })
       .catch((loadError: unknown) => {
         setApplyRun(null);
+        selectExportApplyRun(null);
         setError(errorMessage(loadError));
       })
       .finally(() => {

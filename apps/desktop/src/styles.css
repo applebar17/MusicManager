@@ -903,9 +903,48 @@ button {
   text-transform: uppercase;
 }
 
+.playlist-search-field,
+.matching-search-field {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container-low);
+  color: var(--color-on-surface-variant);
+  padding: var(--space-xs) var(--space-sm);
+}
+
+.playlist-search-field {
+  margin: var(--space-sm) var(--space-md);
+}
+
+.playlist-search-field--wide {
+  flex: 1;
+  min-width: 220px;
+  margin: 0;
+}
+
+.playlist-search-field input,
+.matching-search-field input {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-on-surface);
+  outline: 0;
+}
+
+.playlist-search-field input::placeholder,
+.matching-search-field input::placeholder {
+  color: var(--color-outline);
+}
+
 .playlist-nav-list {
   display: flex;
+  min-height: 0;
   flex-direction: column;
+  overflow-y: auto;
   padding: var(--space-xs) 0;
 }
 
@@ -967,6 +1006,17 @@ button {
 
 .playlist-empty-panel {
   margin: var(--space-xl);
+}
+
+.playlist-filter-empty {
+  color: var(--color-on-surface-variant);
+  font-size: 12px;
+  padding: var(--space-md);
+}
+
+.playlist-filter-empty--table {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--color-surface-container-low);
 }
 
 .soundcloud-import-panel {
@@ -1120,6 +1170,26 @@ button {
   border-color: rgba(172, 199, 255, 0.28);
   background: rgba(172, 199, 255, 0.1);
   color: var(--color-primary);
+}
+
+.playlist-detail-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--color-surface-container-low);
+  color: var(--color-on-surface-variant);
+  padding: var(--space-sm) var(--space-xl);
+}
+
+.playlist-detail-tools select {
+  min-height: 32px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface);
+  padding: 0 var(--space-sm);
 }
 
 .playlist-table-wrap {
@@ -1318,7 +1388,7 @@ button {
   flex: 1;
   flex-direction: column;
   gap: var(--space-lg);
-  padding: var(--space-xl);
+  padding: var(--space-xl) var(--space-xl) 88px;
 }
 
 .matching-header {
@@ -1429,6 +1499,10 @@ button {
   border-color: rgba(172, 199, 255, 0.35);
   background: rgba(172, 199, 255, 0.13);
   color: var(--color-primary);
+}
+
+.matching-search-field {
+  max-width: 720px;
 }
 
 .matching-table {
@@ -2289,6 +2363,48 @@ button {
 }
 
 @media (max-width: 980px) {
+  .app-shell {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+  .sidebar {
+    padding-inline: var(--space-sm);
+  }
+
+  .brand-lockup {
+    padding-inline: var(--space-sm);
+  }
+
+  .playlist-browser {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+
+  .playlist-detail-header h2 {
+    font-size: 24px;
+    line-height: 32px;
+  }
+
+  .soundcloud-import-panel,
+  .playlist-detail-header,
+  .playlist-detail-tools,
+  .matching-main,
+  .export-main {
+    padding-inline: var(--space-md);
+  }
+
+  .candidate-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .candidate-card .button {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .mini-preview-player {
+    left: 210px;
+  }
+
   .export-header,
   .export-apply-bar {
     align-items: stretch;
