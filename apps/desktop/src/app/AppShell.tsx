@@ -1,17 +1,34 @@
-import { FolderTree, ListMusic, Music, Radio, RefreshCw, Upload } from "lucide-react";
+import {
+  ClipboardCheck,
+  LayoutDashboard,
+  ListMusic,
+  Music,
+  Settings,
+  Upload,
+} from "lucide-react";
 import type { ReactNode } from "react";
+
+import { useAppState } from "../shared/state";
+import type { AppView } from "../shared/state";
 
 type AppShellProps = {
   children: ReactNode;
 };
 
 export function AppShell({ children }: AppShellProps) {
-  const navItems = [
-    { label: "Environment", icon: FolderTree },
-    { label: "Playlists", icon: ListMusic },
-    { label: "Matching", icon: RefreshCw },
-    { label: "Playback", icon: Radio },
-    { label: "Export", icon: Upload },
+  const { activeView, selectView } = useAppState();
+  const navItems: Array<{
+    label: string;
+    icon: typeof LayoutDashboard;
+    view: AppView;
+    bottom?: boolean;
+    disabled?: boolean;
+  }> = [
+    { label: "Dashboard", icon: LayoutDashboard, view: "dashboard" },
+    { label: "Playlists", icon: ListMusic, view: "playlists" },
+    { label: "Matching Review", icon: ClipboardCheck, view: "matching", disabled: true },
+    { label: "Export", icon: Upload, view: "export", disabled: true },
+    { label: "Settings", icon: Settings, view: "settings", bottom: true, disabled: true },
   ];
 
   return (
@@ -28,7 +45,20 @@ export function AppShell({ children }: AppShellProps) {
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <button className="nav-button" type="button" key={item.label}>
+              <button
+                className={[
+                  "nav-button",
+                  activeView === item.view ? "is-active" : "",
+                  item.bottom ? "nav-button--bottom" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                disabled={item.disabled}
+                onClick={() => selectView(item.view)}
+                type="button"
+                key={item.label}
+                title={item.disabled ? "Coming in a later wave" : undefined}
+              >
                 <Icon size={16} />
                 <span>{item.label}</span>
               </button>

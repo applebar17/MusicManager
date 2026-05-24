@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { EnvironmentPanel } from "../features/environments/EnvironmentPanel";
-import { ExportPanel } from "../features/export/ExportPanel";
-import { MatchingPanel } from "../features/matching/MatchingPanel";
-import { PlaybackPanel } from "../features/playback/PlaybackPanel";
 import { PlaylistPanel } from "../features/playlists/PlaylistPanel";
 import { ApiError, apiGet } from "../shared/api/http";
 import type { HealthRead } from "../shared/api/types";
-import { ErrorBanner, LoadingState, StatusBadge } from "../shared/ui";
+import { useAppState } from "../shared/state";
+import { ErrorBanner, LoadingState } from "../shared/ui";
 
 type BackendStatus =
   | { state: "checking" }
@@ -15,6 +13,7 @@ type BackendStatus =
   | { state: "unavailable"; message: string };
 
 export function Dashboard() {
+  const { activeView } = useAppState();
   const [backendStatus, setBackendStatus] = useState<BackendStatus>({ state: "checking" });
 
   const checkBackend = useCallback(() => {
@@ -40,23 +39,7 @@ export function Dashboard() {
 
   return (
     <div className="stack">
-      <header className="dashboard-header">
-        <div>
-          <p className="eyebrow">Desktop workspace</p>
-          <h2>Backend-ready library cockpit</h2>
-          <p className="muted">
-            Wave 0 prepares the shell, API contract, and app state for the first
-            connected workflow.
-          </p>
-        </div>
-        {backendStatus.state === "checking" ? (
-          <LoadingState label="Checking backend" />
-        ) : (
-          <StatusBadge tone={backendStatus.state === "ready" ? "success" : "danger"}>
-            {backendStatus.state === "ready" ? "Backend ready" : "Backend offline"}
-          </StatusBadge>
-        )}
-      </header>
+      {backendStatus.state === "checking" ? <LoadingState label="Checking backend" /> : null}
       {backendStatus.state === "unavailable" ? (
         <ErrorBanner
           title="Backend connection unavailable"
@@ -65,11 +48,7 @@ export function Dashboard() {
           onAction={checkBackend}
         />
       ) : null}
-      <EnvironmentPanel />
-      <PlaylistPanel />
-      <MatchingPanel />
-      <PlaybackPanel />
-      <ExportPanel />
+      {activeView === "playlists" ? <PlaylistPanel /> : <EnvironmentPanel />}
     </div>
   );
 }
