@@ -1,16 +1,18 @@
 import {
+  AlertTriangle,
   Archive,
   ArrowRight,
   Ban,
+  CheckCircle2,
   Copy,
   Filter,
   FolderPlus,
   ListChecks,
   Loader2,
-  Lock,
   RefreshCw,
   Rocket,
   Trash2,
+  XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -18,14 +20,18 @@ import type { ReactNode } from "react";
 import { ApiError } from "../../shared/api/http";
 import type {
   ExportAction,
+  ExportApplyItemResultRead,
+  ExportApplyItemStatus,
+  ExportApplyRunRead,
+  ExportApplyRunStatus,
   ExportPlanItemRead,
   ExportPlanRead,
   PlaylistSummaryRead,
 } from "../../shared/api/types";
 import { useAppState } from "../../shared/state";
-import { Button, EmptyState, ErrorBanner, LoadingState, Panel } from "../../shared/ui";
+import { Button, ConfirmDialog, EmptyState, ErrorBanner, LoadingState, Panel } from "../../shared/ui";
 import { listPlaylists } from "../playlists/api";
-import { createExportPlan, getExportPlan } from "./api";
+import { applyExportPlan, createExportPlan, getExportApplyRun, getExportPlan } from "./api";
 
 const EXPORT_ACTIONS: ExportAction[] = [
   "copy_file",
@@ -36,13 +42,24 @@ const EXPORT_ACTIONS: ExportAction[] = [
 ];
 
 export function ExportPanel() {
-  const { selectedEnvironmentId, selectView } = useAppState();
+  const {
+    selectedEnvironmentId,
+    selectedExportApplyRunId,
+    selectedExportPlanId,
+    selectExportApplyRun,
+    selectExportPlan,
+    selectView,
+  } = useAppState();
   const [playlists, setPlaylists] = useState<PlaylistSummaryRead[]>([]);
   const [selectedPlaylistIds, setSelectedPlaylistIds] = useState<string[]>([]);
   const [plan, setPlan] = useState<ExportPlanRead | null>(null);
+  const [applyRun, setApplyRun] = useState<ExportApplyRunRead | null>(null);
   const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false);
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
   const [isRefreshingPlan, setIsRefreshingPlan] = useState(false);
+  const [isApplyingPlan, setIsApplyingPlan] = useState(false);
+  const [isRefreshingApplyRun, setIsRefreshingApplyRun] = useState(false);
+  const [isConfirmingApply, setIsConfirmingApply] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshPlaylists = useCallback(
@@ -66,12 +83,58 @@ export function ExportPanel() {
       setPlaylists([]);
       setSelectedPlaylistIds([]);
       setPlan(null);
+      setApplyRun(null);
       return;
     }
-    setPlan(null);
     setSelectedPlaylistIds([]);
     void refreshPlaylists(selectedEnvironmentId);
   }, [refreshPlaylists, selectedEnvironmentId]);
+
+  useEffect(() => {
+    if (!selectedEnvironmentId || !selectedExportPlanId) {
+      setPlan(null);
+      return;
+    }
+    if (plan?.export_plan_id === selectedExportPlanId) {
+      return;
+    }
+    setIsRefreshingPlan(true);
+    setError(null);
+    void getExportPlan(selectedEnvironmentId, selectedExportPlanId)
+      .then((storedPlan) => {
+        setPlan(storedPlan);
+      })
+      .catch((loadError: unknown) => {
+        setPlan(null);
+        setError(errorMessage(loadError));
+      })
+      .finally(() => {
+        setIsRefreshingPlan(false);
+      });
+  }, [plan?.export_plan_id, selectedEnvironmentId, selectedExportPlanId]);
+
+  useEffect(() => {
+    if (!selectedEnvironmentId || !selectedExportApplyRunId) {
+      setApplyRun(null);
+      return;
+    }
+    if (applyRun?.apply_run_id === selectedExportApplyRunId) {
+      return;
+    }
+    setIsRefreshingApplyRun(true);
+    setError(null);
+    void getExportApplyRun(selectedEnvironmentId, selectedExportApplyRunId)
+      .then((storedRun) => {
+        setApplyRun(storedRun);
+      })
+      .catch((loadError: unknown) => {
+        setApplyRun(null);
+        setError(errorMessage(loadError));
+      })
+      .finally(() => {
+        setIsRefreshingApplyRun(false);
+      });
+  }, [applyRun?.apply_run_id, selectedEnvironmentId, selectedExportApplyRunId]);
 
   const selectedPlaylistCount =
     selectedPlaylistIds.length > 0 ? selectedPlaylistIds.length : playlists.length;
@@ -90,6 +153,9 @@ export function ExportPanel() {
         playlist_ids: selectedPlaylistIds.length > 0 ? selectedPlaylistIds : null,
       });
       setPlan(nextPlan);
+      setApplyRun(null);
+      selectExportApplyRun(null);
+      selectExportPlan(nextPlan.export_plan_id);
     } catch (createError) {
       setError(errorMessage(createError));
     } finally {
@@ -112,6 +178,40 @@ export function ExportPanel() {
     }
   }
 
+  async function handleApplyPlan() {
+    if (!selectedEnvironmentId || !plan) {
+      return;
+    }
+    setIsApplyingPlan(true);
+    setIsConfirmingApply(false);
+    setError(null);
+    try {
+      const nextApplyRun = await applyExportPlan(selectedEnvironmentId, plan.export_plan_id);
+      setApplyRun(nextApplyRun);
+      selectExportPlan(nextApplyRun.export_plan_id);
+      selectExportApplyRun(nextApplyRun.apply_run_id);
+    } catch (applyError) {
+      setError(errorMessage(applyError));
+    } finally {
+      setIsApplyingPlan(false);
+    }
+  }
+
+  async function handleRefreshApplyRun() {
+    if (!selectedEnvironmentId || !applyRun) {
+      return;
+    }
+    setIsRefreshingApplyRun(true);
+    setError(null);
+    try {
+      setApplyRun(await getExportApplyRun(selectedEnvironmentId, applyRun.apply_run_id));
+    } catch (refreshError) {
+      setError(errorMessage(refreshError));
+    } finally {
+      setIsRefreshingApplyRun(false);
+    }
+  }
+
   function handleTogglePlaylist(playlistId: string) {
     setSelectedPlaylistIds((current) =>
       current.includes(playlistId)
@@ -119,6 +219,9 @@ export function ExportPanel() {
         : [...current, playlistId],
     );
     setPlan(null);
+    setApplyRun(null);
+    selectExportApplyRun(null);
+    selectExportPlan(null);
   }
 
   return (
@@ -220,6 +323,9 @@ export function ExportPanel() {
             onPlanAll={() => {
               setSelectedPlaylistIds([]);
               setPlan(null);
+              setApplyRun(null);
+              selectExportApplyRun(null);
+              selectExportPlan(null);
             }}
           />
 
@@ -239,6 +345,16 @@ export function ExportPanel() {
                 items={plan.items}
                 onResolveSkips={() => selectView("matching")}
               />
+
+              {applyRun ? (
+                <ExportApplyResults
+                  applyRun={applyRun}
+                  isRefreshing={isRefreshingApplyRun}
+                  onRefresh={() => {
+                    void handleRefreshApplyRun();
+                  }}
+                />
+              ) : null}
             </>
           ) : (
             <Panel className="export-empty-panel">
@@ -249,20 +365,28 @@ export function ExportPanel() {
             </Panel>
           )}
 
-          <section className="export-apply-bar" aria-label="Apply export plan">
-            <div>
-              <strong>Apply is intentionally locked in Wave 4.</strong>
-              <span>
-                This screen previews persisted plans only. Filesystem writes arrive in the next export wave.
-              </span>
-            </div>
-            <button className="button button--primary" disabled type="button">
-              <Lock size={16} />
-              <span>Apply arrives in Wave 5</span>
-            </button>
-          </section>
+          <ExportApplyBar
+            applyRun={applyRun}
+            disabled={!plan || isApplyingPlan}
+            isApplying={isApplyingPlan}
+            onApply={() => setIsConfirmingApply(true)}
+          />
         </main>
       )}
+      <ConfirmDialog
+        confirmLabel={applyRun ? "Reapply Plan" : "Apply Export Plan"}
+        message={
+          applyRun
+            ? "This will re-run the same persisted plan and may replace managed export copies again. Create a fresh preview first if the library, matches, or export folder changed."
+            : "This will write files inside the managed export folder using the currently previewed plan. Review skipped and stale actions before applying."
+        }
+        open={isConfirmingApply}
+        title={applyRun ? "Reapply this export plan?" : "Apply this export plan?"}
+        onCancel={() => setIsConfirmingApply(false)}
+        onConfirm={() => {
+          void handleApplyPlan();
+        }}
+      />
     </div>
   );
 }
@@ -397,6 +521,170 @@ function ExportActionLog({ items, onResolveSkips }: ExportActionLogProps) {
   );
 }
 
+type ExportApplyBarProps = {
+  applyRun: ExportApplyRunRead | null;
+  disabled: boolean;
+  isApplying: boolean;
+  onApply: () => void;
+};
+
+function ExportApplyBar({ applyRun, disabled, isApplying, onApply }: ExportApplyBarProps) {
+  return (
+    <section className="export-apply-bar" aria-label="Apply export plan">
+      <div>
+        <strong>{applyRun ? "This persisted plan has been applied." : "Ready to commit the previewed plan."}</strong>
+        <span>
+          {applyRun
+            ? "Reapply only if you intentionally want to run this same plan again. Create a fresh preview after meaningful library or match changes."
+            : "Applying writes only through the backend using the saved plan above. No fresh plan is generated implicitly."}
+        </span>
+      </div>
+      <Button
+        disabled={disabled}
+        icon={isApplying ? <Loader2 className="spin-icon" size={16} /> : <CheckCircle2 size={16} />}
+        variant="primary"
+        onClick={onApply}
+      >
+        {isApplying ? "Applying" : applyRun ? "Reapply Plan" : "Apply Export Plan"}
+      </Button>
+    </section>
+  );
+}
+
+type ExportApplyResultsProps = {
+  applyRun: ExportApplyRunRead;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+};
+
+function ExportApplyResults({ applyRun, isRefreshing, onRefresh }: ExportApplyResultsProps) {
+  const status = applyRunStatusMeta(applyRun.status);
+  return (
+    <section className={["export-apply-results", `export-apply-results--${status.tone}`].join(" ")}>
+      <header>
+        <div>
+          <h3>{status.label}</h3>
+          <p>
+            Apply run <code>{applyRun.apply_run_id}</code> for plan{" "}
+            <code>{applyRun.export_plan_id}</code>
+          </p>
+        </div>
+        <Button
+          disabled={isRefreshing}
+          icon={isRefreshing ? <Loader2 className="spin-icon" size={16} /> : <RefreshCw size={16} />}
+          onClick={onRefresh}
+        >
+          Refresh Results
+        </Button>
+      </header>
+
+      <div className="export-result-count-grid" aria-label="Export apply result counts">
+        {(["succeeded", "failed", "skipped"] as ExportApplyItemStatus[]).map((statusKey) => (
+          <ExportResultCountCard
+            count={applyRun.counts[statusKey] ?? 0}
+            key={statusKey}
+            status={statusKey}
+          />
+        ))}
+      </div>
+
+      {applyRun.item_results.length === 0 ? (
+        <EmptyState
+          title="This apply run has no item results"
+          description="The backend returned a persisted run without per-item records."
+        />
+      ) : (
+        <div className="export-action-table-wrap">
+          <table className="export-action-table export-result-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Action</th>
+                <th>Source / Error</th>
+                <th>Target</th>
+              </tr>
+            </thead>
+            <tbody>
+              {applyRun.item_results.map((item, index) => (
+                <ExportApplyResultRow
+                  index={index}
+                  item={item}
+                  key={`${item.status}-${item.action}-${item.target_path}-${index}`}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ExportResultCountCard({
+  count,
+  status,
+}: {
+  count: number;
+  status: ExportApplyItemStatus;
+}) {
+  const meta = applyItemStatusMeta(status);
+  return (
+    <article className={["export-result-count-card", `export-result-count-card--${meta.tone}`].join(" ")}>
+      {meta.icon}
+      <strong>{formatNumber(count)}</strong>
+      <span>{meta.countLabel}</span>
+    </article>
+  );
+}
+
+function ExportApplyResultRow({
+  index,
+  item,
+}: {
+  index: number;
+  item: ExportApplyItemResultRead;
+}) {
+  const action = actionMeta(item.action);
+  const status = applyItemStatusMeta(item.status);
+  const sourceText = item.source_path ?? item.error_message ?? item.error_code ?? "No source path";
+  const detailText = item.error_message ?? item.error_code;
+  return (
+    <tr
+      className={[
+        index % 2 === 0 ? undefined : "export-action-row--alt",
+        `export-result-row--${status.tone}`,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <td>
+        <span className={["export-result-status", `export-result-status--${status.tone}`].join(" ")}>
+          {status.icon}
+          {status.shortLabel}
+        </span>
+      </td>
+      <td>
+        <span className={["export-action-badge", `export-action-badge--${action.tone}`].join(" ")}>
+          {action.icon}
+          {action.shortLabel}
+        </span>
+      </td>
+      <td>
+        <span
+          className={item.status === "skipped" ? "export-action-muted" : undefined}
+          title={sourceText}
+        >
+          {sourceText}
+        </span>
+        {detailText ? <em className="export-result-error">{detailText}</em> : null}
+      </td>
+      <td>
+        <span title={item.target_path}>{item.target_path}</span>
+      </td>
+    </tr>
+  );
+}
+
 function ExportActionRow({
   index,
   item,
@@ -440,6 +728,49 @@ function ExportActionRow({
       </td>
     </tr>
   );
+}
+
+function applyRunStatusMeta(status: ExportApplyRunStatus): {
+  label: string;
+  tone: "success" | "warning" | "danger";
+} {
+  if (status === "completed") {
+    return { label: "Export completed", tone: "success" };
+  }
+  if (status === "completed_with_failures") {
+    return { label: "Export completed with failures", tone: "warning" };
+  }
+  return { label: "Export failed", tone: "danger" };
+}
+
+function applyItemStatusMeta(status: ExportApplyItemStatus): {
+  countLabel: string;
+  shortLabel: string;
+  tone: "success" | "warning" | "danger";
+  icon: ReactNode;
+} {
+  if (status === "succeeded") {
+    return {
+      countLabel: "Succeeded",
+      shortLabel: "Succeeded",
+      tone: "success",
+      icon: <CheckCircle2 size={16} />,
+    };
+  }
+  if (status === "skipped") {
+    return {
+      countLabel: "Skipped",
+      shortLabel: "Skipped",
+      tone: "warning",
+      icon: <AlertTriangle size={16} />,
+    };
+  }
+  return {
+    countLabel: "Failed",
+    shortLabel: "Failed",
+    tone: "danger",
+    icon: <XCircle size={16} />,
+  };
 }
 
 function actionMeta(action: ExportAction): {

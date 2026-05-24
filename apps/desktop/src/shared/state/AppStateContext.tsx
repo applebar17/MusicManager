@@ -7,12 +7,16 @@ type AppSelection = {
   activeView: AppView;
   selectedEnvironmentId: string | null;
   selectedPlaylistId: string | null;
+  selectedExportPlanId: string | null;
+  selectedExportApplyRunId: string | null;
 };
 
 type AppStateContextValue = AppSelection & {
   selectView: (view: AppView) => void;
   selectEnvironment: (environmentId: string | null) => void;
   selectPlaylist: (playlistId: string | null) => void;
+  selectExportPlan: (exportPlanId: string | null) => void;
+  selectExportApplyRun: (applyRunId: string | null) => void;
 };
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
@@ -26,6 +30,8 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
     activeView: "dashboard",
     selectedEnvironmentId: null,
     selectedPlaylistId: null,
+    selectedExportPlanId: null,
+    selectedExportApplyRunId: null,
   });
 
   const value = useMemo<AppStateContextValue>(
@@ -44,6 +50,8 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
                 ...current,
                 selectedEnvironmentId: environmentId,
                 selectedPlaylistId: null,
+                selectedExportPlanId: null,
+                selectedExportApplyRunId: null,
               },
         );
       },
@@ -52,6 +60,24 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
           current.selectedPlaylistId === playlistId
             ? current
             : { ...current, selectedPlaylistId: playlistId },
+        );
+      },
+      selectExportPlan: (exportPlanId) => {
+        setSelection((current) =>
+          current.selectedExportPlanId === exportPlanId
+            ? current
+            : {
+                ...current,
+                selectedExportPlanId: exportPlanId,
+                selectedExportApplyRunId: null,
+              },
+        );
+      },
+      selectExportApplyRun: (applyRunId) => {
+        setSelection((current) =>
+          current.selectedExportApplyRunId === applyRunId
+            ? current
+            : { ...current, selectedExportApplyRunId: applyRunId },
         );
       },
     }),
