@@ -262,15 +262,24 @@ def test_sync_all_soundcloud_playlists_reimports_existing_remote_playlists(
         repositories,
         FakeSoundCloudImporter(
             [
-                _playlist((_track(1, "One", "artist/one"),), source_url=SOURCE_URL),
-                _playlist((_track(1, "Two", "artist/two"),), source_url=SECOND_SOURCE_URL),
+                _playlist(
+                    (_track(1, "One", "artist/one"),),
+                    source_url=SOURCE_URL,
+                    title="A Funk",
+                ),
             ]
         ),
     ).execute("env_1", SOURCE_URL)
     _use_case(
         repositories,
         FakeSoundCloudImporter(
-            [_playlist((_track(1, "Two", "artist/two"),), source_url=SECOND_SOURCE_URL)]
+            [
+                _playlist(
+                    (_track(1, "Two", "artist/two"),),
+                    source_url=SECOND_SOURCE_URL,
+                    title="B House",
+                )
+            ]
         ),
     ).execute("env_1", SECOND_SOURCE_URL)
     importer = FakeSoundCloudImporter(
@@ -281,8 +290,13 @@ def test_sync_all_soundcloud_playlists_reimports_existing_remote_playlists(
                     _track(2, "Three", "artist/three"),
                 ),
                 source_url=SOURCE_URL,
+                title="A Funk",
             ),
-            _playlist((_track(1, "Two Updated", "artist/two"),), source_url=SECOND_SOURCE_URL),
+            _playlist(
+                (_track(1, "Two Updated", "artist/two"),),
+                source_url=SECOND_SOURCE_URL,
+                title="B House",
+            ),
         ]
     )
 
@@ -362,10 +376,11 @@ def _playlist(
     tracks: tuple[ParsedSoundCloudTrack, ...],
     warnings: tuple[str, ...] = (),
     source_url: str = SOURCE_URL,
+    title: str = "Funk",
 ) -> ParsedSoundCloudPlaylist:
     return ParsedSoundCloudPlaylist(
         source_url=source_url,
-        title="Funk",
+        title=title,
         tracks=tracks,
         warnings=warnings,
     )

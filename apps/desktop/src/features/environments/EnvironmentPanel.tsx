@@ -10,7 +10,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 
 import { ApiError } from "../../shared/api/http";
 import type {
@@ -19,6 +19,7 @@ import type {
   EnvironmentRead,
   ScanSummaryRead,
 } from "../../shared/api/types";
+import { pickMusicFolder } from "../../shared/native/folderPicker";
 import { useAppState } from "../../shared/state";
 import {
   Button,
@@ -78,6 +79,7 @@ export function EnvironmentPanel() {
   const [isRefreshingDashboard, setIsRefreshingDashboard] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [isPickingFolder, setIsPickingFolder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState<EnvironmentFormState>(emptyForm);
   const [editForm, setEditForm] = useState<EnvironmentFormState>(emptyForm);
@@ -123,7 +125,6 @@ export function EnvironmentPanel() {
           unmanagedAudioFiles,
         });
       } catch (loadError) {
-        setDashboardData(null);
         setError(errorMessage(loadError));
       } finally {
         setIsRefreshingDashboard(false);
@@ -238,6 +239,25 @@ export function EnvironmentPanel() {
     }
   }
 
+  async function handlePickFolder(target: "create" | "edit") {
+    setIsPickingFolder(true);
+    setError(null);
+    try {
+      const result = await pickMusicFolder();
+      if (result.status === "selected") {
+        if (target === "create") {
+          setCreateForm((current) => ({ ...current, rootPath: result.path }));
+        } else {
+          setEditForm((current) => ({ ...current, rootPath: result.path }));
+        }
+      } else if (result.status === "unavailable") {
+        setError(result.message);
+      }
+    } finally {
+      setIsPickingFolder(false);
+    }
+  }
+
   const activityItems = useMemo(() => scanActivity(lastScan), [lastScan]);
   const matchPercentage = dashboardData ? calculateMatchPercentage(dashboardData.overview) : 0;
 
@@ -246,7 +266,11 @@ export function EnvironmentPanel() {
       <TopActionBar
         environments={environments}
         selectedEnvironmentId={selectedEnvironmentId}
+        isPickingFolder={isPickingFolder}
         isScanning={isScanning}
+        onBrowseFolder={() => {
+          void handlePickFolder("edit");
+        }}
         onSelectEnvironment={selectEnvironment}
         onScan={handleScanEnvironment}
       />
@@ -270,9 +294,13 @@ export function EnvironmentPanel() {
       {!isLoading && environments.length === 0 ? (
         <CreateEnvironmentPanel
           form={createForm}
+          isPickingFolder={isPickingFolder}
           isSubmitting={isSubmitting}
           onSubmit={handleCreateEnvironment}
           onChange={setCreateForm}
+          onPickRoot={() => {
+            void handlePickFolder("create");
+          }}
         />
       ) : null}
 
@@ -375,9 +403,13 @@ export function EnvironmentPanel() {
                   </div>
                   <EnvironmentEditForm
                     form={editForm}
+                    isPickingFolder={isPickingFolder}
                     isSubmitting={isSubmitting}
                     onArchive={() => setArchiveConfirmOpen(true)}
                     onChange={setEditForm}
+                    onPickRoot={() => {
+                      void handlePickFolder("edit");
+                    }}
                     onSubmit={handleUpdateEnvironment}
                   />
                 </Panel>
@@ -402,7 +434,9 @@ export function EnvironmentPanel() {
 type TopActionBarProps = {
   environments: EnvironmentRead[];
   selectedEnvironmentId: string | null;
+  isPickingFolder: boolean;
   isScanning: boolean;
+  onBrowseFolder: () => void;
   onSelectEnvironment: (environmentId: string | null) => void;
   onScan: () => void;
 };
@@ -410,7 +444,9 @@ type TopActionBarProps = {
 function TopActionBar({
   environments,
   selectedEnvironmentId,
+  isPickingFolder,
   isScanning,
+  onBrowseFolder,
   onSelectEnvironment,
   onScan,
 }: TopActionBarProps) {
@@ -430,7 +466,13 @@ function TopActionBar({
           selectedEnvironmentId={selectedEnvironmentId}
           onSelectEnvironment={onSelectEnvironment}
         />
-        <button className="icon-button" disabled type="button" title="Folder picker arrives in a later wave">
+        <button
+          className="icon-button"
+          disabled={isPickingFolder || !selectedEnvironmentId}
+          type="button"
+          title="Browse for environment folder"
+          onClick={onBrowseFolder}
+        >
           <FolderOpen size={17} />
         </button>
         <button
@@ -481,28 +523,34 @@ function EnvironmentSelect({
 
 type EnvironmentFormProps = {
   form: EnvironmentFormState;
+  isPickingFolder: boolean;
   isSubmitting: boolean;
   onChange: (form: EnvironmentFormState) => void;
+  onPickRoot: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
 function CreateEnvironmentPanel({
   form,
+  isPickingFolder,
   isSubmitting,
   onChange,
+  onPickRoot,
   onSubmit,
 }: EnvironmentFormProps) {
   return (
     <Panel className="environment-form-panel">
       <PanelHeader eyebrow="Create" title="Connect a music environment" icon={<HardDrive size={18} />} />
       <p className="muted">
-        Enter an existing folder path. The backend validates that it exists and is readable.
+        Browse to an existing folder or paste its path manually. The backend validates that it exists and is readable.
       </p>
       <EnvironmentForm
         buttonLabel={isSubmitting ? "Creating" : "Create Environment"}
         form={form}
+        isPickingFolder={isPickingFolder}
         isSubmitting={isSubmitting}
         onChange={onChange}
+        onPickRoot={onPickRoot}
         onSubmit={onSubmit}
       />
     </Panel>
@@ -515,9 +563,11 @@ type EnvironmentEditFormProps = EnvironmentFormProps & {
 
 function EnvironmentEditForm({
   form,
+  isPickingFolder,
   isSubmitting,
   onArchive,
   onChange,
+  onPickRoot,
   onSubmit,
 }: EnvironmentEditFormProps) {
   return (
@@ -531,6 +581,11 @@ function EnvironmentEditForm({
         label="Root path"
         value={form.rootPath}
         onChange={(value) => onChange({ ...form, rootPath: value })}
+        action={
+          <Button disabled={isPickingFolder || isSubmitting} type="button" onClick={onPickRoot}>
+            {isPickingFolder ? "Browsing" : "Browse"}
+          </Button>
+        }
       />
       <Field
         label="Deprecated folder"
@@ -556,8 +611,10 @@ type EnvironmentFormFieldsProps = EnvironmentFormProps & {
 function EnvironmentForm({
   buttonLabel,
   form,
+  isPickingFolder,
   isSubmitting,
   onChange,
+  onPickRoot,
   onSubmit,
 }: EnvironmentFormFieldsProps) {
   return (
@@ -575,6 +632,11 @@ function EnvironmentForm({
         required
         value={form.rootPath}
         onChange={(value) => onChange({ ...form, rootPath: value })}
+        action={
+          <Button disabled={isPickingFolder || isSubmitting} type="button" onClick={onPickRoot}>
+            {isPickingFolder ? "Browsing" : "Browse"}
+          </Button>
+        }
       />
       <Field
         label="Deprecated folder"
@@ -593,21 +655,25 @@ function EnvironmentForm({
 type FieldProps = {
   label: string;
   value: string;
+  action?: ReactNode;
   placeholder?: string;
   required?: boolean;
   onChange: (value: string) => void;
 };
 
-function Field({ label, value, placeholder, required = false, onChange }: FieldProps) {
+function Field({ label, value, action, placeholder, required = false, onChange }: FieldProps) {
   return (
     <label className="field">
       <span>{label}</span>
-      <input
-        placeholder={placeholder}
-        required={required}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      <span className="field-input-row">
+        <input
+          placeholder={placeholder}
+          required={required}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        {action}
+      </span>
     </label>
   );
 }

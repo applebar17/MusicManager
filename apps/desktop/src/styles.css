@@ -786,6 +786,18 @@ button {
   padding: 0 var(--space-sm);
 }
 
+.field-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.field-input-row .button {
+  height: 34px;
+  flex: 0 0 auto;
+}
+
 .field input:focus {
   border-color: rgba(172, 199, 255, 0.65);
 }

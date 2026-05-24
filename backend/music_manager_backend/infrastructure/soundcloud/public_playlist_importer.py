@@ -1,4 +1,5 @@
 import re
+from time import sleep
 from typing import Protocol
 
 import httpx
@@ -16,6 +17,9 @@ DEFAULT_USER_AGENT = (
     "+https://github.com/local/music-manager)"
 )
 TRACK_LOOKUP_CHUNK_SIZE = 50
+SOUNDCLOUD_REQUEST_ATTEMPTS = 3
+SOUNDCLOUD_RETRY_BACKOFF_SECONDS = 0.25
+TRANSIENT_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 
 
 class SoundCloudPublicApiClient(Protocol):
@@ -27,8 +31,16 @@ class SoundCloudPublicApiClient(Protocol):
 
 
 class HttpSoundCloudHtmlFetcher:
-    def __init__(self, *, timeout_seconds: float = 15.0) -> None:
+    def __init__(
+        self,
+        *,
+        timeout_seconds: float = 15.0,
+        attempts: int = SOUNDCLOUD_REQUEST_ATTEMPTS,
+        retry_backoff_seconds: float = SOUNDCLOUD_RETRY_BACKOFF_SECONDS,
+    ) -> None:
         self.timeout_seconds = timeout_seconds
+        self.attempts = attempts
+        self.retry_backoff_seconds = retry_backoff_seconds
 
     def fetch(self, url: str) -> str:
         try:
@@ -37,8 +49,12 @@ class HttpSoundCloudHtmlFetcher:
                 timeout=self.timeout_seconds,
                 headers={"User-Agent": DEFAULT_USER_AGENT},
             ) as client:
-                response = client.get(url)
-                response.raise_for_status()
+                response = _get_with_retries(
+                    client,
+                    url,
+                    attempts=self.attempts,
+                    retry_backoff_seconds=self.retry_backoff_seconds,
+                )
         except httpx.HTTPError as exc:
             raise InfrastructureError(
                 f"Could not fetch SoundCloud public playlist: {url}",
@@ -49,8 +65,16 @@ class HttpSoundCloudHtmlFetcher:
 
 
 class HttpSoundCloudApiClient:
-    def __init__(self, *, timeout_seconds: float = 15.0) -> None:
+    def __init__(
+        self,
+        *,
+        timeout_seconds: float = 15.0,
+        attempts: int = SOUNDCLOUD_REQUEST_ATTEMPTS,
+        retry_backoff_seconds: float = SOUNDCLOUD_RETRY_BACKOFF_SECONDS,
+    ) -> None:
         self.timeout_seconds = timeout_seconds
+        self.attempts = attempts
+        self.retry_backoff_seconds = retry_backoff_seconds
 
     def fetch_text(self, url: str) -> str:
         try:
@@ -59,8 +83,12 @@ class HttpSoundCloudApiClient:
                 timeout=self.timeout_seconds,
                 headers={"User-Agent": DEFAULT_USER_AGENT},
             ) as client:
-                response = client.get(url)
-                response.raise_for_status()
+                response = _get_with_retries(
+                    client,
+                    url,
+                    attempts=self.attempts,
+                    retry_backoff_seconds=self.retry_backoff_seconds,
+                )
         except httpx.HTTPError as exc:
             raise InfrastructureError(
                 f"Could not fetch SoundCloud public asset: {url}",
@@ -79,15 +107,27 @@ class HttpSoundCloudApiClient:
                     "User-Agent": DEFAULT_USER_AGENT,
                 },
             ) as client:
-                response = client.get(url, params=params)
-                response.raise_for_status()
+                response = _get_with_retries(
+                    client,
+                    url,
+                    params=params,
+                    attempts=self.attempts,
+                    retry_backoff_seconds=self.retry_backoff_seconds,
+                )
         except httpx.HTTPError as exc:
             raise InfrastructureError(
                 f"Could not fetch SoundCloud public API data: {url}",
                 code="soundcloud_public_api_fetch_failed",
             ) from exc
 
-        payload = response.json()
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise InfrastructureError(
+                f"SoundCloud public API returned invalid JSON: {url}",
+                code="soundcloud_public_api_invalid_json",
+            ) from exc
+
         if not isinstance(payload, (dict, list)):
             raise InfrastructureError(
                 f"SoundCloud public API returned unexpected payload: {url}",
@@ -160,7 +200,10 @@ def _extract_playlist_id(html: str) -> str | None:
 
 def _extract_client_id(html: str, *, api_client: SoundCloudPublicApiClient) -> str | None:
     for asset_url in _extract_asset_urls(html):
-        asset_text = api_client.fetch_text(asset_url)
+        try:
+            asset_text = api_client.fetch_text(asset_url)
+        except InfrastructureError:
+            continue
         match = re.search(r'client_id:"([A-Za-z0-9_-]{16,})"', asset_text)
         if match is not None:
             return match.group(1)
@@ -222,6 +265,42 @@ def _hydrate_blackbox_tracks(
 
 def _chunks(values: list[str], size: int) -> list[list[str]]:
     return [values[index : index + size] for index in range(0, len(values), size)]
+
+
+def _get_with_retries(
+    client: httpx.Client,
+    url: str,
+    *,
+    params: dict[str, str] | None = None,
+    attempts: int,
+    retry_backoff_seconds: float,
+) -> httpx.Response:
+    last_response: httpx.Response | None = None
+    for attempt in range(max(1, attempts)):
+        try:
+            response = client.get(url, params=params)
+        except (httpx.TimeoutException, httpx.NetworkError):
+            if attempt < attempts - 1:
+                _sleep_before_retry(retry_backoff_seconds, attempt)
+                continue
+            raise
+
+        last_response = response
+        if response.status_code in TRANSIENT_STATUS_CODES and attempt < attempts - 1:
+            _sleep_before_retry(retry_backoff_seconds, attempt)
+            continue
+        response.raise_for_status()
+        return response
+
+    if last_response is not None:
+        last_response.raise_for_status()
+    raise httpx.TransportError(f"SoundCloud request failed: {url}")
+
+
+def _sleep_before_retry(retry_backoff_seconds: float, attempt: int) -> None:
+    if retry_backoff_seconds <= 0:
+        return
+    sleep(retry_backoff_seconds * (attempt + 1))
 
 
 def _append_warning(

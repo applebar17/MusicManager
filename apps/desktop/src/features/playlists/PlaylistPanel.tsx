@@ -65,13 +65,11 @@ export function PlaylistPanel() {
         setPlaylists(items);
         if (!selectedPlaylistId || !items.some((item) => item.id === selectedPlaylistId)) {
           selectPlaylist(items[0]?.id ?? null);
-        }
-      } catch (loadError) {
-        setPlaylists([]);
-        setPlaylistDetail(null);
-        setError(errorMessage(loadError));
-      } finally {
-        setIsLoadingPlaylists(false);
+      }
+    } catch (loadError) {
+      setError(errorMessage(loadError));
+    } finally {
+      setIsLoadingPlaylists(false);
       }
     },
     [selectPlaylist, selectedPlaylistId],
@@ -83,7 +81,6 @@ export function PlaylistPanel() {
     try {
       setPlaylistDetail(await getPlaylistDetail(environmentId, playlistId));
     } catch (loadError) {
-      setPlaylistDetail(null);
       setError(errorMessage(loadError));
     } finally {
       setIsLoadingDetail(false);

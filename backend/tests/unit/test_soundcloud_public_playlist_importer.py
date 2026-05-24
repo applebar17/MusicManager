@@ -98,6 +98,14 @@ class LargePlaylistApiClient(FakeApiClient):
         return super().fetch_json(url, params=params)
 
 
+class FlakyAssetApiClient(FakeApiClient):
+    def fetch_text(self, url: str) -> str:
+        self.text_urls.append(url)
+        if url.endswith("/bad.js"):
+            raise InfrastructureError("asset temporarily unavailable", code="temporary_asset_error")
+        return 'window.config={client_id:"client12345678901234567890"};'
+
+
 def _incomplete_hydration_html(track_count: int = 2) -> str:
     return f"""
     <html>
@@ -132,6 +140,14 @@ def _incomplete_hydration_html(track_count: int = 2) -> str:
       </body>
     </html>
     """
+
+
+def _incomplete_hydration_html_with_assets(asset_urls: tuple[str, ...]) -> str:
+    scripts = "\n".join(f'<script src="{asset_url}"></script>' for asset_url in asset_urls)
+    return _incomplete_hydration_html().replace(
+        '<script src="https://a-v2.sndcdn.com/assets/app.js"></script>',
+        scripts,
+    )
 
 
 def test_importer_fetches_url_and_parses_playlist() -> None:
@@ -178,6 +194,29 @@ def test_importer_enriches_incomplete_hydration_with_public_api() -> None:
     assert [track.title for track in playlist.tracks] == ["Hydrated One", "Hydrated 2"]
     assert [track.position for track in playlist.tracks] == [1, 2]
     assert [track.duration_seconds for track in playlist.tracks] == [101, 2]
+    assert playlist.warnings == ("soundcloud_api_enrichment_used",)
+
+
+def test_importer_skips_failed_assets_when_discovering_client_id() -> None:
+    api_client = FlakyAssetApiClient()
+
+    playlist = PublicPlaylistImporter(
+        fetcher=FakeFetcher(
+            _incomplete_hydration_html_with_assets(
+                (
+                    "https://a-v2.sndcdn.com/assets/bad.js",
+                    "https://a-v2.sndcdn.com/assets/good.js",
+                )
+            )
+        ),
+        api_client=api_client,
+    ).import_playlist(SOURCE_URL)
+
+    assert api_client.text_urls == [
+        "https://a-v2.sndcdn.com/assets/bad.js",
+        "https://a-v2.sndcdn.com/assets/good.js",
+    ]
+    assert len(playlist.tracks) == 2
     assert playlist.warnings == ("soundcloud_api_enrichment_used",)
 
 
