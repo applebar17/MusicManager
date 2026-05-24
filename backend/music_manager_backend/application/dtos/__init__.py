@@ -29,9 +29,9 @@ from music_manager_backend.application.dtos.playlist import (
     PlaylistSummaryRead,
 )
 from music_manager_backend.application.dtos.soundcloud import (
-    SoundCloudPlaylistSyncAllResult,
     SoundCloudPlaylistImportRequest,
     SoundCloudPlaylistImportResult,
+    SoundCloudPlaylistSyncAllResult,
     SoundCloudPlaylistSyncItemResult,
 )
 
