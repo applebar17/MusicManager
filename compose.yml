@@ -1,0 +1,45 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    command:
+      - uv
+      - run
+      - uvicorn
+      - music_manager_backend.api.app:app
+      - --app-dir
+      - backend
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/workspace/backend
+      - ./alembic.ini:/workspace/alembic.ini:ro
+      - ./local:/workspace/local
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    environment:
+      VITE_API_BASE_URL: ""
+      VITE_BACKEND_PROXY_TARGET: http://backend:8000
+    ports:
+      - "1420:1420"
+    volumes:
+      - ./apps:/workspace/apps
+      - ./package.json:/workspace/package.json:ro
+      - ./package-lock.json:/workspace/package-lock.json:ro
+      - desktop_node_modules:/workspace/node_modules
+      - desktop_workspace_node_modules:/workspace/apps/desktop/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  desktop_node_modules:
+  desktop_workspace_node_modules:
