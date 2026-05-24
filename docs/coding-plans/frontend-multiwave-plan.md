@@ -55,6 +55,41 @@ Exit criteria:
 - A developer can run the desktop app and see a stable shell that is ready to connect
   to backend data.
 
+## Wave 0.5: Design System Intake
+
+Goal: translate the design pages in `docs/product/design/DESIGN.md` into reusable
+frontend primitives before feature-heavy Wave 1 work begins.
+
+Deliverables:
+
+- Treat `DESIGN.md` as the first visual source of truth for the desktop app.
+- Add CSS custom properties and TypeScript token exports for the dark Precision Audio
+  Utility palette, 4px spacing rhythm, compact typography, and precise radii.
+- Add shared UI primitives for panels, panel headers, buttons, badges, loading, empty,
+  and error states.
+- Align the app shell, sidebar, feature placeholders, and status treatments with the
+  design language.
+- Keep the design layer thin and practical; defer a full component library until real
+  feature screens need it.
+
+Suggested modules:
+
+- `src/shared/design/`
+- `src/shared/ui/`
+- `src/styles.css`
+- `src/app/AppShell.tsx`
+
+Tests:
+
+- TypeScript checks pass.
+- Shared primitives can be imported from `src/shared/ui`.
+- The desktop shell still renders without requiring backend data.
+
+Exit criteria:
+
+- Wave 1 can build real environment UI using shared design tokens and primitives
+  instead of one-off styles.
+
 ## Wave 1: Environment Dashboard
 
 Goal: let the user create/select an environment and see backend readiness at a glance.

@@ -1,20 +1,18 @@
 import { ListMusic } from "lucide-react";
 
 import { useAppState } from "../../shared/state";
-import { EmptyState } from "../../shared/ui";
+import { EmptyState, Panel, PanelHeader } from "../../shared/ui";
 
 export function PlaylistPanel() {
   const { selectedEnvironmentId, selectedPlaylistId } = useAppState();
 
   return (
-    <section className="panel">
-      <div className="panel-header">
-        <div>
-          <p className="eyebrow">Playlists</p>
-          <h2>SoundCloud imports and readiness</h2>
-        </div>
-        <ListMusic size={18} />
-      </div>
+    <Panel>
+      <PanelHeader
+        eyebrow="Playlists"
+        title="SoundCloud imports and readiness"
+        icon={<ListMusic size={18} />}
+      />
       {selectedEnvironmentId ? (
         <p className="muted">
           Playlist browser ready for environment {selectedEnvironmentId}
@@ -26,6 +24,6 @@ export function PlaylistPanel() {
           description="Wave 2 will add playlist import, summaries, and ordered playlist detail."
         />
       )}
-    </section>
+    </Panel>
   );
 }

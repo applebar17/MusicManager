@@ -1,21 +1,15 @@
 import { Radio } from "lucide-react";
 
-import { StatusBadge } from "../../shared/ui";
+import { Panel, PanelHeader, StatusBadge } from "../../shared/ui";
 
 export function PlaybackPanel() {
   return (
-    <section className="panel">
-      <div className="panel-header">
-        <div>
-          <p className="eyebrow">Playback</p>
-          <h2>Local audio preview</h2>
-        </div>
-        <Radio size={18} />
-      </div>
+    <Panel>
+      <PanelHeader eyebrow="Playback" title="Local audio preview" icon={<Radio size={18} />} />
       <div className="mini-player-preview">
         <StatusBadge>Idle</StatusBadge>
         <p className="muted">Wave 3 will connect this to backend playback URLs.</p>
       </div>
-    </section>
+    </Panel>
   );
 }

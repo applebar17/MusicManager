@@ -1,20 +1,14 @@
 import { HardDrive } from "lucide-react";
 
 import { useAppState } from "../../shared/state";
-import { EmptyState } from "../../shared/ui";
+import { EmptyState, Panel, PanelHeader } from "../../shared/ui";
 
 export function EnvironmentPanel() {
   const { selectedEnvironmentId } = useAppState();
 
   return (
-    <section className="panel">
-      <div className="panel-header">
-        <div>
-          <p className="eyebrow">Environment</p>
-          <h2>Workspace and USB root</h2>
-        </div>
-        <HardDrive size={18} />
-      </div>
+    <Panel>
+      <PanelHeader eyebrow="Environment" title="Workspace and USB root" icon={<HardDrive size={18} />} />
       {selectedEnvironmentId ? (
         <p className="muted">Selected environment: {selectedEnvironmentId}</p>
       ) : (
@@ -23,6 +17,6 @@ export function EnvironmentPanel() {
           description="Wave 1 will connect this panel to environment list, create, update, archive, and scan actions."
         />
       )}
-    </section>
+    </Panel>
   );
 }
