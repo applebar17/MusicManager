@@ -2,6 +2,7 @@ import { apiGet, apiPost } from "../../shared/api/http";
 import type {
   PlaylistDetailRead,
   PlaylistSummaryRead,
+  SoundCloudPlaylistSyncAllResult,
   SoundCloudPlaylistImportRequest,
   SoundCloudPlaylistImportResult,
 } from "../../shared/api/types";
@@ -18,5 +19,11 @@ export function importSoundCloudPlaylist(environmentId: string, url: string) {
   return apiPost<SoundCloudPlaylistImportResult, SoundCloudPlaylistImportRequest>(
     `/environments/${environmentId}/soundcloud/playlists`,
     { url },
+  );
+}
+
+export function syncAllSoundCloudPlaylists(environmentId: string) {
+  return apiPost<SoundCloudPlaylistSyncAllResult>(
+    `/environments/${environmentId}/soundcloud/playlists/sync-all`,
   );
 }

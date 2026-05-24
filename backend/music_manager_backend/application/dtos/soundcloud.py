@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Literal
 
 
 class SoundCloudPlaylistImportRequest(BaseModel):
@@ -19,3 +20,29 @@ class SoundCloudPlaylistImportResult(BaseModel):
     metadata_changed: int
     unchanged: int
     warnings: tuple[str, ...] = ()
+
+
+class SoundCloudPlaylistSyncItemResult(BaseModel):
+    playlist_id: str
+    remote_playlist_id: str
+    source_url: str
+    status: Literal["synced", "failed"]
+    playlist_name: str | None = None
+    track_count: int | None = None
+    added: int | None = None
+    removed: int | None = None
+    reactivated: int | None = None
+    reordered: int | None = None
+    metadata_changed: int | None = None
+    unchanged: int | None = None
+    warnings: tuple[str, ...] = ()
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class SoundCloudPlaylistSyncAllResult(BaseModel):
+    environment_id: str
+    total: int
+    succeeded: int
+    failed: int
+    results: tuple[SoundCloudPlaylistSyncItemResult, ...]

@@ -16,17 +16,24 @@ import type {
   PlaylistDetailRead,
   PlaylistItemRead,
   PlaylistSummaryRead,
+  SoundCloudPlaylistSyncAllResult,
   SoundCloudPlaylistImportResult,
 } from "../../shared/api/types";
 import { useAppState } from "../../shared/state";
 import { Button, EmptyState, ErrorBanner, LoadingState, Panel, StatusBadge } from "../../shared/ui";
-import { getPlaylistDetail, importSoundCloudPlaylist, listPlaylists } from "./api";
+import {
+  getPlaylistDetail,
+  importSoundCloudPlaylist,
+  listPlaylists,
+  syncAllSoundCloudPlaylists,
+} from "./api";
 
 export function PlaylistPanel() {
   const { selectedEnvironmentId, selectedPlaylistId, selectPlaylist } = useAppState();
   const [playlists, setPlaylists] = useState<PlaylistSummaryRead[]>([]);
   const [playlistDetail, setPlaylistDetail] = useState<PlaylistDetailRead | null>(null);
   const [importResult, setImportResult] = useState<SoundCloudPlaylistImportResult | null>(null);
+  const [syncAllResult, setSyncAllResult] = useState<SoundCloudPlaylistSyncAllResult | null>(null);
   const [importUrl, setImportUrl] = useState("");
   const [playlistSearch, setPlaylistSearch] = useState("");
   const [trackSearch, setTrackSearch] = useState("");
@@ -34,6 +41,7 @@ export function PlaylistPanel() {
   const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedPlaylist = useMemo(
@@ -87,6 +95,7 @@ export function PlaylistPanel() {
       setPlaylists([]);
       setPlaylistDetail(null);
       setImportResult(null);
+      setSyncAllResult(null);
       selectPlaylist(null);
       return;
     }
@@ -95,6 +104,7 @@ export function PlaylistPanel() {
 
   useEffect(() => {
     setImportResult(null);
+    setSyncAllResult(null);
     setImportUrl("");
     setPlaylistSearch("");
     setTrackSearch("");
@@ -125,6 +135,7 @@ export function PlaylistPanel() {
     setIsImporting(true);
     setError(null);
     setImportResult(null);
+    setSyncAllResult(null);
     try {
       const result = await importSoundCloudPlaylist(selectedEnvironmentId, url);
       setImportResult(result);
@@ -137,6 +148,42 @@ export function PlaylistPanel() {
       setError(errorMessage(importError));
     } finally {
       setIsImporting(false);
+    }
+  }
+
+  async function handleSyncAll() {
+    if (!selectedEnvironmentId) {
+      setError("Select an environment before syncing SoundCloud playlists.");
+      return;
+    }
+    if (playlists.length === 0) {
+      setError("Import at least one SoundCloud playlist before syncing all playlists.");
+      return;
+    }
+
+    setIsSyncingAll(true);
+    setError(null);
+    setImportResult(null);
+    setSyncAllResult(null);
+    try {
+      const result = await syncAllSoundCloudPlaylists(selectedEnvironmentId);
+      setSyncAllResult(result);
+      const items = await listPlaylists(selectedEnvironmentId);
+      setPlaylists(items);
+      const playlistId =
+        selectedPlaylistId && items.some((item) => item.id === selectedPlaylistId)
+          ? selectedPlaylistId
+          : items[0]?.id ?? null;
+      selectPlaylist(playlistId);
+      if (playlistId) {
+        setPlaylistDetail(await getPlaylistDetail(selectedEnvironmentId, playlistId));
+      } else {
+        setPlaylistDetail(null);
+      }
+    } catch (syncError) {
+      setError(errorMessage(syncError));
+    } finally {
+      setIsSyncingAll(false);
     }
   }
 
@@ -205,7 +252,11 @@ export function PlaylistPanel() {
               importResult={importResult}
               importUrl={importUrl}
               isImporting={isImporting}
+              isSyncingAll={isSyncingAll}
+              playlistCount={playlists.length}
+              syncAllResult={syncAllResult}
               onImportUrlChange={setImportUrl}
+              onSyncAll={handleSyncAll}
               onSubmit={handleImport}
             />
 
@@ -284,7 +335,11 @@ type ImportPanelProps = {
   importResult: SoundCloudPlaylistImportResult | null;
   importUrl: string;
   isImporting: boolean;
+  isSyncingAll: boolean;
+  playlistCount: number;
+  syncAllResult: SoundCloudPlaylistSyncAllResult | null;
   onImportUrlChange: (url: string) => void;
+  onSyncAll: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
@@ -292,7 +347,11 @@ function ImportPanel({
   importResult,
   importUrl,
   isImporting,
+  isSyncingAll,
+  playlistCount,
+  syncAllResult,
   onImportUrlChange,
+  onSyncAll,
   onSubmit,
 }: ImportPanelProps) {
   return (
@@ -308,9 +367,17 @@ function ImportPanel({
         <Button disabled={isImporting} type="submit">
           {isImporting ? "Importing" : "Import / Sync"}
         </Button>
+        <Button
+          disabled={isImporting || isSyncingAll || playlistCount === 0}
+          type="button"
+          onClick={onSyncAll}
+        >
+          {isSyncingAll ? "Syncing all" : "Sync All"}
+        </Button>
       </form>
 
       {importResult ? <ImportResultSummary result={importResult} /> : null}
+      {syncAllResult ? <SyncAllResultSummary result={syncAllResult} /> : null}
     </section>
   );
 }
@@ -334,6 +401,39 @@ function ImportResultSummary({ result }: { result: SoundCloudPlaylistImportResul
         <div className="import-result__warnings">
           <AlertTriangle size={15} />
           <span>{warningMessages.join(" ")}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SyncAllResultSummary({ result }: { result: SoundCloudPlaylistSyncAllResult }) {
+  const failedItems = result.results.filter((item) => item.status === "failed");
+
+  return (
+    <div className="import-result">
+      <div className="import-result__summary">
+        <StatusBadge tone={result.failed > 0 ? "warning" : "success"}>
+          {result.failed > 0 ? "Synced with issues" : "Synced all"}
+        </StatusBadge>
+        <span>{formatNumber(result.total)} SoundCloud playlists</span>
+        <span>{formatNumber(result.succeeded)} synced</span>
+        <span>{formatNumber(result.failed)} failed</span>
+      </div>
+      {failedItems.length > 0 ? (
+        <div className="import-result__warnings">
+          <AlertTriangle size={15} />
+          <span>
+            {failedItems
+              .map(
+                (item) =>
+                  `${item.playlist_name ?? "Playlist"}: ${
+                    item.error_message ??
+                    "Sync failed. If this playlist is private, make it public and try again."
+                  }`,
+              )
+              .join(" ")}
+          </span>
         </div>
       ) : null}
     </div>

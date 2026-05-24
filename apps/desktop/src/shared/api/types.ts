@@ -159,6 +159,32 @@ export type SoundCloudPlaylistImportResult = {
   warnings: string[];
 };
 
+export type SoundCloudPlaylistSyncItemResult = {
+  playlist_id: string;
+  remote_playlist_id: string;
+  source_url: string;
+  status: "synced" | "failed";
+  playlist_name: string | null;
+  track_count: number | null;
+  added: number | null;
+  removed: number | null;
+  reactivated: number | null;
+  reordered: number | null;
+  metadata_changed: number | null;
+  unchanged: number | null;
+  warnings: string[];
+  error_code: string | null;
+  error_message: string | null;
+};
+
+export type SoundCloudPlaylistSyncAllResult = {
+  environment_id: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: SoundCloudPlaylistSyncItemResult[];
+};
+
 export type ExportPlanCreate = {
   playlist_ids?: string[] | null;
 };

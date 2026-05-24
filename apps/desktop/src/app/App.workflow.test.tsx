@@ -58,6 +58,9 @@ describe("desktop v1 workflow", () => {
     expect(screen.getByLabelText("SoundCloud playlist URL")).toHaveValue("");
     expect(screen.queryByText("soundcloud_api_enrichment_used")).not.toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: /^sync all$/i }));
+    expect(await screen.findByText("Synced all")).toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: /matching review/i }));
     expect(await screen.findByText("Resolve track mismatches and map ambiguous candidates.")).toBeInTheDocument();
 
@@ -163,6 +166,35 @@ function mockFetch() {
         track_count: 1,
         unchanged: 0,
         warnings: ["soundcloud_api_enrichment_used"],
+      });
+    }
+
+    if (path === "/environments/env_1/soundcloud/playlists/sync-all" && method === "POST") {
+      imported = true;
+      return jsonResponse({
+        environment_id: "env_1",
+        failed: 0,
+        results: [
+          {
+            added: 0,
+            error_code: null,
+            error_message: null,
+            metadata_changed: 0,
+            playlist_id: "playlist_1",
+            playlist_name: "Wave 6 Smoke",
+            reactivated: 0,
+            remote_playlist_id: "remote_1",
+            removed: 0,
+            reordered: 0,
+            source_url: "https://soundcloud.com/demo/sets/wave-6-smoke",
+            status: "synced",
+            track_count: 1,
+            unchanged: 1,
+            warnings: [],
+          },
+        ],
+        succeeded: 1,
+        total: 1,
       });
     }
 

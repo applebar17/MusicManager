@@ -33,6 +33,7 @@ from music_manager_backend.application.dtos import (
     ScanSummaryRead,
     SoundCloudPlaylistImportRequest,
     SoundCloudPlaylistImportResult,
+    SoundCloudPlaylistSyncAllResult,
     environment_read,
     export_apply_run_read,
     export_plan_read,
@@ -59,6 +60,9 @@ from music_manager_backend.application.use_cases.list_unmanaged_files import Lis
 from music_manager_backend.application.use_cases.plan_export import PlanExport
 from music_manager_backend.application.use_cases.run_matching import RunMatching
 from music_manager_backend.application.use_cases.scan_environment import ScanEnvironment
+from music_manager_backend.application.use_cases.sync_all_soundcloud_playlists import (
+    SyncAllSoundCloudPlaylists,
+)
 from music_manager_backend.application.use_cases.update_environment import UpdateEnvironment
 from music_manager_backend.domain.entities import AudioFile
 from music_manager_backend.infrastructure.audio import MetadataReader
@@ -218,6 +222,30 @@ def import_soundcloud_playlist(
         sync_snapshots=sync_snapshots,
         importer=importer,
     ).execute(environment_id, data.url)
+
+
+@router.post(
+    "/{environment_id}/soundcloud/playlists/sync-all",
+    response_model=SoundCloudPlaylistSyncAllResult,
+    responses=ERROR_RESPONSES,
+)
+def sync_all_soundcloud_playlists(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    remote_playlists: RemotePlaylistRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    sync_snapshots: SyncSnapshotRepositoryDependency,
+    importer: SoundCloudPlaylistImporterDependency,
+) -> SoundCloudPlaylistSyncAllResult:
+    return SyncAllSoundCloudPlaylists(
+        environments=environments,
+        remote_playlists=remote_playlists,
+        playlists=playlists,
+        songs=songs,
+        sync_snapshots=sync_snapshots,
+        importer=importer,
+    ).execute(environment_id)
 
 
 @router.post(

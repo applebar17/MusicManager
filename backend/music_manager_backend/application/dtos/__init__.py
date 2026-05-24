@@ -29,8 +29,10 @@ from music_manager_backend.application.dtos.playlist import (
     PlaylistSummaryRead,
 )
 from music_manager_backend.application.dtos.soundcloud import (
+    SoundCloudPlaylistSyncAllResult,
     SoundCloudPlaylistImportRequest,
     SoundCloudPlaylistImportResult,
+    SoundCloudPlaylistSyncItemResult,
 )
 
 __all__ = [
@@ -55,6 +57,8 @@ __all__ = [
     "ScanSummaryRead",
     "SoundCloudPlaylistImportRequest",
     "SoundCloudPlaylistImportResult",
+    "SoundCloudPlaylistSyncAllResult",
+    "SoundCloudPlaylistSyncItemResult",
     "environment_read",
     "export_apply_run_read",
     "export_plan_read",

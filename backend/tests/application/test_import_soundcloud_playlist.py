@@ -7,6 +7,9 @@ import pytest
 from music_manager_backend.application.use_cases.import_soundcloud_playlist import (
     ImportSoundCloudPlaylist,
 )
+from music_manager_backend.application.use_cases.sync_all_soundcloud_playlists import (
+    SyncAllSoundCloudPlaylists,
+)
 from music_manager_backend.domain.entities import MusicEnvironment, Playlist, SongMaster
 from music_manager_backend.infrastructure.persistence import (
     SqliteEnvironmentRepository,
@@ -22,6 +25,7 @@ from music_manager_backend.ports.soundcloud_models import (
 from music_manager_backend.shared.errors import ValidationError
 
 SOURCE_URL = "https://soundcloud.com/user/sets/funk"
+SECOND_SOURCE_URL = "https://soundcloud.com/user/sets/house"
 
 
 @dataclass(frozen=True)
@@ -247,6 +251,77 @@ def test_zero_track_import_raises_validation_error(sqlite_connection: sqlite3.Co
     assert repositories.remote_playlists.get_by_source_url("soundcloud", SOURCE_URL) is None
 
 
+def test_sync_all_soundcloud_playlists_reimports_existing_remote_playlists(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    repositories.environments.save(
+        MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
+    )
+    _use_case(
+        repositories,
+        FakeSoundCloudImporter(
+            [
+                _playlist((_track(1, "One", "artist/one"),), source_url=SOURCE_URL),
+                _playlist((_track(1, "Two", "artist/two"),), source_url=SECOND_SOURCE_URL),
+            ]
+        ),
+    ).execute("env_1", SOURCE_URL)
+    _use_case(
+        repositories,
+        FakeSoundCloudImporter(
+            [_playlist((_track(1, "Two", "artist/two"),), source_url=SECOND_SOURCE_URL)]
+        ),
+    ).execute("env_1", SECOND_SOURCE_URL)
+    importer = FakeSoundCloudImporter(
+        [
+            _playlist(
+                (
+                    _track(1, "One", "artist/one"),
+                    _track(2, "Three", "artist/three"),
+                ),
+                source_url=SOURCE_URL,
+            ),
+            _playlist((_track(1, "Two Updated", "artist/two"),), source_url=SECOND_SOURCE_URL),
+        ]
+    )
+
+    result = _sync_all_use_case(repositories, importer).execute("env_1")
+
+    assert importer.urls == [SOURCE_URL, SECOND_SOURCE_URL]
+    assert result.total == 2
+    assert result.succeeded == 2
+    assert result.failed == 0
+    assert [item.status for item in result.results] == ["synced", "synced"]
+    assert [item.track_count for item in result.results] == [2, 1]
+    assert result.results[0].added == 1
+    assert result.results[1].metadata_changed == 1
+
+
+def test_sync_all_soundcloud_playlists_records_per_playlist_failures(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    repositories.environments.save(
+        MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
+    )
+    _use_case(
+        repositories,
+        FakeSoundCloudImporter([_playlist((_track(1, "One", "artist/one"),))]),
+    ).execute("env_1", SOURCE_URL)
+    importer = FakeSoundCloudImporter([_playlist(())])
+
+    result = _sync_all_use_case(repositories, importer).execute("env_1")
+
+    assert result.total == 1
+    assert result.succeeded == 0
+    assert result.failed == 1
+    assert result.results[0].status == "failed"
+    assert result.results[0].source_url == SOURCE_URL
+    assert result.results[0].error_code == "soundcloud_playlist_no_tracks"
+    assert "make it public" in (result.results[0].error_message or "")
+
+
 def _repositories(sqlite_connection: sqlite3.Connection) -> Repositories:
     return Repositories(
         environments=SqliteEnvironmentRepository(sqlite_connection),
@@ -270,12 +345,26 @@ def _use_case(
     )
 
 
+def _sync_all_use_case(
+    repositories: Repositories, importer: FakeSoundCloudImporter
+) -> SyncAllSoundCloudPlaylists:
+    return SyncAllSoundCloudPlaylists(
+        environments=repositories.environments,
+        remote_playlists=repositories.remote_playlists,
+        playlists=repositories.playlists,
+        songs=repositories.songs,
+        sync_snapshots=repositories.sync_snapshots,
+        importer=importer,
+    )
+
+
 def _playlist(
     tracks: tuple[ParsedSoundCloudTrack, ...],
     warnings: tuple[str, ...] = (),
+    source_url: str = SOURCE_URL,
 ) -> ParsedSoundCloudPlaylist:
     return ParsedSoundCloudPlaylist(
-        source_url=SOURCE_URL,
+        source_url=source_url,
         title="Funk",
         tracks=tracks,
         warnings=warnings,

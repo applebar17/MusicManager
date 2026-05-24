@@ -26,6 +26,16 @@ class FakeSoundCloudImporter:
         return self.playlist
 
 
+class SequentialFakeSoundCloudImporter:
+    def __init__(self, playlists: list[ParsedSoundCloudPlaylist]) -> None:
+        self.playlists = playlists
+        self.urls: list[str] = []
+
+    def import_playlist(self, url: str) -> ParsedSoundCloudPlaylist:
+        self.urls.append(url)
+        return self.playlists.pop(0)
+
+
 def test_import_soundcloud_playlist_persists_data(
     api_settings: Settings,
     tmp_path: Path,
@@ -66,6 +76,48 @@ def test_import_soundcloud_playlist_persists_data(
         body["remote_playlist_id"]
     ).source_url == SOURCE_URL
     assert app.state.container.playlist_repository.get(body["playlist_id"]).items[0].position == 1
+
+
+def test_sync_all_soundcloud_playlists_reimports_existing_remote_playlists(
+    api_settings: Settings,
+    tmp_path: Path,
+) -> None:
+    importer = SequentialFakeSoundCloudImporter(
+        [
+            _playlist((_track(1, "One", "artist/one"),)),
+            _playlist(
+                (
+                    _track(1, "One", "artist/one"),
+                    _track(2, "Two", "artist/two"),
+                )
+            ),
+        ]
+    )
+    app = create_app(api_settings)
+    app.state.container = replace(app.state.container, soundcloud_playlist_importer=importer)
+    client = TestClient(app)
+    root = tmp_path / "usb"
+    root.mkdir()
+    environment_id = client.post(
+        "/environments",
+        json={"name": "USB", "root_path": str(root)},
+    ).json()["id"]
+    client.post(
+        f"/environments/{environment_id}/soundcloud/playlists",
+        json={"url": SOURCE_URL},
+    )
+
+    response = client.post(f"/environments/{environment_id}/soundcloud/playlists/sync-all")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert importer.urls == [SOURCE_URL, SOURCE_URL]
+    assert body["total"] == 1
+    assert body["succeeded"] == 1
+    assert body["failed"] == 0
+    assert body["results"][0]["status"] == "synced"
+    assert body["results"][0]["track_count"] == 2
+    assert body["results"][0]["added"] == 1
 
 
 def test_import_soundcloud_playlist_missing_environment_returns_404(
