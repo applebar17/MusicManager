@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { EnvironmentPanel } from "../features/environments/EnvironmentPanel";
+import { ExportPanel } from "../features/export/ExportPanel";
 import { MatchingPanel } from "../features/matching/MatchingPanel";
 import { PlaylistPanel } from "../features/playlists/PlaylistPanel";
 import { ApiError, apiGet } from "../shared/api/http";
@@ -53,6 +54,8 @@ export function Dashboard() {
         <PlaylistPanel />
       ) : activeView === "matching" ? (
         <MatchingPanel />
+      ) : activeView === "export" ? (
+        <ExportPanel />
       ) : (
         <EnvironmentPanel />
       )}
