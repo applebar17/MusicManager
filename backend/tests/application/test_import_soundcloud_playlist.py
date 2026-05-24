@@ -239,9 +239,11 @@ def test_zero_track_import_raises_validation_error(sqlite_connection: sqlite3.Co
     )
     importer = FakeSoundCloudImporter([_playlist(())])
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as error:
         _use_case(repositories, importer).execute("env_1", SOURCE_URL)
 
+    assert error.value.code == "soundcloud_playlist_no_tracks"
+    assert "make it public" in error.value.message
     assert repositories.remote_playlists.get_by_source_url("soundcloud", SOURCE_URL) is None
 
 

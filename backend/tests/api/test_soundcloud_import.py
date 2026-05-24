@@ -111,6 +111,13 @@ def test_import_soundcloud_playlist_zero_tracks_returns_400(
     )
 
     assert response.status_code == 400
+    assert response.json() == {
+        "code": "soundcloud_playlist_no_tracks",
+        "message": (
+            "No tracks were found for this SoundCloud playlist. If the playlist is private, "
+            "make it public and try again."
+        ),
+    }
 
 
 def test_imported_playlist_survives_app_recreation(

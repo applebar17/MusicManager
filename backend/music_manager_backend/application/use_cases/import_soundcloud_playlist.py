@@ -58,7 +58,11 @@ class ImportSoundCloudPlaylist:
 
         parsed = self.importer.import_playlist(url)
         if not parsed.tracks:
-            raise ValidationError("SoundCloud playlist import did not discover any tracks")
+            raise ValidationError(
+                "No tracks were found for this SoundCloud playlist. If the playlist is private, "
+                "make it public and try again.",
+                code="soundcloud_playlist_no_tracks",
+            )
 
         playlist_name = parsed.title or parsed.source_url
         remote_playlist = self._save_remote_playlist(parsed, playlist_name)

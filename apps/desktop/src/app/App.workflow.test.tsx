@@ -55,6 +55,8 @@ describe("desktop v1 workflow", () => {
 
     expect(await screen.findByText("Wave 6 Smoke")).toBeInTheDocument();
     expect(await screen.findByText("Smoke Track")).toBeInTheDocument();
+    expect(screen.getByLabelText("SoundCloud playlist URL")).toHaveValue("");
+    expect(screen.queryByText("soundcloud_api_enrichment_used")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /matching review/i }));
     expect(await screen.findByText("Resolve track mismatches and map ambiguous candidates.")).toBeInTheDocument();
@@ -160,7 +162,7 @@ function mockFetch() {
         sync_snapshot_id: "snapshot_1",
         track_count: 1,
         unchanged: 0,
-        warnings: [],
+        warnings: ["soundcloud_api_enrichment_used"],
       });
     }
 

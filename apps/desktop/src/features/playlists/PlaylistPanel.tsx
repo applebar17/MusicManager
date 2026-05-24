@@ -128,6 +128,7 @@ export function PlaylistPanel() {
     try {
       const result = await importSoundCloudPlaylist(selectedEnvironmentId, url);
       setImportResult(result);
+      setImportUrl("");
       const items = await listPlaylists(selectedEnvironmentId);
       setPlaylists(items);
       selectPlaylist(result.playlist_id);
@@ -315,6 +316,8 @@ function ImportPanel({
 }
 
 function ImportResultSummary({ result }: { result: SoundCloudPlaylistImportResult }) {
+  const warningMessages = importWarningMessages(result.warnings);
+
   return (
     <div className="import-result">
       <div className="import-result__summary">
@@ -327,14 +330,58 @@ function ImportResultSummary({ result }: { result: SoundCloudPlaylistImportResul
         <span>{formatNumber(result.reordered)} reordered</span>
         <span>{formatNumber(result.metadata_changed)} metadata changed</span>
       </div>
-      {result.warnings.length > 0 ? (
+      {warningMessages.length > 0 ? (
         <div className="import-result__warnings">
           <AlertTriangle size={15} />
-          <span>{result.warnings.join(" ")}</span>
+          <span>{warningMessages.join(" ")}</span>
         </div>
       ) : null}
     </div>
   );
+}
+
+function importWarningMessages(warnings: readonly string[]) {
+  const warningSet = new Set(warnings);
+  const messages: string[] = [];
+  const hadIncompleteHydration = warnings.some(
+    (warning) =>
+      warning.startsWith("soundcloud_hydration_track_") ||
+      warning === "soundcloud_hydration_incomplete_track_data",
+  );
+  const handledWarnings = new Set<string>(["soundcloud_api_enrichment_used"]);
+
+  if (
+    warningSet.has("soundcloud_public_html_no_track_rows") ||
+    warningSet.has("soundcloud_api_enrichment_failed") ||
+    (hadIncompleteHydration && !warningSet.has("soundcloud_api_enrichment_used"))
+  ) {
+    messages.push(
+      "SoundCloud only exposed part of this playlist. If tracks are missing, make sure the playlist is public and try syncing again.",
+    );
+  }
+
+  if (warningSet.has("soundcloud_public_html_missing_playlist_title")) {
+    messages.push(
+      "SoundCloud did not expose the playlist title, so the saved name may use a fallback.",
+    );
+  }
+
+  for (const warning of warnings) {
+    if (
+      handledWarnings.has(warning) ||
+      warning.startsWith("soundcloud_hydration_track_") ||
+      warning === "soundcloud_hydration_incomplete_track_data" ||
+      warning === "soundcloud_public_html_no_track_rows" ||
+      warning === "soundcloud_api_enrichment_failed" ||
+      warning === "soundcloud_public_html_missing_playlist_title"
+    ) {
+      continue;
+    }
+    messages.push("Some optional SoundCloud metadata was unavailable.");
+    break;
+  }
+
+  return [...new Set(messages)];
 }
 
 type PlaylistDetailViewProps = {
