@@ -1,12 +1,16 @@
 import { createContext, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+export type AppView = "dashboard" | "playlists" | "matching" | "export" | "settings";
+
 type AppSelection = {
+  activeView: AppView;
   selectedEnvironmentId: string | null;
   selectedPlaylistId: string | null;
 };
 
 type AppStateContextValue = AppSelection & {
+  selectView: (view: AppView) => void;
   selectEnvironment: (environmentId: string | null) => void;
   selectPlaylist: (playlistId: string | null) => void;
 };
@@ -19,6 +23,7 @@ type AppStateProviderProps = {
 
 export function AppStateProvider({ children }: AppStateProviderProps) {
   const [selection, setSelection] = useState<AppSelection>({
+    activeView: "dashboard",
     selectedEnvironmentId: null,
     selectedPlaylistId: null,
   });
@@ -26,17 +31,28 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
   const value = useMemo<AppStateContextValue>(
     () => ({
       ...selection,
+      selectView: (view) => {
+        setSelection((current) =>
+          current.activeView === view ? current : { ...current, activeView: view },
+        );
+      },
       selectEnvironment: (environmentId) => {
-        setSelection({
-          selectedEnvironmentId: environmentId,
-          selectedPlaylistId: null,
-        });
+        setSelection((current) =>
+          current.selectedEnvironmentId === environmentId && current.selectedPlaylistId === null
+            ? current
+            : {
+                ...current,
+                selectedEnvironmentId: environmentId,
+                selectedPlaylistId: null,
+              },
+        );
       },
       selectPlaylist: (playlistId) => {
-        setSelection((current) => ({
-          ...current,
-          selectedPlaylistId: playlistId,
-        }));
+        setSelection((current) =>
+          current.selectedPlaylistId === playlistId
+            ? current
+            : { ...current, selectedPlaylistId: playlistId },
+        );
       },
     }),
     [selection],
