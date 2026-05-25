@@ -53,6 +53,12 @@ def test_apply_export_plan_writes_expected_files_and_results(
                 target_path=root / "Set" / "001 - Track.mp3",
             ),
             ExportPlanItem(
+                action=ExportAction.KEEP_EXISTING,
+                source_path=source,
+                target_path=source,
+                reason="already present",
+            ),
+            ExportPlanItem(
                 action=ExportAction.REMOVE_STALE_COPY,
                 target_path=stale,
             ),
@@ -73,6 +79,7 @@ def test_apply_export_plan_writes_expected_files_and_results(
     assert source.exists()
     assert apply_run.status == ExportApplyRunStatus.COMPLETED
     assert [item.status for item in apply_run.item_results] == [
+        ExportApplyItemStatus.SUCCEEDED,
         ExportApplyItemStatus.SUCCEEDED,
         ExportApplyItemStatus.SUCCEEDED,
         ExportApplyItemStatus.SUCCEEDED,

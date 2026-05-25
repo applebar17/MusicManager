@@ -358,6 +358,12 @@ def test_export_plan_repository_round_trips_items(sqlite_connection: sqlite3.Con
                 target_path=Path("/target/Playlist/track.mp3"),
             ),
             ExportPlanItem(
+                action=ExportAction.KEEP_EXISTING,
+                source_path=Path("/source/already.mp3"),
+                target_path=Path("/target/Playlist/already.mp3"),
+                reason="matched audio is already in this playlist folder",
+            ),
+            ExportPlanItem(
                 action=ExportAction.REMOVE_STALE_COPY,
                 target_path=Path("/target/Playlist/stale.mp3"),
                 reason="stale app-owned export copy",

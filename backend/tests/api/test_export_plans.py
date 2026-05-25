@@ -105,7 +105,7 @@ def test_apply_export_plan_streams_results_and_persists_run(
     assert body["export_plan_id"] == create_response.json()["export_plan_id"]
     assert body["status"] == "completed"
     assert body["counts"]["succeeded"] >= 1
-    assert (root / "Set" / "001 - Artist - Track.mp3").read_bytes() == b"audio"
+    assert (root / "Set" / "track.mp3").read_bytes() == b"audio"
     assert container.export_apply_run_repository.get(body["apply_run_id"]) is not None
 
 

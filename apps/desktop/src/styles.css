@@ -2066,6 +2066,15 @@ button {
   color: var(--color-secondary-fixed);
 }
 
+.export-action-card--keep {
+  border-color: rgba(172, 199, 255, 0.18);
+}
+
+.export-action-card--keep strong,
+.export-action-card--keep > svg {
+  color: var(--color-primary);
+}
+
 .export-action-card--create {
   border-color: rgba(172, 199, 255, 0.25);
 }
@@ -2180,6 +2189,11 @@ button {
 .export-action-badge--copy {
   background: rgba(78, 222, 163, 0.12);
   color: var(--color-secondary-fixed);
+}
+
+.export-action-badge--keep {
+  background: rgba(172, 199, 255, 0.1);
+  color: var(--color-primary);
 }
 
 .export-action-badge--create {

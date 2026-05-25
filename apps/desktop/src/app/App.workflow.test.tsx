@@ -332,7 +332,7 @@ function exportPlan() {
         action: "copy_file",
         reason: null,
         source_path: "/Volumes/USB/smoke-track-candidate.mp3",
-        target_path: "/Volumes/USB/Wave 6 Smoke/001 - Smoke Artist - Smoke Track.mp3",
+        target_path: "/Volumes/USB/Wave 6 Smoke/smoke-track-candidate.mp3",
       },
     ],
   };
@@ -363,7 +363,7 @@ function applyRun() {
         error_message: null,
         source_path: "/Volumes/USB/smoke-track-candidate.mp3",
         status: "succeeded",
-        target_path: "/Volumes/USB/Wave 6 Smoke/001 - Smoke Artist - Smoke Track.mp3",
+        target_path: "/Volumes/USB/Wave 6 Smoke/smoke-track-candidate.mp3",
       },
     ],
     status: "completed",

@@ -54,9 +54,7 @@ def test_export_plan_creates_folders_and_copy_items(
     assert [item.action for item in plan.items].count(ExportAction.CREATE_FOLDER) == 3
     copy_items = [item for item in plan.items if item.action == ExportAction.COPY_FILE]
     assert copy_items[0].source_path == source
-    assert copy_items[0].target_path == root / "Set" / (
-        "001 - Artist - Track.mp3"
-    )
+    assert copy_items[0].target_path == root / "Set" / "source.mp3"
     assert not (root / ".music_manager").exists()
     assert not (root / "Set").exists()
 
@@ -106,9 +104,47 @@ def test_export_plan_duplicates_shared_songs_per_playlist(
         if item.action == ExportAction.COPY_FILE
     ]
     assert copy_targets == [
-        root / "A" / "001 - Artist - Shared.mp3",
-        root / "B" / "001 - Artist - Shared.mp3",
+        root / "A" / "shared.mp3",
+        root / "B" / "shared.mp3",
     ]
+
+
+def test_export_plan_keeps_file_already_in_playlist_folder(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = root / "Set" / "already-there.mp3"
+    source.parent.mkdir()
+    source.write_bytes(b"audio")
+    repositories.songs.save(SongMaster(id="song_1", title="Track", artist="Artist"))
+    repositories.audio_files.save(_audio_file("file_1", source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="metadata_exact",
+            confidence=0.95,
+        )
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    keep_items = [item for item in plan.items if item.action == ExportAction.KEEP_EXISTING]
+    assert keep_items[0].source_path == source
+    assert keep_items[0].target_path == source
+    assert keep_items[0].reason == "matched audio is already in this playlist folder"
+    assert not [item for item in plan.items if item.action == ExportAction.COPY_FILE]
 
 
 def test_export_plan_skips_missing_and_ambiguous_tracks(
@@ -253,8 +289,46 @@ def test_export_plan_preserves_deprecated_matched_songs(
 
     deprecated = [item for item in plan.items if item.action == ExportAction.PRESERVE_DEPRECATED]
     assert deprecated[0].source_path == source
-    assert deprecated[0].target_path == root / ".music_manager" / "_deprecated" / (
-        "Artist - Old.mp3"
+    assert deprecated[0].target_path == root / ".music_manager" / "_deprecated" / "old.mp3"
+
+
+def test_export_plan_keeps_existing_deprecated_backup(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = _source_file(root, "old.mp3")
+    backup = root / ".music_manager" / "_deprecated" / "old.mp3"
+    backup.parent.mkdir(parents=True)
+    backup.write_bytes(b"backup")
+    repositories.songs.save(SongMaster(id="song_1", title="Old", artist="Artist"))
+    repositories.audio_files.save(_audio_file("file_1", source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1, remote_membership_active=False),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    keep_items = [item for item in plan.items if item.action == ExportAction.KEEP_EXISTING]
+    assert keep_items[0].target_path == backup
+    assert keep_items[0].reason == (
+        "song no longer belongs to any active playlist; deprecated backup already exists"
     )
 
 

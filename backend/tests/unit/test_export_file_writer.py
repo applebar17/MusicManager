@@ -94,3 +94,20 @@ def test_writer_rejects_non_manifest_stale_copy(tmp_path: Path) -> None:
             MusicEnvironment(id="env_1", name="USB", root_path=root),
             target,
         )
+
+
+def test_writer_keeps_existing_file_without_modifying_it(tmp_path: Path) -> None:
+    root = tmp_path / "usb"
+    root.mkdir()
+    target = root / "Set" / "track.mp3"
+    target.parent.mkdir()
+    target.write_bytes(b"existing")
+    environment = MusicEnvironment(id="env_1", name="USB", root_path=root)
+
+    ExportFileWriter().apply_item(
+        environment=environment,
+        item=ExportPlanItem(action=ExportAction.KEEP_EXISTING, target_path=target),
+        active_source_paths=set(),
+    )
+
+    assert target.read_bytes() == b"existing"

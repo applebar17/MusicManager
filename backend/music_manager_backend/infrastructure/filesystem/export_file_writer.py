@@ -76,6 +76,17 @@ class ExportFileWriter:
             raise ValidationError(f"Stale export target is a directory: {target_path}")
         target.unlink()
 
+    def keep_existing(self, environment: MusicEnvironment, target_path: Path) -> None:
+        target = _validate_target_inside_export_root(
+            environment,
+            target_path,
+            allow_metadata=True,
+        )
+        if not target.exists():
+            raise ValidationError(f"Existing export target no longer exists: {target_path}")
+        if not target.is_file():
+            raise ValidationError(f"Existing export target is not a file: {target_path}")
+
     def apply_item(
         self,
         *,
@@ -98,6 +109,9 @@ class ExportFileWriter:
         if item.action == ExportAction.REMOVE_STALE_COPY:
             self.remove_stale_copy(environment, item.target_path)
             return
+        if item.action == ExportAction.KEEP_EXISTING:
+            self.keep_existing(environment, item.target_path)
+            return
         if item.action == ExportAction.SKIP:
             return
         raise ValidationError(f"Unsupported export action: {item.action.value}")
@@ -117,6 +131,12 @@ def _validate_plan_item_target(environment: MusicEnvironment, item: ExportPlanIt
         )
     if item.action == ExportAction.PRESERVE_DEPRECATED:
         return _validate_deprecated_target(environment, item.target_path)
+    if item.action == ExportAction.KEEP_EXISTING:
+        return _validate_target_inside_export_root(
+            environment,
+            item.target_path,
+            allow_metadata=True,
+        )
     return _validate_target_inside_export_root(
         environment,
         item.target_path,

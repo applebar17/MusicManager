@@ -35,6 +35,7 @@ import { applyExportPlan, createExportPlan, getExportApplyRun, getExportPlan } f
 
 const EXPORT_ACTIONS: ExportAction[] = [
   "copy_file",
+  "keep_existing",
   "create_folder",
   "remove_stale_copy",
   "preserve_deprecated",
@@ -718,7 +719,13 @@ function ExportActionRow({
         ) : null}
       </td>
       <td className="export-action-flow">
-        {item.action === "skip" ? <Ban size={15} /> : <ArrowRight size={15} />}
+        {item.action === "skip" ? (
+          <Ban size={15} />
+        ) : item.action === "keep_existing" ? (
+          <CheckCircle2 size={15} />
+        ) : (
+          <ArrowRight size={15} />
+        )}
       </td>
       <td>
         <span
@@ -778,7 +785,7 @@ function applyItemStatusMeta(status: ExportApplyItemStatus): {
 function actionMeta(action: ExportAction): {
   countLabel: string;
   shortLabel: string;
-  tone: "copy" | "create" | "remove" | "preserve" | "skip";
+  tone: "copy" | "create" | "keep" | "remove" | "preserve" | "skip";
   icon: ReactNode;
 } {
   if (action === "copy_file") {
@@ -787,6 +794,14 @@ function actionMeta(action: ExportAction): {
       shortLabel: "Copy",
       tone: "copy",
       icon: <Copy size={16} />,
+    };
+  }
+  if (action === "keep_existing") {
+    return {
+      countLabel: "Already in Place",
+      shortLabel: "Keep",
+      tone: "keep",
+      icon: <CheckCircle2 size={16} />,
     };
   }
   if (action === "create_folder") {

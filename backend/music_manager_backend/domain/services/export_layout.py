@@ -40,15 +40,15 @@ class ExportLayout:
         song: SongMaster,
         audio_file: AudioFile,
     ) -> Path:
-        filename = sanitize_path_part(
-            f"{position:03d} - {_artist(song)} - {song.display_title}",
-        )
+        _ = (position, song)
+        filename = sanitize_path_part(audio_file.path.stem)
         target = folder / f"{filename}{audio_file.path.suffix}"
         used_paths = self._used_track_paths.setdefault(folder, set())
         return self._ensure_export_root(unique_path(target, used_paths))
 
     def deprecated_target(self, *, song: SongMaster, audio_file: AudioFile) -> Path:
-        filename = sanitize_path_part(f"{_artist(song)} - {song.display_title}")
+        _ = song
+        filename = sanitize_path_part(audio_file.path.stem)
         used_paths = self._used_track_paths.setdefault(self.deprecated_folder, set())
         return self._ensure_export_root(
             unique_path(self.deprecated_folder / f"{filename}{audio_file.path.suffix}", used_paths)
@@ -60,7 +60,3 @@ class ExportLayout:
         if not resolved.is_relative_to(export_root):
             raise ValidationError(f"Export target path is outside environment root: {path}")
         return path
-
-
-def _artist(song: SongMaster) -> str:
-    return song.display_artist or "Unknown Artist"

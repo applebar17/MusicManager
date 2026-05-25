@@ -89,20 +89,15 @@ class PlanExport:
                             )
                         )
                         continue
-                    target = layout.track_target(
+                    item = _copy_or_keep_item(
                         folder=folder,
                         position=playlist_item.position,
                         song=song,
                         audio_file=accepted_file,
+                        layout=layout,
                     )
-                    planned_copy_targets.add(target)
-                    items.append(
-                        ExportPlanItem(
-                            action=ExportAction.COPY_FILE,
-                            source_path=accepted_file.path,
-                            target_path=target,
-                        )
-                    )
+                    planned_copy_targets.add(item.target_path)
+                    items.append(item)
                     continue
                 items.append(
                     ExportPlanItem(
@@ -259,11 +254,81 @@ def _deprecated_items(
         if accepted_file is None:
             continue
         items.append(
-            ExportPlanItem(
-                action=ExportAction.PRESERVE_DEPRECATED,
-                source_path=accepted_file.path,
-                target_path=layout.deprecated_target(song=song, audio_file=accepted_file),
-                reason="song no longer belongs to any active playlist",
+            _deprecated_copy_or_keep_item(
+                song=song,
+                audio_file=accepted_file,
+                layout=layout,
             )
         )
     return items
+
+
+def _copy_or_keep_item(
+    *,
+    folder: Path,
+    position: int,
+    song: SongMaster,
+    audio_file: AudioFile,
+    layout: ExportLayout,
+) -> ExportPlanItem:
+    source = audio_file.path
+    source_parent = source.parent.resolve(strict=False)
+    folder_resolved = folder.resolve(strict=False)
+    if source_parent == folder_resolved:
+        return ExportPlanItem(
+            action=ExportAction.KEEP_EXISTING,
+            source_path=source,
+            target_path=source,
+            reason="matched audio is already in this playlist folder",
+        )
+
+    target = layout.track_target(
+        folder=folder,
+        position=position,
+        song=song,
+        audio_file=audio_file,
+    )
+    if target.exists() and target.is_file():
+        return ExportPlanItem(
+            action=ExportAction.KEEP_EXISTING,
+            source_path=source,
+            target_path=target,
+            reason="matching filename already exists in this playlist folder",
+        )
+
+    return ExportPlanItem(
+        action=ExportAction.COPY_FILE,
+        source_path=source,
+        target_path=target,
+    )
+
+
+def _deprecated_copy_or_keep_item(
+    *,
+    song: SongMaster,
+    audio_file: AudioFile,
+    layout: ExportLayout,
+) -> ExportPlanItem:
+    source = audio_file.path
+    target = layout.deprecated_target(song=song, audio_file=audio_file)
+    reason = "song no longer belongs to any active playlist"
+    if source.resolve(strict=False).is_relative_to(layout.deprecated_folder.resolve(strict=False)):
+        return ExportPlanItem(
+            action=ExportAction.KEEP_EXISTING,
+            source_path=source,
+            target_path=source,
+            reason=f"{reason}; already preserved in deprecated folder",
+        )
+    if target.exists() and target.is_file():
+        return ExportPlanItem(
+            action=ExportAction.KEEP_EXISTING,
+            source_path=source,
+            target_path=target,
+            reason=f"{reason}; deprecated backup already exists",
+        )
+    return ExportPlanItem(
+        action=ExportAction.PRESERVE_DEPRECATED,
+        source_path=source,
+        target_path=target,
+        reason=reason,
+    )
