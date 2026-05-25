@@ -13,6 +13,7 @@ from music_manager_backend.domain.entities import (
     MusicEnvironment,
 )
 from music_manager_backend.domain.entities.export_plan import ExportAction
+from music_manager_backend.infrastructure.filesystem import update_export_manifest
 from music_manager_backend.infrastructure.persistence import (
     SqliteAudioFileRepository,
     SqliteEnvironmentRepository,
@@ -29,9 +30,10 @@ def test_apply_export_plan_writes_expected_files_and_results(
     repositories = _repositories(sqlite_connection)
     root = _seed_environment(repositories, tmp_path)
     source = _source_file(root, "track.mp3", b"playlist audio")
-    stale = root / "_music_manager_export" / "Set" / "stale.mp3"
+    stale = root / "Set" / "stale.mp3"
     stale.parent.mkdir(parents=True)
     stale.write_bytes(b"stale")
+    update_export_manifest(root_path=root, add_targets={stale}, remove_targets=set())
     repositories.audio_files.save(_audio_file("file_1", source))
     plan = ExportPlan(
         id="plan_1",
@@ -39,16 +41,16 @@ def test_apply_export_plan_writes_expected_files_and_results(
         items=(
             ExportPlanItem(
                 action=ExportAction.CREATE_FOLDER,
-                target_path=root / "_music_manager_export",
+                target_path=root / ".music_manager",
             ),
             ExportPlanItem(
                 action=ExportAction.CREATE_FOLDER,
-                target_path=root / "_music_manager_export" / "Set",
+                target_path=root / "Set",
             ),
             ExportPlanItem(
                 action=ExportAction.COPY_FILE,
                 source_path=source,
-                target_path=root / "_music_manager_export" / "Set" / "001 - Track.mp3",
+                target_path=root / "Set" / "001 - Track.mp3",
             ),
             ExportPlanItem(
                 action=ExportAction.REMOVE_STALE_COPY,
@@ -56,7 +58,7 @@ def test_apply_export_plan_writes_expected_files_and_results(
             ),
             ExportPlanItem(
                 action=ExportAction.SKIP,
-                target_path=root / "_music_manager_export" / "Set",
+                target_path=root / "Set",
                 reason="missing audio",
             ),
         ),
@@ -65,7 +67,7 @@ def test_apply_export_plan_writes_expected_files_and_results(
 
     apply_run = _apply_export_plan(repositories).execute("env_1", "plan_1")
 
-    copied = root / "_music_manager_export" / "Set" / "001 - Track.mp3"
+    copied = root / "Set" / "001 - Track.mp3"
     assert copied.read_bytes() == b"playlist audio"
     assert not stale.exists()
     assert source.exists()
@@ -89,7 +91,7 @@ def test_apply_export_plan_records_partial_failures_and_continues(
     source = _source_file(root, "track.mp3", b"audio")
     repositories.audio_files.save(_audio_file("file_1", source))
     missing_source = root / "missing.mp3"
-    good_target = root / "_music_manager_export" / "Set" / "good.mp3"
+    good_target = root / "Set" / "good.mp3"
     plan = ExportPlan(
         id="plan_1",
         environment_id="env_1",
@@ -97,7 +99,7 @@ def test_apply_export_plan_records_partial_failures_and_continues(
             ExportPlanItem(
                 action=ExportAction.COPY_FILE,
                 source_path=missing_source,
-                target_path=root / "_music_manager_export" / "Set" / "bad.mp3",
+                target_path=root / "Set" / "bad.mp3",
             ),
             ExportPlanItem(
                 action=ExportAction.COPY_FILE,
@@ -123,7 +125,9 @@ def test_apply_export_plan_is_idempotent_for_existing_outputs(
     repositories = _repositories(sqlite_connection)
     root = _seed_environment(repositories, tmp_path)
     source = _source_file(root, "track.mp3", b"fresh audio")
-    target = root / "_music_manager_export" / "Set" / "track.mp3"
+    target = root / "Set" / "track.mp3"
+    stale_target = root / "Set" / "gone.mp3"
+    update_export_manifest(root_path=root, add_targets={stale_target}, remove_targets=set())
     repositories.audio_files.save(_audio_file("file_1", source))
     repositories.export_plans.save(
         ExportPlan(
@@ -141,7 +145,7 @@ def test_apply_export_plan_is_idempotent_for_existing_outputs(
                 ),
                 ExportPlanItem(
                     action=ExportAction.REMOVE_STALE_COPY,
-                    target_path=root / "_music_manager_export" / "Set" / "gone.mp3",
+                    target_path=stale_target,
                 ),
             ),
         )
@@ -171,7 +175,7 @@ def test_apply_export_plan_rejects_wrong_environment(
             items=(
                 ExportPlanItem(
                     action=ExportAction.CREATE_FOLDER,
-                    target_path=root / "_music_manager_export",
+                    target_path=root / ".music_manager",
                 ),
             ),
         )

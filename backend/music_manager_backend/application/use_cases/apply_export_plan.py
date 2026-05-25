@@ -1,3 +1,5 @@
+import logging
+
 from music_manager_backend.domain.entities import (
     AudioFileStatus,
     ExportApplyItemResult,
@@ -6,7 +8,7 @@ from music_manager_backend.domain.entities import (
     ExportApplyRunStatus,
 )
 from music_manager_backend.domain.entities.export_plan import ExportAction
-from music_manager_backend.infrastructure.filesystem import ExportFileWriter
+from music_manager_backend.infrastructure.filesystem import ExportFileWriter, update_export_manifest
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
@@ -16,6 +18,8 @@ from music_manager_backend.ports.repositories import (
 from music_manager_backend.shared.errors import MusicManagerError, NotFoundError, ValidationError
 from music_manager_backend.shared.ids import new_id
 from music_manager_backend.shared.time import utc_now_iso
+
+logger = logging.getLogger(__name__)
 
 
 class ApplyExportPlan:
@@ -56,6 +60,8 @@ class ApplyExportPlan:
         }
 
         results: list[ExportApplyItemResult] = []
+        manifest_add_targets = set()
+        manifest_remove_targets = set()
         started_at = utc_now_iso()
         for item in plan.items:
             created_at = utc_now_iso()
@@ -103,6 +109,10 @@ class ApplyExportPlan:
                     )
                 )
             else:
+                if item.action in {ExportAction.COPY_FILE, ExportAction.PRESERVE_DEPRECATED}:
+                    manifest_add_targets.add(item.target_path)
+                elif item.action == ExportAction.REMOVE_STALE_COPY:
+                    manifest_remove_targets.add(item.target_path)
                 results.append(
                     ExportApplyItemResult(
                         action=item.action,
@@ -123,6 +133,14 @@ class ApplyExportPlan:
             item_results=tuple(results),
         )
         self.apply_runs.save(apply_run)
+        try:
+            update_export_manifest(
+                root_path=environment.root_path,
+                add_targets=manifest_add_targets,
+                remove_targets=manifest_remove_targets,
+            )
+        except OSError:
+            logger.warning("Failed to update export manifest", exc_info=True)
         return apply_run
 
 

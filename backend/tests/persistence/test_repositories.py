@@ -360,7 +360,7 @@ def test_export_plan_repository_round_trips_items(sqlite_connection: sqlite3.Con
             ExportPlanItem(
                 action=ExportAction.REMOVE_STALE_COPY,
                 target_path=Path("/target/Playlist/stale.mp3"),
-                reason="stale managed export copy",
+                reason="stale app-owned export copy",
             ),
             ExportPlanItem(
                 action=ExportAction.PRESERVE_DEPRECATED,

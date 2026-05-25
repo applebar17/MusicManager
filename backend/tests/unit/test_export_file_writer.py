@@ -4,7 +4,7 @@ import pytest
 
 from music_manager_backend.domain.entities import MusicEnvironment
 from music_manager_backend.domain.entities.export_plan import ExportAction, ExportPlanItem
-from music_manager_backend.infrastructure.filesystem import ExportFileWriter
+from music_manager_backend.infrastructure.filesystem import ExportFileWriter, update_export_manifest
 from music_manager_backend.shared.errors import ValidationError
 
 
@@ -13,7 +13,7 @@ def test_writer_creates_folders_and_replaces_managed_copies(tmp_path: Path) -> N
     root.mkdir()
     source = root / "source.mp3"
     source.write_bytes(b"new audio")
-    target = root / "_music_manager_export" / "Set" / "track.mp3"
+    target = root / "Set" / "track.mp3"
     target.parent.mkdir(parents=True)
     target.write_bytes(b"old audio")
     environment = MusicEnvironment(id="env_1", name="USB", root_path=root)
@@ -34,7 +34,8 @@ def test_writer_creates_folders_and_replaces_managed_copies(tmp_path: Path) -> N
 def test_writer_treats_missing_stale_file_as_success(tmp_path: Path) -> None:
     root = tmp_path / "usb"
     root.mkdir()
-    target = root / "_music_manager_export" / "Set" / "missing.mp3"
+    target = root / "Set" / "missing.mp3"
+    update_export_manifest(root_path=root, add_targets={target}, remove_targets=set())
 
     ExportFileWriter().remove_stale_copy(
         MusicEnvironment(id="env_1", name="USB", root_path=root),
@@ -44,28 +45,27 @@ def test_writer_treats_missing_stale_file_as_success(tmp_path: Path) -> None:
     assert not target.exists()
 
 
-def test_writer_rejects_target_outside_managed_root(tmp_path: Path) -> None:
+def test_writer_rejects_target_outside_environment_root(tmp_path: Path) -> None:
     root = tmp_path / "usb"
     root.mkdir()
+    outside = tmp_path / "outside.mp3"
     environment = MusicEnvironment(id="env_1", name="USB", root_path=root)
     item = ExportPlanItem(
         action=ExportAction.COPY_FILE,
         source_path=root / "source.mp3",
-        target_path=root / "outside.mp3",
+        target_path=outside,
     )
 
     with pytest.raises(ValidationError):
         ExportFileWriter().validate_plan_targets(environment=environment, items=(item,))
 
 
-def test_writer_rejects_symlink_escape_from_managed_root(tmp_path: Path) -> None:
+def test_writer_rejects_symlink_escape_from_environment_root(tmp_path: Path) -> None:
     root = tmp_path / "usb"
     outside = tmp_path / "outside"
     root.mkdir()
     outside.mkdir()
-    managed = root / "_music_manager_export"
-    managed.mkdir()
-    escape = managed / "escape"
+    escape = root / "escape"
     try:
         escape.symlink_to(outside, target_is_directory=True)
     except OSError:
@@ -80,3 +80,17 @@ def test_writer_rejects_symlink_escape_from_managed_root(tmp_path: Path) -> None
 
     with pytest.raises(ValidationError):
         ExportFileWriter().validate_plan_targets(environment=environment, items=(item,))
+
+
+def test_writer_rejects_non_manifest_stale_copy(tmp_path: Path) -> None:
+    root = tmp_path / "usb"
+    root.mkdir()
+    target = root / "Set" / "user-file.mp3"
+    target.parent.mkdir()
+    target.write_bytes(b"user audio")
+
+    with pytest.raises(ValidationError):
+        ExportFileWriter().remove_stale_copy(
+            MusicEnvironment(id="env_1", name="USB", root_path=root),
+            target,
+        )

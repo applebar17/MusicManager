@@ -11,6 +11,7 @@ from music_manager_backend.domain.entities import (
     SongMaster,
 )
 from music_manager_backend.domain.entities.export_plan import ExportAction
+from music_manager_backend.infrastructure.filesystem import update_export_manifest
 from music_manager_backend.infrastructure.persistence import (
     SqliteAudioFileRepository,
     SqliteEnvironmentRepository,
@@ -53,10 +54,11 @@ def test_export_plan_creates_folders_and_copy_items(
     assert [item.action for item in plan.items].count(ExportAction.CREATE_FOLDER) == 3
     copy_items = [item for item in plan.items if item.action == ExportAction.COPY_FILE]
     assert copy_items[0].source_path == source
-    assert copy_items[0].target_path == root / "_music_manager_export" / "Set" / (
+    assert copy_items[0].target_path == root / "Set" / (
         "001 - Artist - Track.mp3"
     )
-    assert not (root / "_music_manager_export").exists()
+    assert not (root / ".music_manager").exists()
+    assert not (root / "Set").exists()
 
 
 def test_export_plan_duplicates_shared_songs_per_playlist(
@@ -104,8 +106,8 @@ def test_export_plan_duplicates_shared_songs_per_playlist(
         if item.action == ExportAction.COPY_FILE
     ]
     assert copy_targets == [
-        root / "_music_manager_export" / "A" / "001 - Artist - Shared.mp3",
-        root / "_music_manager_export" / "B" / "001 - Artist - Shared.mp3",
+        root / "A" / "001 - Artist - Shared.mp3",
+        root / "B" / "001 - Artist - Shared.mp3",
     ]
 
 
@@ -144,9 +146,10 @@ def test_export_plan_detects_stale_files(
 ) -> None:
     repositories = _repositories(sqlite_connection)
     root = _seed_environment(repositories, tmp_path)
-    stale = root / "_music_manager_export" / "Set" / "stale.mp3"
+    stale = root / "Set" / "stale.mp3"
     stale.parent.mkdir(parents=True)
     stale.write_bytes(b"stale")
+    update_export_manifest(root_path=root, add_targets={stale}, remove_targets=set())
     _seed_playlist(
         repositories,
         playlist=Playlist(id="playlist_1", environment_id="env_1", name="Set"),
@@ -156,6 +159,28 @@ def test_export_plan_detects_stale_files(
 
     assert any(
         item.action == ExportAction.REMOVE_STALE_COPY and item.target_path == stale
+        for item in plan.items
+    )
+
+
+def test_export_plan_does_not_mark_unowned_root_files_as_stale(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    user_file = root / "Set" / "user-file.mp3"
+    user_file.parent.mkdir(parents=True)
+    user_file.write_bytes(b"user audio")
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(id="playlist_1", environment_id="env_1", name="Set"),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    assert not any(
+        item.action == ExportAction.REMOVE_STALE_COPY and item.target_path == user_file
         for item in plan.items
     )
 
@@ -192,7 +217,7 @@ def test_export_plan_preserves_deprecated_matched_songs(
 
     deprecated = [item for item in plan.items if item.action == ExportAction.PRESERVE_DEPRECATED]
     assert deprecated[0].source_path == source
-    assert deprecated[0].target_path == root / "_music_manager_export" / "_deprecated" / (
+    assert deprecated[0].target_path == root / ".music_manager" / "_deprecated" / (
         "Artist - Old.mp3"
     )
 

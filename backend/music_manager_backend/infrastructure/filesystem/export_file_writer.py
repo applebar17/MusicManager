@@ -5,7 +5,8 @@ from uuid import uuid4
 
 from music_manager_backend.domain.entities import MusicEnvironment
 from music_manager_backend.domain.entities.export_plan import ExportAction, ExportPlanItem
-from music_manager_backend.domain.services.export_layout import MANAGED_EXPORT_FOLDER_NAME
+from music_manager_backend.domain.services.export_layout import ExportLayout
+from music_manager_backend.infrastructure.filesystem.export_manifest import read_export_manifest
 from music_manager_backend.shared.errors import ValidationError
 
 
@@ -16,13 +17,15 @@ class ExportFileWriter:
         environment: MusicEnvironment,
         items: tuple[ExportPlanItem, ...],
     ) -> None:
-        managed_root = _managed_root(environment)
         for item in items:
-            _validate_target_inside_managed_root(item.target_path, managed_root)
+            _validate_plan_item_target(environment, item)
 
     def create_folder(self, environment: MusicEnvironment, target_path: Path) -> None:
-        managed_root = _managed_root(environment)
-        target = _validate_target_inside_managed_root(target_path, managed_root)
+        target = _validate_target_inside_export_root(
+            environment,
+            target_path,
+            allow_metadata=True,
+        )
         if target.exists() and not target.is_dir():
             raise ValidationError(f"Export folder target is not a directory: {target_path}")
         target.mkdir(parents=True, exist_ok=True)
@@ -34,13 +37,18 @@ class ExportFileWriter:
         source_path: Path | None,
         target_path: Path,
         active_source_paths: set[Path],
+        allow_metadata: bool = False,
     ) -> None:
         source = _validate_source_file(
             environment=environment,
             source_path=source_path,
             active_source_paths=active_source_paths,
         )
-        target = _validate_target_inside_managed_root(target_path, _managed_root(environment))
+        target = _validate_target_inside_export_root(
+            environment,
+            target_path,
+            allow_metadata=allow_metadata,
+        )
         if target.exists() and target.is_dir():
             raise ValidationError(f"Export copy target is a directory: {target_path}")
 
@@ -54,9 +62,16 @@ class ExportFileWriter:
                 temporary_path.unlink()
 
     def remove_stale_copy(self, environment: MusicEnvironment, target_path: Path) -> None:
-        target = _validate_target_inside_managed_root(target_path, _managed_root(environment))
+        target = _validate_target_inside_export_root(
+            environment,
+            target_path,
+            allow_metadata=False,
+        )
         if not target.exists():
             return
+        manifest = read_export_manifest(environment.root_path)
+        if target.resolve(strict=False) not in manifest.targets:
+            raise ValidationError(f"Stale export target is not app-owned: {target_path}")
         if target.is_dir():
             raise ValidationError(f"Stale export target is a directory: {target_path}")
         target.unlink()
@@ -77,6 +92,7 @@ class ExportFileWriter:
                 source_path=item.source_path,
                 target_path=item.target_path,
                 active_source_paths=active_source_paths,
+                allow_metadata=item.action == ExportAction.PRESERVE_DEPRECATED,
             )
             return
         if item.action == ExportAction.REMOVE_STALE_COPY:
@@ -87,18 +103,52 @@ class ExportFileWriter:
         raise ValidationError(f"Unsupported export action: {item.action.value}")
 
 
-def _managed_root(environment: MusicEnvironment) -> Path:
+def _export_root(environment: MusicEnvironment) -> Path:
     root = environment.root_path.resolve(strict=True)
-    managed_root = (environment.root_path / MANAGED_EXPORT_FOLDER_NAME).resolve(strict=False)
-    if not managed_root.is_relative_to(root):
-        raise ValidationError("Managed export root is outside environment root")
-    return managed_root
+    return root
 
 
-def _validate_target_inside_managed_root(target_path: Path, managed_root: Path) -> Path:
+def _validate_plan_item_target(environment: MusicEnvironment, item: ExportPlanItem) -> Path:
+    if item.action == ExportAction.CREATE_FOLDER:
+        return _validate_target_inside_export_root(
+            environment,
+            item.target_path,
+            allow_metadata=True,
+        )
+    if item.action == ExportAction.PRESERVE_DEPRECATED:
+        return _validate_deprecated_target(environment, item.target_path)
+    return _validate_target_inside_export_root(
+        environment,
+        item.target_path,
+        allow_metadata=False,
+    )
+
+
+def _validate_deprecated_target(environment: MusicEnvironment, target_path: Path) -> Path:
+    target = _validate_target_inside_export_root(
+        environment,
+        target_path,
+        allow_metadata=True,
+    )
+    deprecated_root = ExportLayout(environment).deprecated_folder.resolve(strict=False)
+    if not target.is_relative_to(deprecated_root):
+        raise ValidationError(f"Deprecated export target is outside metadata folder: {target_path}")
+    return target
+
+
+def _validate_target_inside_export_root(
+    environment: MusicEnvironment,
+    target_path: Path,
+    *,
+    allow_metadata: bool,
+) -> Path:
     target = target_path.resolve(strict=False)
-    if not target.is_relative_to(managed_root):
-        raise ValidationError(f"Export target path is outside managed export root: {target_path}")
+    export_root = _export_root(environment)
+    if not target.is_relative_to(export_root):
+        raise ValidationError(f"Export target path is outside environment root: {target_path}")
+    metadata_root = ExportLayout(environment).metadata_root.resolve(strict=False)
+    if not allow_metadata and target.is_relative_to(metadata_root):
+        raise ValidationError(f"Export target path is inside app metadata folder: {target_path}")
     return target
 
 

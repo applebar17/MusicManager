@@ -12,6 +12,7 @@ from music_manager_backend.domain.entities import (
 from music_manager_backend.domain.entities.export_plan import ExportAction
 from music_manager_backend.domain.services.export_layout import ExportLayout
 from music_manager_backend.domain.services.match_scoring import score_song_files
+from music_manager_backend.infrastructure.filesystem import read_export_manifest
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
@@ -57,7 +58,7 @@ class PlanExport:
         }
         layout = ExportLayout(environment)
         items: list[ExportPlanItem] = [
-            ExportPlanItem(action=ExportAction.CREATE_FOLDER, target_path=layout.managed_root),
+            ExportPlanItem(action=ExportAction.CREATE_FOLDER, target_path=layout.metadata_root),
             ExportPlanItem(action=ExportAction.CREATE_FOLDER, target_path=layout.deprecated_folder),
         ]
         planned_copy_targets: set[Path] = set()
@@ -181,23 +182,28 @@ def _stale_copy_items(
     layout: ExportLayout,
     planned_copy_targets: set[Path],
 ) -> list[ExportPlanItem]:
-    if not layout.managed_root.exists():
+    playlist_folders = [layout.playlist_folder(playlist) for playlist in selected_playlists]
+    if not playlist_folders:
         return []
 
-    playlist_folders = [layout.playlist_folder(playlist) for playlist in selected_playlists]
+    manifest = read_export_manifest(layout.environment.root_path)
+    planned_resolved = {target.resolve(strict=False) for target in planned_copy_targets}
     items: list[ExportPlanItem] = []
-    for folder in playlist_folders:
-        if not folder.exists():
+    folder_roots = [folder.resolve(strict=False) for folder in playlist_folders]
+    for path in sorted(manifest.targets):
+        if path in planned_resolved:
             continue
-        for path in sorted(item for item in folder.rglob("*") if item.is_file()):
-            if path not in planned_copy_targets:
-                items.append(
-                    ExportPlanItem(
-                        action=ExportAction.REMOVE_STALE_COPY,
-                        target_path=path,
-                        reason="stale managed export copy",
-                    )
-                )
+        if not any(path.is_relative_to(folder) for folder in folder_roots):
+            continue
+        if not path.exists() or not path.is_file():
+            continue
+        items.append(
+            ExportPlanItem(
+                action=ExportAction.REMOVE_STALE_COPY,
+                target_path=path,
+                reason="stale app-owned export copy",
+            )
+        )
     return items
 
 

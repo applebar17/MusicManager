@@ -116,7 +116,7 @@ def test_export_apply_run_lookup(api_client: TestClient) -> None:
         item_results=(
             ExportApplyItemResult(
                 action=ExportAction.CREATE_FOLDER,
-                target_path=Path("/Volumes/USB/_music_manager_export"),
+                target_path=Path("/Volumes/USB/.music_manager"),
                 status=ExportApplyItemStatus.SUCCEEDED,
                 created_at="2026-05-22T10:00:00+00:00",
             ),
@@ -210,9 +210,15 @@ def test_full_synchronous_desktop_api_flow(
     assert plan["counts"]["copy_file"] == 1
     assert apply_run["status"] == "completed"
     assert fetched_apply_run.status_code == 200
-    exported_files = list((root / "_music_manager_export").rglob("*.mp3"))
-    assert len(exported_files) == 1
-    assert exported_files[0].is_relative_to(root / "_music_manager_export")
+    copy_targets = [
+        Path(item["target_path"])
+        for item in plan["items"]
+        if item["action"] == "copy_file"
+    ]
+    assert len(copy_targets) == 1
+    assert copy_targets[0].read_bytes() == b"fake audio"
+    assert copy_targets[0].is_relative_to(root)
+    assert not copy_targets[0].is_relative_to(root / ".music_manager")
 
 
 def _container(api_client: TestClient) -> AppContainer:

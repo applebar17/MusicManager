@@ -471,7 +471,7 @@ function ExportActionCard({ action, count }: { action: ExportAction; count: numb
         <span>{meta.countLabel}</span>
       </div>
       {meta.icon}
-      {action === "remove_stale_copy" ? <em>Remove stale managed export copy</em> : null}
+      {action === "remove_stale_copy" ? <em>Remove stale app-owned export copy</em> : null}
     </article>
   );
 }
@@ -823,17 +823,21 @@ function actionMeta(action: ExportAction): {
 
 function planTargetRoot(plan: ExportPlanRead | null) {
   if (!plan) {
-    return "_music_manager_export";
+    return "Export target";
   }
-  const managedPath = plan.items
+  const metadataPath = plan.items
     .map((item) => item.target_path)
-    .find((targetPath) => targetPath.includes("_music_manager_export"));
-  if (!managedPath) {
-    return "Managed export folder";
+    .find((targetPath) => targetPath.includes(".music_manager"));
+  if (metadataPath) {
+    const marker = ".music_manager";
+    const markerIndex = metadataPath.indexOf(marker);
+    return metadataPath.slice(0, markerIndex).replace(/[\\/]+$/, "") || "/";
   }
-  const marker = "_music_manager_export";
-  const markerIndex = managedPath.indexOf(marker);
-  return managedPath.slice(0, markerIndex + marker.length);
+  const firstTarget = plan.items[0]?.target_path;
+  if (!firstTarget) {
+    return "Export target";
+  }
+  return firstTarget.replace(/[\\/][^\\/]*$/, "") || firstTarget;
 }
 
 function errorMessage(error: unknown) {

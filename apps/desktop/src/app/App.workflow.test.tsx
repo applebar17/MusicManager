@@ -309,7 +309,7 @@ function exportPlan() {
   return {
     counts: {
       copy_file: 1,
-      create_folder: 1,
+      create_folder: 2,
     },
     environment_id: "env_1",
     export_plan_id: "plan_1",
@@ -318,13 +318,19 @@ function exportPlan() {
         action: "create_folder",
         reason: null,
         source_path: null,
-        target_path: "/Volumes/USB/_music_manager_export/Wave 6 Smoke",
+        target_path: "/Volumes/USB/.music_manager",
+      },
+      {
+        action: "create_folder",
+        reason: null,
+        source_path: null,
+        target_path: "/Volumes/USB/Wave 6 Smoke",
       },
       {
         action: "copy_file",
         reason: null,
         source_path: "/Volumes/USB/smoke-track-candidate.mp3",
-        target_path: "/Volumes/USB/_music_manager_export/Wave 6 Smoke/001 - Smoke Artist - Smoke Track.mp3",
+        target_path: "/Volumes/USB/Wave 6 Smoke/001 - Smoke Artist - Smoke Track.mp3",
       },
     ],
   };
@@ -346,7 +352,7 @@ function applyRun() {
         error_message: null,
         source_path: null,
         status: "succeeded",
-        target_path: "/Volumes/USB/_music_manager_export/Wave 6 Smoke",
+        target_path: "/Volumes/USB/Wave 6 Smoke",
       },
       {
         action: "copy_file",
@@ -355,7 +361,7 @@ function applyRun() {
         error_message: null,
         source_path: "/Volumes/USB/smoke-track-candidate.mp3",
         status: "succeeded",
-        target_path: "/Volumes/USB/_music_manager_export/Wave 6 Smoke/001 - Smoke Artist - Smoke Track.mp3",
+        target_path: "/Volumes/USB/Wave 6 Smoke/001 - Smoke Artist - Smoke Track.mp3",
       },
     ],
     status: "completed",
