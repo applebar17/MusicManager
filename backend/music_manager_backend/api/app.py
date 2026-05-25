@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -27,6 +29,8 @@ from music_manager_backend.shared.errors import (
 )
 from music_manager_backend.shared.settings import Settings, get_settings
 
+logger = logging.getLogger(__name__)
+
 
 def create_app(settings: Settings | None = None, *, run_migrations: bool = True) -> FastAPI:
     resolved_settings = settings or get_settings()
@@ -55,6 +59,7 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
     app.add_exception_handler(ValidationError, music_manager_validation_handler)
     app.add_exception_handler(InfrastructureError, music_manager_infrastructure_handler)
     app.add_exception_handler(RequestValidationError, request_validation_handler)
+    app.add_exception_handler(Exception, unexpected_error_handler)
     app.include_router(health.router)
     app.include_router(environments.router)
     app.include_router(playback.router)
@@ -77,6 +82,17 @@ def request_validation_handler(_request: Request, exc: Exception) -> JSONRespons
     return JSONResponse(
         status_code=422,
         content={"code": "request_validation_error", "message": str(exc)},
+    )
+
+
+def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled API error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "code": "unexpected_error",
+            "message": "Unexpected backend error. Check backend logs for details.",
+        },
     )
 
 
