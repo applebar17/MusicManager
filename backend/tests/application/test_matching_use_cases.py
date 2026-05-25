@@ -69,6 +69,52 @@ def test_run_matching_marks_missing_audio(sqlite_connection: sqlite3.Connection)
     assert summary.missing_audio == 1
 
 
+def test_playlist_folder_breaks_duplicate_title_duration_tie(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    _seed_song_playlist(
+        repositories,
+        SongMaster(
+            id="song_1",
+            title="Belpaese - Sentimento [Promo]",
+            artist="Belpaese",
+            duration_seconds=372,
+        ),
+        playlist_name="04_DANCE",
+    )
+    repositories.audio_files.save(
+        _audio_file(
+            "file_pop",
+            path=Path("/Volumes/USB/08_POP/Belpaese - Sentimento [Promo].mp3"),
+            title="Belpaese - Sentimento [Promo]",
+            artist="Gare du Nord",
+            duration_seconds=373,
+        )
+    )
+    repositories.audio_files.save(
+        _audio_file(
+            "file_dance",
+            path=Path("/Volumes/USB/04_DANCE/Belpaese - Sentimento [Promo].mp3"),
+            title="Belpaese - Sentimento [Promo]",
+            artist="Gare du Nord",
+            duration_seconds=373,
+        )
+    )
+
+    summary = _run_matching(repositories).execute("env_1")
+
+    assert summary.matched == 1
+    assert repositories.match_links.list_by_song("song_1") == [
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_dance",
+            method="playlist_path_title_duration",
+            confidence=0.95,
+        )
+    ]
+
+
 def test_manual_mapping_overrides_automatic_matching(
     sqlite_connection: sqlite3.Connection,
 ) -> None:
@@ -154,7 +200,12 @@ def _repositories(connection: sqlite3.Connection) -> _Repositories:
     return _Repositories(connection)
 
 
-def _seed_song_playlist(repositories: _Repositories, song: SongMaster) -> None:
+def _seed_song_playlist(
+    repositories: _Repositories,
+    song: SongMaster,
+    *,
+    playlist_name: str = "Set",
+) -> None:
     repositories.environments.save(
         MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
     )
@@ -163,7 +214,7 @@ def _seed_song_playlist(repositories: _Repositories, song: SongMaster) -> None:
         Playlist(
             id="playlist_1",
             environment_id="env_1",
-            name="Set",
+            name=playlist_name,
             items=(PlaylistItem(song_id=song.id, position=1),),
         )
     )
@@ -172,18 +223,21 @@ def _seed_song_playlist(repositories: _Repositories, song: SongMaster) -> None:
 def _audio_file(
     audio_file_id: str,
     *,
+    path: Path | None = None,
     title: str | None = None,
     artist: str | None = None,
+    duration_seconds: int | None = None,
     status: AudioFileStatus = AudioFileStatus.ACTIVE,
 ) -> AudioFile:
     return AudioFile(
         id=audio_file_id,
         environment_id="env_1",
-        path=Path(f"/Volumes/USB/{audio_file_id}.mp3"),
+        path=path or Path(f"/Volumes/USB/{audio_file_id}.mp3"),
         size_bytes=1,
         modified_at=1.0,
         title=title,
         artist=artist,
+        duration_seconds=duration_seconds,
         status=status,
     )
 

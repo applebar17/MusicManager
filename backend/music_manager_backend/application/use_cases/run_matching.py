@@ -55,7 +55,11 @@ class RunMatching:
                 continue
 
             self.match_links.delete_automatic_by_song(song.id)
-            candidates = score_song_files(song, active_file_list)
+            candidates = score_song_files(
+                song,
+                active_file_list,
+                playlist_names=environment_songs.playlist_names_by_song_id.get(song.id),
+            )
             if is_unique_high_confidence(candidates):
                 candidate = candidates[0]
                 self.match_links.save(

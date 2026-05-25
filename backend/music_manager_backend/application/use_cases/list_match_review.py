@@ -66,7 +66,11 @@ class ListMatchReview:
                 )
                 continue
 
-            candidates = score_song_files(song, active_file_list)
+            candidates = score_song_files(
+                song,
+                active_file_list,
+                playlist_names=environment_songs.playlist_names_by_song_id.get(song.id),
+            )
             rows.append(
                 MatchReviewRow(
                     song_id=song.id,

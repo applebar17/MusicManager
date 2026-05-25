@@ -19,6 +19,7 @@ from music_manager_backend.shared.errors import NotFoundError
 class EnvironmentSongs:
     songs: list[SongMaster]
     song_ids: set[str]
+    playlist_names_by_song_id: dict[str, set[str]]
 
 
 def load_environment_songs(
@@ -34,8 +35,10 @@ def load_environment_songs(
 
     seen_song_ids: set[str] = set()
     loaded: list[SongMaster] = []
+    playlist_names_by_song_id: dict[str, set[str]] = {}
     for playlist in playlists.list_by_environment(environment_id):
         for item in playlist.items:
+            playlist_names_by_song_id.setdefault(item.song_id, set()).add(playlist.display_name)
             if item.song_id in seen_song_ids:
                 continue
             song = songs.get(item.song_id)
@@ -43,7 +46,11 @@ def load_environment_songs(
                 continue
             seen_song_ids.add(item.song_id)
             loaded.append(song)
-    return EnvironmentSongs(songs=loaded, song_ids=seen_song_ids)
+    return EnvironmentSongs(
+        songs=loaded,
+        song_ids=seen_song_ids,
+        playlist_names_by_song_id=playlist_names_by_song_id,
+    )
 
 
 def active_audio_files_by_id(

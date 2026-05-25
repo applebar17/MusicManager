@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from music_manager_backend.domain.entities import AudioFile, SongMaster
-from music_manager_backend.domain.services.match_scoring import score_song_file
+from music_manager_backend.domain.services.match_scoring import score_song_file, score_song_files
 
 
 def test_metadata_exact_match_scores_high_confidence() -> None:
@@ -81,3 +81,70 @@ def test_different_mix_title_does_not_auto_match() -> None:
     )
 
     assert score_song_file(song, audio_file) is None
+
+
+def test_playlist_path_context_promotes_one_duplicate_review_candidate() -> None:
+    song = SongMaster(
+        id="song_1",
+        title="Belpaese - Sentimento [Promo]",
+        artist="Belpaese",
+        duration_seconds=372,
+    )
+    pop_file = AudioFile(
+        id="file_pop",
+        environment_id="env_1",
+        path=Path("/Volumes/TORDIS/08_POP/Belpaese - Sentimento [Promo].mp3"),
+        size_bytes=1,
+        modified_at=1.0,
+        title="Belpaese - Sentimento [Promo]",
+        artist="Gare du Nord",
+        duration_seconds=373,
+    )
+    dance_file = AudioFile(
+        id="file_dance",
+        environment_id="env_1",
+        path=Path("/Volumes/TORDIS/04_DANCE/Belpaese - Sentimento [Promo].mp3"),
+        size_bytes=1,
+        modified_at=1.0,
+        title="Belpaese - Sentimento [Promo]",
+        artist="Gare du Nord",
+        duration_seconds=373,
+    )
+
+    candidates = score_song_files(
+        song,
+        [pop_file, dance_file],
+        playlist_names={"04_DANCE"},
+    )
+
+    assert candidates[0].audio_file_id == "file_dance"
+    assert candidates[0].method == "playlist_path_title_duration"
+    assert candidates[0].confidence == 0.95
+    assert candidates[1].audio_file_id == "file_pop"
+    assert candidates[1].method == "title_duration"
+
+
+def test_playlist_path_context_stays_ambiguous_when_multiple_folders_match() -> None:
+    song = SongMaster(id="song_1", title="Track", duration_seconds=120)
+    first = AudioFile(
+        id="file_1",
+        environment_id="env_1",
+        path=Path("/Volumes/TORDIS/04_DANCE/Track.mp3"),
+        size_bytes=1,
+        modified_at=1.0,
+        title="Track",
+        duration_seconds=120,
+    )
+    second = AudioFile(
+        id="file_2",
+        environment_id="env_1",
+        path=Path("/Volumes/TORDIS/04_DANCE/Sub/Track.mp3"),
+        size_bytes=1,
+        modified_at=1.0,
+        title="Track",
+        duration_seconds=120,
+    )
+
+    candidates = score_song_files(song, [first, second], playlist_names={"04_DANCE"})
+
+    assert [candidate.method for candidate in candidates] == ["title_duration", "title_duration"]
