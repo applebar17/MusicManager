@@ -1042,12 +1042,12 @@ button {
 
 .soundcloud-import-form {
   display: grid;
-  max-width: 840px;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  width: min(100%, 1120px);
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-sm);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-surface-container);
   padding: var(--space-xs);
 }
@@ -1070,9 +1070,28 @@ button {
   color: var(--color-outline);
 }
 
+.soundcloud-import-form .button {
+  min-height: 30px;
+  white-space: nowrap;
+}
+
+.soundcloud-import-form .sync-all-button {
+  border-color: rgba(78, 222, 163, 0.45);
+  border-radius: var(--radius-lg);
+  background: rgba(0, 165, 114, 0.18);
+  color: var(--color-secondary);
+  font-weight: 600;
+}
+
+.soundcloud-import-form .sync-all-button:hover:not(:disabled) {
+  border-color: rgba(78, 222, 163, 0.7);
+  background: rgba(0, 165, 114, 0.28);
+  color: var(--color-secondary-fixed);
+}
+
 .import-result {
   display: grid;
-  max-width: 840px;
+  width: min(100%, 1120px);
   gap: var(--space-xs);
 }
 

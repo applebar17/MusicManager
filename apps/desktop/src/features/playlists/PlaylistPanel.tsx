@@ -365,6 +365,7 @@ function ImportPanel({
           {isImporting ? "Importing" : "Import / Sync"}
         </Button>
         <Button
+          className="sync-all-button"
           disabled={isImporting || isSyncingAll || playlistCount === 0}
           type="button"
           onClick={onSyncAll}
