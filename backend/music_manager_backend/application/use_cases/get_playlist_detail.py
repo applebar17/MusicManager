@@ -50,6 +50,7 @@ class GetPlaylistDetail:
                 continue
             review = review_by_song.get(item.song_id)
             accepted_audio_file_id = review.match.audio_file_id if review and review.match else None
+            accepted_audio_warnings = review.match.warnings if review and review.match else []
             items.append(
                 PlaylistItemRead(
                     song_id=song.id,
@@ -60,6 +61,7 @@ class GetPlaylistDetail:
                     remote_membership_active=item.remote_membership_active,
                     match_status=review.status if review is not None else "missing_audio",
                     accepted_audio_file_id=accepted_audio_file_id,
+                    accepted_audio_warnings=accepted_audio_warnings,
                     playback_url=(
                         f"/environments/{environment_id}/playback/audio-files/"
                         f"{accepted_audio_file_id}"

@@ -1385,6 +1385,14 @@ button {
   color: var(--color-tertiary);
 }
 
+.accepted-audio--preview {
+  color: var(--color-tertiary);
+}
+
+.accepted-audio--preview svg {
+  color: var(--color-tertiary);
+}
+
 .accepted-audio--empty {
   color: var(--color-outline);
 }
@@ -1703,6 +1711,11 @@ button {
   background: var(--color-surface-container);
 }
 
+.candidate-card--warning {
+  border-color: rgba(255, 185, 95, 0.35);
+  background: rgba(255, 185, 95, 0.06);
+}
+
 .candidate-play {
   display: inline-flex;
   width: 34px;
@@ -1757,6 +1770,19 @@ button {
   color: var(--color-secondary-fixed);
   font-style: normal;
   font-weight: 700;
+}
+
+.candidate-warning,
+.accepted-match-warning {
+  color: var(--color-tertiary);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.candidate-body .candidate-warning {
+  margin: 2px 0 0;
+  white-space: normal;
 }
 
 .candidate-empty {

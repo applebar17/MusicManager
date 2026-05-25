@@ -109,10 +109,119 @@ def test_playlist_folder_breaks_duplicate_title_duration_tie(
         MatchLink(
             song_id="song_1",
             audio_file_id="file_dance",
-            method="playlist_path_title_duration",
+            method="playlist_path_title_strict_duration",
+            confidence=0.96,
+        )
+    ]
+
+
+def test_playlist_folder_breaks_duplicate_metadata_exact_tie(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    _seed_song_playlist(
+        repositories,
+        SongMaster(
+            id="song_1",
+            title="Action (Single Edit) [feat. Cat Power & Mike D]",
+            artist="Cassius",
+            duration_seconds=233,
+        ),
+        playlist_name="03_HOUSE",
+    )
+    repositories.audio_files.save(
+        _audio_file(
+            "file_dance",
+            path=Path(
+                "/Volumes/USB/04_DANCE/Action (Single Edit) [feat. Cat Power & Mike D].mp3"
+            ),
+            title="Action (Single Edit) [feat. Cat Power & Mike D]",
+            artist="CASSIUS",
+            duration_seconds=233,
+        )
+    )
+    repositories.audio_files.save(
+        _audio_file(
+            "file_house",
+            path=Path(
+                "/Volumes/USB/03_HOUSE/Action (Single Edit) [feat. Cat Power & Mike D].mp3"
+            ),
+            title="Action (Single Edit) [feat. Cat Power & Mike D]",
+            artist="CASSIUS",
+            duration_seconds=233,
+        )
+    )
+
+    summary = _run_matching(repositories).execute("env_1")
+
+    assert summary.matched == 1
+    assert repositories.match_links.list_by_song("song_1") == [
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_house",
+            method="playlist_path_metadata_exact",
+            confidence=0.96,
+        )
+    ]
+
+
+def test_run_matching_persists_unique_strict_title_duration_match(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    _seed_song_playlist(
+        repositories,
+        SongMaster(
+            id="song_1",
+            title="Strict Timing",
+            artist="Remote Artist",
+            duration_seconds=180,
+        ),
+    )
+    repositories.audio_files.save(
+        _audio_file(
+            "file_1",
+            title="Strict Timing",
+            artist="Different Local Artist",
+            duration_seconds=183,
+        )
+    )
+
+    summary = _run_matching(repositories).execute("env_1")
+
+    assert summary.matched == 1
+    assert repositories.match_links.list_by_song("song_1") == [
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="title_strict_duration",
             confidence=0.95,
         )
     ]
+
+
+def test_short_audio_candidate_warns_and_does_not_auto_match(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    _seed_song_playlist(repositories, SongMaster(id="song_1", title="Preview", artist="Artist"))
+    repositories.audio_files.save(
+        _audio_file(
+            "file_preview",
+            title="Preview",
+            artist="Artist",
+            duration_seconds=37,
+        )
+    )
+
+    summary = _run_matching(repositories).execute("env_1")
+    review = _list_review(repositories).execute("env_1")
+
+    assert summary.ambiguous == 1
+    assert repositories.match_links.list_by_song("song_1") == []
+    assert review[0].status == "ambiguous"
+    assert review[0].candidates[0].method == "likely_preview_metadata_exact"
+    assert review[0].candidates[0].warnings == ["likely_preview_download"]
 
 
 def test_manual_mapping_overrides_automatic_matching(

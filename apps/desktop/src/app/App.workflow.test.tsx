@@ -207,6 +207,7 @@ function mockFetch() {
         items: [
           {
             accepted_audio_file_id: mapped ? "audio_1" : null,
+            accepted_audio_warnings: [],
             artist: "Smoke Artist",
             duration_seconds: 184,
             match_status: mapped ? "manually_mapped" : "ambiguous",
@@ -302,6 +303,7 @@ function candidate() {
     method: "title_duration",
     path: "/Volumes/USB/smoke-track-candidate.mp3",
     title: "Smoke Track",
+    warnings: [],
   };
 }
 

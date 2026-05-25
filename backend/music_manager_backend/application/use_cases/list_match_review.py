@@ -5,6 +5,7 @@ from music_manager_backend.application.use_cases.matching_common import (
     load_environment_songs,
 )
 from music_manager_backend.domain.entities import AudioFile, MatchCandidate, MatchLink, MatchStatus
+from music_manager_backend.domain.services.audio_quality import audio_warnings
 from music_manager_backend.domain.services.match_scoring import score_song_files
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
@@ -122,6 +123,7 @@ def _candidate_from_link(
         duration_seconds=audio_file.duration_seconds,
         method=link.method,
         confidence=link.confidence,
+        warnings=audio_warnings(audio_file.duration_seconds),
     )
 
 
@@ -137,4 +139,5 @@ def _candidate_from_candidate(
         duration_seconds=audio_file.duration_seconds,
         method=candidate.method,
         confidence=candidate.confidence,
+        warnings=audio_warnings(audio_file.duration_seconds),
     )

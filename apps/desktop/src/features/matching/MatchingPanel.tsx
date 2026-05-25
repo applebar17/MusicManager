@@ -464,6 +464,11 @@ function ReviewRow({ row, mappingKey, onMapCandidate, onPreviewAudio }: ReviewRo
           <CheckCircle2 size={15} />
           <span>{acceptedMatch.path}</span>
           <em>{confidenceLabel(acceptedMatch.confidence)} via {methodLabel(acceptedMatch.method)}</em>
+          {hasLikelyPreviewWarning(acceptedMatch) ? (
+            <strong className="accepted-match-warning">
+              Likely preview download. Unmatch this audio and move it to deprecated before exporting.
+            </strong>
+          ) : null}
         </div>
       ) : null}
 
@@ -508,8 +513,9 @@ function CandidateCard({
   onMapCandidate,
   onPreviewAudio,
 }: CandidateCardProps) {
+  const likelyPreview = hasLikelyPreviewWarning(candidate);
   return (
-    <div className="candidate-card">
+    <div className={["candidate-card", likelyPreview ? "candidate-card--warning" : ""].join(" ")}>
       <button
         className="candidate-play"
         title="Preview candidate"
@@ -535,6 +541,11 @@ function CandidateCard({
           <span>{methodLabel(candidate.method)}</span>
           <span>{formatDuration(candidate.duration_seconds)}</span>
         </div>
+        {likelyPreview ? (
+          <p className="candidate-warning">
+            Likely preview download. Consider unmatching and moving this file to deprecated.
+          </p>
+        ) : null}
       </div>
       <Button
         disabled={isMapping}
@@ -662,6 +673,10 @@ function matchStatusLabel(status: MatchStatus) {
 
 function methodLabel(method: string) {
   return method.replace(/_/g, " ");
+}
+
+function hasLikelyPreviewWarning(candidate: MatchCandidateRead) {
+  return candidate.warnings.includes("likely_preview_download");
 }
 
 function confidenceLabel(confidence: number) {

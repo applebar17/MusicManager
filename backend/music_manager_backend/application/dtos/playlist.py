@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PlaylistSummaryRead(BaseModel):
@@ -22,6 +22,7 @@ class PlaylistItemRead(BaseModel):
     remote_membership_active: bool
     match_status: str
     accepted_audio_file_id: str | None = None
+    accepted_audio_warnings: list[str] = Field(default_factory=list)
     playback_url: str | None = None
 
 

@@ -25,8 +25,17 @@ def test_metadata_exact_match_scores_high_confidence() -> None:
 
 def test_duration_tolerance_accepts_small_difference_and_rejects_large_one() -> None:
     song = SongMaster(id="song_1", title="Track", duration_seconds=120)
-    close_file = AudioFile(
+    strict_file = AudioFile(
         id="file_1",
+        environment_id="env_1",
+        path=Path("/music/track-strict.mp3"),
+        size_bytes=1,
+        modified_at=1.0,
+        title="Track",
+        duration_seconds=123,
+    )
+    close_file = AudioFile(
+        id="file_2",
         environment_id="env_1",
         path=Path("/music/track.mp3"),
         size_bytes=1,
@@ -35,7 +44,7 @@ def test_duration_tolerance_accepts_small_difference_and_rejects_large_one() -> 
         duration_seconds=124,
     )
     far_file = AudioFile(
-        id="file_2",
+        id="file_3",
         environment_id="env_1",
         path=Path("/music/track-long.mp3"),
         size_bytes=1,
@@ -44,11 +53,36 @@ def test_duration_tolerance_accepts_small_difference_and_rejects_large_one() -> 
         duration_seconds=140,
     )
 
+    strict_candidate = score_song_file(song, strict_file)
     close_candidate = score_song_file(song, close_file)
 
+    assert strict_candidate is not None
+    assert strict_candidate.method == "title_strict_duration"
+    assert strict_candidate.confidence == 0.95
     assert close_candidate is not None
     assert close_candidate.method == "title_duration"
+    assert close_candidate.confidence == 0.85
     assert score_song_file(song, far_file) is None
+
+
+def test_short_audio_file_is_flagged_as_likely_preview_candidate() -> None:
+    song = SongMaster(id="song_1", title="Track", artist="Artist")
+    audio_file = AudioFile(
+        id="file_1",
+        environment_id="env_1",
+        path=Path("/music/track.mp3"),
+        size_bytes=1,
+        modified_at=1.0,
+        title="Track",
+        artist="Artist",
+        duration_seconds=42,
+    )
+
+    candidate = score_song_file(song, audio_file)
+
+    assert candidate is not None
+    assert candidate.method == "likely_preview_metadata_exact"
+    assert candidate.confidence == 0.0
 
 
 def test_filename_title_match_is_lower_confidence() -> None:
@@ -118,10 +152,51 @@ def test_playlist_path_context_promotes_one_duplicate_review_candidate() -> None
     )
 
     assert candidates[0].audio_file_id == "file_dance"
-    assert candidates[0].method == "playlist_path_title_duration"
-    assert candidates[0].confidence == 0.95
+    assert candidates[0].method == "playlist_path_title_strict_duration"
+    assert candidates[0].confidence == 0.96
     assert candidates[1].audio_file_id == "file_pop"
-    assert candidates[1].method == "title_duration"
+    assert candidates[1].method == "title_strict_duration"
+
+
+def test_playlist_path_context_promotes_one_duplicate_metadata_exact_candidate() -> None:
+    song = SongMaster(
+        id="song_1",
+        title="Action (Single Edit) [feat. Cat Power & Mike D]",
+        artist="Cassius",
+        duration_seconds=233,
+    )
+    house_file = AudioFile(
+        id="file_house",
+        environment_id="env_1",
+        path=Path("/Volumes/TORDIS/03_HOUSE/Action (Single Edit) [feat. Cat Power & Mike D].mp3"),
+        size_bytes=1,
+        modified_at=1.0,
+        title="Action (Single Edit) [feat. Cat Power & Mike D]",
+        artist="CASSIUS",
+        duration_seconds=233,
+    )
+    dance_file = AudioFile(
+        id="file_dance",
+        environment_id="env_1",
+        path=Path("/Volumes/TORDIS/04_DANCE/Action (Single Edit) [feat. Cat Power & Mike D].mp3"),
+        size_bytes=1,
+        modified_at=1.0,
+        title="Action (Single Edit) [feat. Cat Power & Mike D]",
+        artist="CASSIUS",
+        duration_seconds=233,
+    )
+
+    candidates = score_song_files(
+        song,
+        [dance_file, house_file],
+        playlist_names={"03_HOUSE"},
+    )
+
+    assert candidates[0].audio_file_id == "file_house"
+    assert candidates[0].method == "playlist_path_metadata_exact"
+    assert candidates[0].confidence == 0.96
+    assert candidates[1].audio_file_id == "file_dance"
+    assert candidates[1].method == "metadata_exact"
 
 
 def test_playlist_path_context_stays_ambiguous_when_multiple_folders_match() -> None:
@@ -147,4 +222,7 @@ def test_playlist_path_context_stays_ambiguous_when_multiple_folders_match() -> 
 
     candidates = score_song_files(song, [first, second], playlist_names={"04_DANCE"})
 
-    assert [candidate.method for candidate in candidates] == ["title_duration", "title_duration"]
+    assert [candidate.method for candidate in candidates] == [
+        "title_strict_duration",
+        "title_strict_duration",
+    ]

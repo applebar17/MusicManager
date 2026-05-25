@@ -140,6 +140,42 @@ def test_export_plan_skips_missing_and_ambiguous_tracks(
     assert skip_reasons == ["missing audio", "ambiguous audio match"]
 
 
+def test_export_plan_skips_likely_preview_matches(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = _source_file(root, "preview.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Preview", artist="Artist"))
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+    repositories.audio_files.save(_audio_file("file_1", source, duration_seconds=37))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    assert not [item for item in plan.items if item.action == ExportAction.COPY_FILE]
+    skip = [item for item in plan.items if item.action == ExportAction.SKIP]
+    assert skip[0].reason is not None
+    assert "likely preview download" in skip[0].reason
+
+
 def test_export_plan_detects_stale_files(
     sqlite_connection: sqlite3.Connection,
     tmp_path: Path,
@@ -255,7 +291,11 @@ def _source_file(root: Path, filename: str) -> Path:
 
 
 def _audio_file(
-    audio_file_id: str, path: Path, *, title: str | None = None
+    audio_file_id: str,
+    path: Path,
+    *,
+    title: str | None = None,
+    duration_seconds: int | None = None,
 ) -> AudioFile:
     return AudioFile(
         id=audio_file_id,
@@ -264,6 +304,7 @@ def _audio_file(
         size_bytes=1,
         modified_at=1.0,
         title=title,
+        duration_seconds=duration_seconds,
     )
 
 

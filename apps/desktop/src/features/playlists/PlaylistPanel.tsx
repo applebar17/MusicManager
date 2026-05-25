@@ -646,11 +646,18 @@ function MatchStatusPill({ status }: { status: MatchStatus }) {
 
 function AcceptedAudioCell({ item }: { item: PlaylistItemRead }) {
   if (item.accepted_audio_file_id) {
+    const likelyPreview = item.accepted_audio_warnings.includes("likely_preview_download");
     return (
-      <span className="accepted-audio accepted-audio--ready">
-        {item.match_status === "manually_mapped" ? <Link2 size={13} /> : <CheckCircle2 size={13} />}
+      <span className={`accepted-audio ${likelyPreview ? "accepted-audio--preview" : "accepted-audio--ready"}`}>
+        {likelyPreview ? (
+          <TriangleAlert size={13} />
+        ) : item.match_status === "manually_mapped" ? (
+          <Link2 size={13} />
+        ) : (
+          <CheckCircle2 size={13} />
+        )}
         <span>{shortId(item.accepted_audio_file_id)}</span>
-        {item.playback_url ? <em>playback ready</em> : null}
+        {likelyPreview ? <em>likely preview</em> : item.playback_url ? <em>playback ready</em> : null}
       </span>
     );
   }

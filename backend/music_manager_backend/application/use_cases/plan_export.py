@@ -10,6 +10,7 @@ from music_manager_backend.domain.entities import (
     SongMaster,
 )
 from music_manager_backend.domain.entities.export_plan import ExportAction
+from music_manager_backend.domain.services.audio_quality import is_likely_preview_duration
 from music_manager_backend.domain.services.export_layout import ExportLayout
 from music_manager_backend.domain.services.match_scoring import score_song_files
 from music_manager_backend.infrastructure.filesystem import read_export_manifest
@@ -79,6 +80,15 @@ class PlanExport:
                     match_links=self.match_links,
                 )
                 if accepted_file is not None:
+                    if is_likely_preview_duration(accepted_file.duration_seconds):
+                        items.append(
+                            ExportPlanItem(
+                                action=ExportAction.SKIP,
+                                target_path=folder,
+                                reason=_preview_skip_reason(accepted_file),
+                            )
+                        )
+                        continue
                     target = layout.track_target(
                         folder=folder,
                         position=playlist_item.position,
@@ -164,7 +174,21 @@ def _accepted_audio_file(
 
 def _skip_reason(song: SongMaster, active_files: list[AudioFile]) -> str:
     candidates = score_song_files(song, active_files)
+    if candidates and all(item.method.startswith("likely_preview_") for item in candidates):
+        return "likely preview download: local candidate is shorter than 1 minute"
     return "ambiguous audio match" if candidates else "missing audio"
+
+
+def _preview_skip_reason(audio_file: AudioFile) -> str:
+    duration = (
+        f"{audio_file.duration_seconds}s"
+        if audio_file.duration_seconds is not None
+        else "under 1 minute"
+    )
+    return (
+        f"likely preview download ({duration}): unmatch this audio and move it to deprecated "
+        "before exporting"
+    )
 
 
 def _active_song_ids(playlists: list[Playlist]) -> set[str]:

@@ -92,6 +92,7 @@ export type PlaylistItemRead = {
   remote_membership_active: boolean;
   match_status: MatchStatus;
   accepted_audio_file_id: string | null;
+  accepted_audio_warnings: string[];
   playback_url: string | null;
 };
 
@@ -113,6 +114,7 @@ export type MatchCandidateRead = {
   duration_seconds: number | null;
   method: string;
   confidence: number;
+  warnings: string[];
 };
 
 export type MatchReviewRow = {

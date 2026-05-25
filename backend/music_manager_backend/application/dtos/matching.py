@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class MatchCandidateRead(BaseModel):
@@ -9,6 +9,7 @@ class MatchCandidateRead(BaseModel):
     duration_seconds: int | None = None
     method: str
     confidence: float
+    warnings: list[str] = Field(default_factory=list)
 
 
 class MatchReviewRow(BaseModel):
