@@ -14,6 +14,7 @@ from music_manager_backend.api.dependencies import (
     get_song_repository,
     get_soundcloud_playlist_importer,
     get_sync_snapshot_repository,
+    guard_environment_operation,
 )
 from music_manager_backend.application.dtos import (
     ApiErrorRead,
@@ -84,7 +85,9 @@ from music_manager_backend.ports.soundcloud import SoundCloudPlaylistImporter
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ApiErrorRead},
     404: {"model": ApiErrorRead},
+    409: {"model": ApiErrorRead},
     422: {"model": ApiErrorRead},
+    503: {"model": ApiErrorRead},
 }
 
 router = APIRouter(prefix="/environments", tags=["environments"])
@@ -154,7 +157,12 @@ def create_environment(
     return environment_read(environment)
 
 
-@router.patch("/{environment_id}", response_model=EnvironmentRead, responses=ERROR_RESPONSES)
+@router.patch(
+    "/{environment_id}",
+    response_model=EnvironmentRead,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("update_environment"))],
+)
 def update_environment(
     environment_id: str,
     data: EnvironmentUpdate,
@@ -164,7 +172,12 @@ def update_environment(
     return environment_read(environment)
 
 
-@router.post("/{environment_id}/archive", response_model=EnvironmentRead, responses=ERROR_RESPONSES)
+@router.post(
+    "/{environment_id}/archive",
+    response_model=EnvironmentRead,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("archive_environment"))],
+)
 def archive_environment(
     environment_id: str,
     repository: EnvironmentRepositoryDependency,
@@ -173,7 +186,12 @@ def archive_environment(
     return environment_read(environment)
 
 
-@router.post("/{environment_id}/scan", response_model=ScanSummaryRead, responses=ERROR_RESPONSES)
+@router.post(
+    "/{environment_id}/scan",
+    response_model=ScanSummaryRead,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("scan_environment"))],
+)
 def scan_environment(
     environment_id: str,
     environments: EnvironmentRepositoryDependency,
@@ -203,6 +221,7 @@ def scan_environment(
     "/{environment_id}/soundcloud/playlists",
     response_model=SoundCloudPlaylistImportResult,
     responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("import_soundcloud_playlist"))],
 )
 def import_soundcloud_playlist(
     environment_id: str,
@@ -228,6 +247,7 @@ def import_soundcloud_playlist(
     "/{environment_id}/soundcloud/playlists/sync-all",
     response_model=SoundCloudPlaylistSyncAllResult,
     responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("sync_all_soundcloud_playlists"))],
 )
 def sync_all_soundcloud_playlists(
     environment_id: str,
@@ -252,6 +272,7 @@ def sync_all_soundcloud_playlists(
     "/{environment_id}/matching/run",
     response_model=MatchingRunSummary,
     responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("run_matching"))],
 )
 def run_matching(
     environment_id: str,
@@ -296,6 +317,7 @@ def list_match_review(
     "/{environment_id}/matching/manual-mappings",
     response_model=MatchReviewRow,
     responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("create_manual_mapping"))],
 )
 def create_manual_mapping(
     environment_id: str,
@@ -386,6 +408,7 @@ def get_playlist_detail(
     "/{environment_id}/export-plans",
     response_model=ExportPlanRead,
     responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("create_export_plan"))],
 )
 def create_export_plan(
     environment_id: str,
@@ -430,6 +453,7 @@ def get_export_plan(
     "/{environment_id}/export-plans/{export_plan_id}/apply",
     response_model=ExportApplyRunRead,
     responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("apply_export_plan"))],
 )
 def apply_export_plan(
     environment_id: str,

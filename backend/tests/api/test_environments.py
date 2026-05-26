@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import cast
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from music_manager_backend.api.app import create_app
@@ -106,6 +108,33 @@ def test_scan_and_list_audio_files(api_client: TestClient, tmp_path: Path) -> No
     assert files_response.status_code == 200
     assert files_response.json()[0]["path"] == str(track)
     assert unmanaged_response.json() == files_response.json()
+
+
+def test_guarded_environment_operation_returns_409_when_busy(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "usb"
+    root.mkdir()
+    environment_id = api_client.post(
+        "/environments",
+        json={"name": "Gig USB", "root_path": str(root)},
+    ).json()["id"]
+    app = cast(FastAPI, api_client.app)
+
+    with app.state.container.operation_coordinator.guard(
+        environment_id=environment_id,
+        operation_name="existing operation",
+    ):
+        response = api_client.post(
+            f"/environments/{environment_id}/scan",
+            headers={"X-Request-ID": "test-request-id"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "operation_in_progress"
+    assert response.headers["Retry-After"] == "2"
+    assert response.headers["X-Request-ID"] == "test-request-id"
 
 
 def test_removed_audio_files_are_listed_only_when_requested(

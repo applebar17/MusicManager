@@ -72,10 +72,13 @@ def test_import_soundcloud_playlist_persists_data(
     assert body["track_count"] == 2
     assert body["added"] == 2
     assert body["warnings"] == ["soundcloud_public_html_missing_playlist_title"]
-    assert app.state.container.remote_playlist_repository.get(
-        body["remote_playlist_id"]
-    ).source_url == SOURCE_URL
-    assert app.state.container.playlist_repository.get(body["playlist_id"]).items[0].position == 1
+    with app.state.container.repository_bundle() as repositories:
+        remote = repositories.remote_playlist_repository.get(body["remote_playlist_id"])
+        playlist = repositories.playlist_repository.get(body["playlist_id"])
+    assert remote is not None
+    assert remote.source_url == SOURCE_URL
+    assert playlist is not None
+    assert playlist.items[0].position == 1
 
 
 def test_sync_all_soundcloud_playlists_reimports_existing_remote_playlists(

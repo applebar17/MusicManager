@@ -65,52 +65,57 @@ def _container(api_client: TestClient) -> AppContainer:
 
 
 def _seed_matching_data(container: AppContainer) -> None:
-    container.environment_repository.save(
-        MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
-    )
-    container.song_repository.save(SongMaster(id="song_1", title="Track One", artist="Artist"))
-    container.song_repository.save(SongMaster(id="song_2", title="Track Two", artist="Artist"))
-    container.playlist_repository.save(
-        Playlist(
-            id="playlist_1",
-            environment_id="env_1",
-            name="Set",
-            items=(
-                PlaylistItem(song_id="song_1", position=1),
-                PlaylistItem(song_id="song_2", position=2),
-            ),
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
         )
-    )
-    container.audio_file_repository.save(
-        AudioFile(
-            id="file_1",
-            environment_id="env_1",
-            path=Path("/Volumes/USB/track-one.mp3"),
-            size_bytes=1,
-            modified_at=1.0,
-            title="Track One",
-            artist="Artist",
+        repositories.song_repository.save(
+            SongMaster(id="song_1", title="Track One", artist="Artist")
         )
-    )
-    container.audio_file_repository.save(
-        AudioFile(
-            id="file_2",
-            environment_id="env_1",
-            path=Path("/Volumes/USB/track-two-a.mp3"),
-            size_bytes=1,
-            modified_at=1.0,
-            title="Track Two",
-            artist="Artist",
+        repositories.song_repository.save(
+            SongMaster(id="song_2", title="Track Two", artist="Artist")
         )
-    )
-    container.audio_file_repository.save(
-        AudioFile(
-            id="file_3",
-            environment_id="env_1",
-            path=Path("/Volumes/USB/track-two-b.mp3"),
-            size_bytes=1,
-            modified_at=1.0,
-            title="Track Two",
-            artist="Artist",
+        repositories.playlist_repository.save(
+            Playlist(
+                id="playlist_1",
+                environment_id="env_1",
+                name="Set",
+                items=(
+                    PlaylistItem(song_id="song_1", position=1),
+                    PlaylistItem(song_id="song_2", position=2),
+                ),
+            )
         )
-    )
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id="file_1",
+                environment_id="env_1",
+                path=Path("/Volumes/USB/track-one.mp3"),
+                size_bytes=1,
+                modified_at=1.0,
+                title="Track One",
+                artist="Artist",
+            )
+        )
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id="file_2",
+                environment_id="env_1",
+                path=Path("/Volumes/USB/track-two-a.mp3"),
+                size_bytes=1,
+                modified_at=1.0,
+                title="Track Two",
+                artist="Artist",
+            )
+        )
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id="file_3",
+                environment_id="env_1",
+                path=Path("/Volumes/USB/track-two-b.mp3"),
+                size_bytes=1,
+                modified_at=1.0,
+                title="Track Two",
+                artist="Artist",
+            )
+        )

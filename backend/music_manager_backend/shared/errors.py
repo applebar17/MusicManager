@@ -37,3 +37,11 @@ class NotFoundError(ApplicationError):
 
 class ValidationError(ApplicationError):
     code = "validation_error"
+
+
+class OperationInProgressError(ApplicationError):
+    code = "operation_in_progress"
+
+
+class DatabaseBusyError(InfrastructureError):
+    code = "database_busy"

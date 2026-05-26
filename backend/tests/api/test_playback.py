@@ -74,7 +74,8 @@ def test_playback_missing_file_on_disk_returns_404(
 ) -> None:
     environment_id, audio_file_id = _create_environment_and_audio_file(api_client, tmp_path)
     container = _container(api_client)
-    audio_file = container.audio_file_repository.get(audio_file_id)
+    with container.repository_bundle() as repositories:
+        audio_file = repositories.audio_file_repository.get(audio_file_id)
     assert audio_file is not None
     audio_file.path.unlink()
 
@@ -119,16 +120,17 @@ def _create_environment_and_audio_file(
         json={"name": "USB", "root_path": str(root)},
     ).json()["id"]
     audio_file_id = "file_1"
-    _container(api_client).audio_file_repository.save(
-        AudioFile(
-            id=audio_file_id,
-            environment_id=environment_id,
-            path=track,
-            size_bytes=len(content),
-            modified_at=1.0,
-            status=status,
+    with _container(api_client).repository_bundle() as repositories:
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id=audio_file_id,
+                environment_id=environment_id,
+                path=track,
+                size_bytes=len(content),
+                modified_at=1.0,
+                status=status,
+            )
         )
-    )
     return environment_id, audio_file_id
 
 

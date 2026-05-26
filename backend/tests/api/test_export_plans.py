@@ -70,9 +70,10 @@ def test_get_export_plan_rejects_wrong_environment(
     source = root / "track.mp3"
     source.write_bytes(b"audio")
     _seed_export_data(container, root=root, source=source)
-    container.environment_repository.save(
-        MusicEnvironment(id="env_2", name="Other", root_path=tmp_path / "other")
-    )
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_2", name="Other", root_path=tmp_path / "other")
+        )
     create_response = api_client.post("/environments/env_1/export-plans")
 
     response = api_client.get(
@@ -106,16 +107,18 @@ def test_apply_export_plan_streams_results_and_persists_run(
     assert body["status"] == "completed"
     assert body["counts"]["succeeded"] >= 1
     assert (root / "Set" / "track.mp3").read_bytes() == b"audio"
-    assert container.export_apply_run_repository.get(body["apply_run_id"]) is not None
+    with container.repository_bundle() as repositories:
+        assert repositories.export_apply_run_repository.get(body["apply_run_id"]) is not None
 
 
 def test_apply_export_plan_rejects_missing_plan(api_client: TestClient, tmp_path: Path) -> None:
     container = _container(api_client)
     root = tmp_path / "usb"
     root.mkdir()
-    container.environment_repository.save(
-        MusicEnvironment(id="env_1", name="USB", root_path=root)
-    )
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_1", name="USB", root_path=root)
+        )
 
     response = api_client.post("/environments/env_1/export-plans/missing/apply")
 
@@ -126,21 +129,22 @@ def test_apply_export_plan_rejects_unsafe_plan(api_client: TestClient, tmp_path:
     container = _container(api_client)
     root = tmp_path / "usb"
     root.mkdir()
-    container.environment_repository.save(
-        MusicEnvironment(id="env_1", name="USB", root_path=root)
-    )
-    container.export_plan_repository.save(
-        ExportPlan(
-            id="plan_1",
-            environment_id="env_1",
-            items=(
-                ExportPlanItem(
-                    action=ExportAction.CREATE_FOLDER,
-                    target_path=tmp_path / "outside",
-                ),
-            ),
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_1", name="USB", root_path=root)
         )
-    )
+        repositories.export_plan_repository.save(
+            ExportPlan(
+                id="plan_1",
+                environment_id="env_1",
+                items=(
+                    ExportPlanItem(
+                        action=ExportAction.CREATE_FOLDER,
+                        target_path=tmp_path / "outside",
+                    ),
+                ),
+            )
+        )
 
     response = api_client.post("/environments/env_1/export-plans/plan_1/apply")
 
@@ -148,35 +152,38 @@ def test_apply_export_plan_rejects_unsafe_plan(api_client: TestClient, tmp_path:
 
 
 def _seed_export_data(container: AppContainer, *, root: Path, source: Path) -> None:
-    container.environment_repository.save(
-        MusicEnvironment(id="env_1", name="USB", root_path=root)
-    )
-    container.song_repository.save(SongMaster(id="song_1", title="Track", artist="Artist"))
-    container.playlist_repository.save(
-        Playlist(
-            id="playlist_1",
-            environment_id="env_1",
-            name="Set",
-            items=(PlaylistItem(song_id="song_1", position=1),),
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_1", name="USB", root_path=root)
         )
-    )
-    container.audio_file_repository.save(
-        AudioFile(
-            id="file_1",
-            environment_id="env_1",
-            path=source,
-            size_bytes=1,
-            modified_at=1.0,
+        repositories.song_repository.save(
+            SongMaster(id="song_1", title="Track", artist="Artist")
         )
-    )
-    container.match_link_repository.save(
-        MatchLink(
-            song_id="song_1",
-            audio_file_id="file_1",
-            method="metadata_exact",
-            confidence=0.95,
+        repositories.playlist_repository.save(
+            Playlist(
+                id="playlist_1",
+                environment_id="env_1",
+                name="Set",
+                items=(PlaylistItem(song_id="song_1", position=1),),
+            )
         )
-    )
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id="file_1",
+                environment_id="env_1",
+                path=source,
+                size_bytes=1,
+                modified_at=1.0,
+            )
+        )
+        repositories.match_link_repository.save(
+            MatchLink(
+                song_id="song_1",
+                audio_file_id="file_1",
+                method="metadata_exact",
+                confidence=0.95,
+            )
+        )
 
 
 def _container(api_client: TestClient) -> AppContainer:

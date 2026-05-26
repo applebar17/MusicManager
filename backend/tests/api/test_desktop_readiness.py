@@ -88,9 +88,10 @@ def test_environment_overview_and_playlist_views(api_client: TestClient) -> None
 def test_playlist_detail_rejects_wrong_environment(api_client: TestClient) -> None:
     container = _container(api_client)
     _seed_desktop_view_data(container)
-    container.environment_repository.save(
-        MusicEnvironment(id="env_2", name="Other", root_path=Path("/Volumes/OTHER"))
-    )
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_2", name="Other", root_path=Path("/Volumes/OTHER"))
+        )
 
     response = api_client.get("/environments/env_2/playlists/playlist_1")
 
@@ -99,30 +100,31 @@ def test_playlist_detail_rejects_wrong_environment(api_client: TestClient) -> No
 
 def test_export_apply_run_lookup(api_client: TestClient) -> None:
     container = _container(api_client)
-    container.environment_repository.save(
-        MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
-    )
-    container.environment_repository.save(
-        MusicEnvironment(id="env_2", name="Other", root_path=Path("/Volumes/OTHER"))
-    )
-    container.export_plan_repository.save(ExportPlan(id="plan_1", environment_id="env_1"))
-    apply_run = ExportApplyRun(
-        id="apply_1",
-        export_plan_id="plan_1",
-        environment_id="env_1",
-        status=ExportApplyRunStatus.COMPLETED,
-        started_at="2026-05-22T10:00:00+00:00",
-        finished_at="2026-05-22T10:00:01+00:00",
-        item_results=(
-            ExportApplyItemResult(
-                action=ExportAction.CREATE_FOLDER,
-                target_path=Path("/Volumes/USB/.music_manager"),
-                status=ExportApplyItemStatus.SUCCEEDED,
-                created_at="2026-05-22T10:00:00+00:00",
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
+        )
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_2", name="Other", root_path=Path("/Volumes/OTHER"))
+        )
+        repositories.export_plan_repository.save(ExportPlan(id="plan_1", environment_id="env_1"))
+        apply_run = ExportApplyRun(
+            id="apply_1",
+            export_plan_id="plan_1",
+            environment_id="env_1",
+            status=ExportApplyRunStatus.COMPLETED,
+            started_at="2026-05-22T10:00:00+00:00",
+            finished_at="2026-05-22T10:00:01+00:00",
+            item_results=(
+                ExportApplyItemResult(
+                    action=ExportAction.CREATE_FOLDER,
+                    target_path=Path("/Volumes/USB/.music_manager"),
+                    status=ExportApplyItemStatus.SUCCEEDED,
+                    created_at="2026-05-22T10:00:00+00:00",
+                ),
             ),
-        ),
-    )
-    container.export_apply_run_repository.save(apply_run)
+        )
+        repositories.export_apply_run_repository.save(apply_run)
 
     ok = api_client.get("/environments/env_1/export-apply-runs/apply_1")
     wrong_environment = api_client.get("/environments/env_2/export-apply-runs/apply_1")
@@ -227,66 +229,71 @@ def _container(api_client: TestClient) -> AppContainer:
 
 
 def _seed_desktop_view_data(container: AppContainer) -> None:
-    container.environment_repository.save(
-        MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
-    )
-    container.song_repository.save(SongMaster(id="song_1", title="Matched", artist="Artist"))
-    container.song_repository.save(SongMaster(id="song_2", title="Maybe", artist="Artist"))
-    container.song_repository.save(SongMaster(id="song_3", title="Missing", artist="Artist"))
-    container.song_repository.save(SongMaster(id="song_4", title="Old", artist="Artist"))
-    container.playlist_repository.save(
-        Playlist(
-            id="playlist_1",
-            environment_id="env_1",
-            name="Set",
-            items=(
-                PlaylistItem(song_id="song_1", position=1),
-                PlaylistItem(song_id="song_2", position=2),
-                PlaylistItem(song_id="song_3", position=3),
-                PlaylistItem(song_id="song_4", position=4, remote_membership_active=False),
-            ),
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
         )
-    )
-    container.audio_file_repository.save(
-        AudioFile(
-            id="file_1",
-            environment_id="env_1",
-            path=Path("/Volumes/USB/matched.mp3"),
-            size_bytes=1,
-            modified_at=1.0,
-            title="Matched",
-            artist="Artist",
+        repositories.song_repository.save(
+            SongMaster(id="song_1", title="Matched", artist="Artist")
         )
-    )
-    container.audio_file_repository.save(
-        AudioFile(
-            id="file_2",
-            environment_id="env_1",
-            path=Path("/Volumes/USB/maybe.mp3"),
-            size_bytes=1,
-            modified_at=1.0,
-            title="Maybe",
-            artist="Artist",
+        repositories.song_repository.save(SongMaster(id="song_2", title="Maybe", artist="Artist"))
+        repositories.song_repository.save(
+            SongMaster(id="song_3", title="Missing", artist="Artist")
         )
-    )
-    container.audio_file_repository.save(
-        AudioFile(
-            id="file_removed",
-            environment_id="env_1",
-            path=Path("/Volumes/USB/removed.mp3"),
-            size_bytes=1,
-            modified_at=1.0,
-            status=AudioFileStatus.REMOVED,
+        repositories.song_repository.save(SongMaster(id="song_4", title="Old", artist="Artist"))
+        repositories.playlist_repository.save(
+            Playlist(
+                id="playlist_1",
+                environment_id="env_1",
+                name="Set",
+                items=(
+                    PlaylistItem(song_id="song_1", position=1),
+                    PlaylistItem(song_id="song_2", position=2),
+                    PlaylistItem(song_id="song_3", position=3),
+                    PlaylistItem(song_id="song_4", position=4, remote_membership_active=False),
+                ),
+            )
         )
-    )
-    container.match_link_repository.save(
-        MatchLink(
-            song_id="song_1",
-            audio_file_id="file_1",
-            method="metadata_exact",
-            confidence=0.95,
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id="file_1",
+                environment_id="env_1",
+                path=Path("/Volumes/USB/matched.mp3"),
+                size_bytes=1,
+                modified_at=1.0,
+                title="Matched",
+                artist="Artist",
+            )
         )
-    )
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id="file_2",
+                environment_id="env_1",
+                path=Path("/Volumes/USB/maybe.mp3"),
+                size_bytes=1,
+                modified_at=1.0,
+                title="Maybe",
+                artist="Artist",
+            )
+        )
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id="file_removed",
+                environment_id="env_1",
+                path=Path("/Volumes/USB/removed.mp3"),
+                size_bytes=1,
+                modified_at=1.0,
+                status=AudioFileStatus.REMOVED,
+            )
+        )
+        repositories.match_link_repository.save(
+            MatchLink(
+                song_id="song_1",
+                audio_file_id="file_1",
+                method="metadata_exact",
+                confidence=0.95,
+            )
+        )
 
 
 def _playlist(
