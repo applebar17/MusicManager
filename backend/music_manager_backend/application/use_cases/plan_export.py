@@ -1,11 +1,14 @@
 from pathlib import Path
 
+from music_manager_backend.application.use_cases.match_link_selection import (
+    active_match_links,
+    preferred_match_link,
+)
 from music_manager_backend.domain.entities import (
     AudioFile,
     AudioFileStatus,
     ExportPlan,
     ExportPlanItem,
-    MatchLink,
     Playlist,
     SongMaster,
 )
@@ -74,18 +77,22 @@ class PlanExport:
                 song = self.songs.get(playlist_item.song_id)
                 if song is None:
                     continue
-                accepted_file = _accepted_audio_file(
+                linked_files = _linked_audio_files(
                     song_id=song.id,
                     active_files=active_files,
                     match_links=self.match_links,
                 )
-                if accepted_file is not None:
-                    if is_likely_preview_duration(accepted_file.duration_seconds):
+                if linked_files:
+                    accepted_file = _preferred_audio_file_for_folder(
+                        folder=folder,
+                        linked_files=linked_files,
+                    )
+                    if accepted_file is None:
                         items.append(
                             ExportPlanItem(
                                 action=ExportAction.SKIP,
                                 target_path=folder,
-                                reason=_preview_skip_reason(accepted_file),
+                                reason=_preview_skip_reason(linked_files[0]),
                             )
                         )
                         continue
@@ -145,26 +152,56 @@ def _select_playlists(
     return [by_id[playlist_id] for playlist_id in playlist_ids]
 
 
-def _accepted_audio_file(
+def _linked_audio_files(
     *,
     song_id: str,
     active_files: dict[str, AudioFile],
     match_links: MatchLinkRepository,
-) -> AudioFile | None:
-    manual: list[MatchLink] = []
-    automatic: list[MatchLink] = []
-    for link in match_links.list_by_song(song_id):
-        if link.audio_file_id not in active_files:
+) -> list[AudioFile]:
+    links = match_links.list_by_song(song_id)
+    preferred = preferred_match_link(links, active_files)
+    ordered_links = []
+    if preferred is not None:
+        ordered_links.append(preferred)
+    ordered_links.extend(
+        link
+        for link in active_match_links(links, active_files)
+        if preferred is None or link.audio_file_id != preferred.audio_file_id
+    )
+    seen: set[str] = set()
+    files: list[AudioFile] = []
+    for link in ordered_links:
+        if link.audio_file_id in seen:
             continue
-        if link.reviewed and link.method == "manual":
-            manual.append(link)
-        elif not link.reviewed:
-            automatic.append(link)
-    if manual:
-        return active_files[manual[0].audio_file_id]
-    if automatic:
-        return active_files[automatic[0].audio_file_id]
-    return None
+        seen.add(link.audio_file_id)
+        files.append(active_files[link.audio_file_id])
+    return files
+
+
+def _preferred_audio_file_for_folder(
+    *,
+    folder: Path,
+    linked_files: list[AudioFile],
+) -> AudioFile | None:
+    exportable = _exportable_audio_files(linked_files)
+    folder_resolved = folder.resolve(strict=False)
+    for audio_file in exportable:
+        if audio_file.path.parent.resolve(strict=False) == folder_resolved:
+            return audio_file
+    return exportable[0] if exportable else None
+
+
+def _best_exportable_audio_file(linked_files: list[AudioFile]) -> AudioFile | None:
+    exportable = _exportable_audio_files(linked_files)
+    return exportable[0] if exportable else None
+
+
+def _exportable_audio_files(linked_files: list[AudioFile]) -> list[AudioFile]:
+    return [
+        audio_file
+        for audio_file in linked_files
+        if not is_likely_preview_duration(audio_file.duration_seconds)
+    ]
 
 
 def _skip_reason(song: SongMaster, active_files: list[AudioFile]) -> str:
@@ -246,11 +283,12 @@ def _deprecated_items(
         song = songs.get(song_id)
         if song is None:
             continue
-        accepted_file = _accepted_audio_file(
+        linked_files = _linked_audio_files(
             song_id=song_id,
             active_files=active_files,
             match_links=match_links,
         )
+        accepted_file = _best_exportable_audio_file(linked_files)
         if accepted_file is None:
             continue
         items.append(

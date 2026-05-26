@@ -1,9 +1,13 @@
 from music_manager_backend.application.dtos import MatchingRunSummary
+from music_manager_backend.application.use_cases.local_duplicate_linker import (
+    link_local_duplicate_files,
+)
+from music_manager_backend.application.use_cases.match_link_selection import preferred_match_link
 from music_manager_backend.application.use_cases.matching_common import (
     active_audio_files_by_id,
     load_environment_songs,
 )
-from music_manager_backend.domain.entities import AudioFile, MatchLink
+from music_manager_backend.domain.entities import MatchLink
 from music_manager_backend.domain.services.match_scoring import (
     is_unique_high_confidence,
     score_song_files,
@@ -50,8 +54,18 @@ class RunMatching:
         manual = 0
 
         for song in environment_songs.songs:
-            if _has_active_manual_mapping(song.id, active_files, self.match_links):
-                manual += 1
+            accepted = preferred_match_link(self.match_links.list_by_song(song.id), active_files)
+            if accepted is not None and accepted.reviewed:
+                if accepted.method == "manual":
+                    manual += 1
+                else:
+                    matched += 1
+                link_local_duplicate_files(
+                    song=song,
+                    anchor_file=active_files[accepted.audio_file_id],
+                    active_files=active_files,
+                    match_links=self.match_links,
+                )
                 continue
 
             self.match_links.delete_automatic_by_song(song.id)
@@ -70,6 +84,12 @@ class RunMatching:
                         confidence=candidate.confidence,
                     )
                 )
+                link_local_duplicate_files(
+                    song=song,
+                    anchor_file=active_files[candidate.audio_file_id],
+                    active_files=active_files,
+                    match_links=self.match_links,
+                )
                 matched += 1
             elif not candidates:
                 missing += 1
@@ -84,16 +104,3 @@ class RunMatching:
             ambiguous=ambiguous,
             manually_mapped=manual,
         )
-
-
-def _has_active_manual_mapping(
-    song_id: str,
-    active_files: dict[str, AudioFile],
-    match_links: MatchLinkRepository,
-) -> bool:
-    return any(
-        link.reviewed
-        and link.method == "manual"
-        and link.audio_file_id in active_files
-        for link in match_links.list_by_song(song_id)
-    )

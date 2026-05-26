@@ -1,5 +1,9 @@
 import { apiGet, apiPost } from "../../shared/api/http";
-import type { UsbFileRead, UsbSongCandidateRead } from "../../shared/api/types";
+import type {
+  UsbAudioFileMappingCreate,
+  UsbFileRead,
+  UsbSongCandidateRead,
+} from "../../shared/api/types";
 
 export function listUsbFiles(environmentId: string) {
   return apiGet<UsbFileRead[]>(`/environments/${environmentId}/usb/files`);
@@ -23,5 +27,16 @@ export function listUsbMatchCandidates(
 export function quarantineUsbAudioFile(environmentId: string, audioFileId: string) {
   return apiPost<UsbFileRead>(
     `/environments/${environmentId}/usb/audio-files/${audioFileId}/quarantine`,
+  );
+}
+
+export function mapUsbAudioFile(
+  environmentId: string,
+  audioFileId: string,
+  body: UsbAudioFileMappingCreate,
+) {
+  return apiPost<UsbFileRead, UsbAudioFileMappingCreate>(
+    `/environments/${environmentId}/usb/audio-files/${audioFileId}/mapping`,
+    body,
   );
 }

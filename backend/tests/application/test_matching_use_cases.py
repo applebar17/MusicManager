@@ -108,6 +108,13 @@ def test_playlist_folder_breaks_duplicate_title_duration_tie(
     assert repositories.match_links.list_by_song("song_1") == [
         MatchLink(
             song_id="song_1",
+            audio_file_id="file_pop",
+            method="local_duplicate",
+            confidence=0.99,
+            reviewed=True,
+        ),
+        MatchLink(
+            song_id="song_1",
             audio_file_id="file_dance",
             method="playlist_path_title_strict_duration",
             confidence=0.96,
@@ -156,6 +163,13 @@ def test_playlist_folder_breaks_duplicate_metadata_exact_tie(
 
     assert summary.matched == 1
     assert repositories.match_links.list_by_song("song_1") == [
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_dance",
+            method="local_duplicate",
+            confidence=0.99,
+            reviewed=True,
+        ),
         MatchLink(
             song_id="song_1",
             audio_file_id="file_house",
@@ -222,6 +236,85 @@ def test_short_audio_candidate_warns_and_does_not_auto_match(
     assert review[0].status == "ambiguous"
     assert review[0].candidates[0].method == "likely_preview_metadata_exact"
     assert review[0].candidates[0].warnings == ["likely_preview_download"]
+
+
+def test_manual_mapping_auto_links_duplicate_local_copies(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    _seed_song_playlist(repositories, SongMaster(id="song_1", title="Track", artist="Artist"))
+    repositories.audio_files.save(
+        _audio_file(
+            "file_1",
+            path=Path("/Volumes/USB/01_TECH/track.mp3"),
+            title="Track",
+            artist="Artist",
+            duration_seconds=180,
+        )
+    )
+    repositories.audio_files.save(
+        _audio_file(
+            "file_2",
+            path=Path("/Volumes/USB/03_HOUSE/track.mp3"),
+            title="Track",
+            artist="Artist",
+            duration_seconds=183,
+        )
+    )
+
+    _create_manual_mapping(repositories).execute("env_1", "song_1", "file_1")
+
+    assert repositories.match_links.list_by_song("song_1") == [
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        ),
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_2",
+            method="local_duplicate",
+            confidence=0.99,
+            reviewed=True,
+        ),
+    ]
+
+
+def test_duplicate_linking_skips_preview_duration_files(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    _seed_song_playlist(repositories, SongMaster(id="song_1", title="Track", artist="Artist"))
+    repositories.audio_files.save(
+        _audio_file(
+            "file_1",
+            title="Track",
+            artist="Artist",
+            duration_seconds=180,
+        )
+    )
+    repositories.audio_files.save(
+        _audio_file(
+            "file_preview",
+            title="Track",
+            artist="Artist",
+            duration_seconds=37,
+        )
+    )
+
+    _create_manual_mapping(repositories).execute("env_1", "song_1", "file_1")
+
+    assert repositories.match_links.list_by_song("song_1") == [
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    ]
 
 
 def test_manual_mapping_overrides_automatic_matching(

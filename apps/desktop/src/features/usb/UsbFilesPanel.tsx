@@ -16,8 +16,7 @@ import { ApiError } from "../../shared/api/http";
 import type { UsbFileRead, UsbSongCandidateRead } from "../../shared/api/types";
 import { useAppState } from "../../shared/state";
 import { Button, ConfirmDialog, EmptyState, ErrorBanner, LoadingState, Panel, StatusBadge } from "../../shared/ui";
-import { createManualMapping } from "../matching/api";
-import { listUsbFiles, listUsbMatchCandidates, quarantineUsbAudioFile } from "./api";
+import { listUsbFiles, listUsbMatchCandidates, mapUsbAudioFile, quarantineUsbAudioFile } from "./api";
 
 type UsbStatusFilter = "all" | "matched" | "unmatched" | "preview";
 
@@ -150,9 +149,8 @@ export function UsbFilesPanel() {
     setMappingSongId(candidate.song_id);
     setError(null);
     try {
-      await createManualMapping(selectedEnvironmentId, {
+      await mapUsbAudioFile(selectedEnvironmentId, matchFile.audio_file_id, {
         song_id: candidate.song_id,
-        audio_file_id: matchFile.audio_file_id,
       });
       await refreshFiles(selectedEnvironmentId);
       setMatchFile(null);
@@ -413,6 +411,9 @@ function UsbFileRow({ file, onMatch, onQuarantine }: UsbFileRowProps) {
             </span>
             {file.matched_song.playlists.length > 0 ? (
               <em>{file.matched_song.playlists.join(", ")}</em>
+            ) : null}
+            {file.matched_song.local_copy_count > 1 ? (
+              <em>{formatNumber(file.matched_song.local_copy_count)} local copies</em>
             ) : null}
           </span>
         ) : (

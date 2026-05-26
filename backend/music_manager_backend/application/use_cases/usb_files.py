@@ -6,9 +6,17 @@ from dataclasses import replace
 from pathlib import Path
 
 from music_manager_backend.application.dtos import (
+    UsbAudioFileMappingCreate,
     UsbFileRead,
     UsbMatchedSongRead,
     UsbSongCandidateRead,
+)
+from music_manager_backend.application.use_cases.local_duplicate_linker import (
+    link_local_duplicate_files,
+)
+from music_manager_backend.application.use_cases.match_link_selection import (
+    active_match_links,
+    preferred_match_link,
 )
 from music_manager_backend.application.use_cases.matching_common import (
     active_audio_files_by_id,
@@ -17,6 +25,7 @@ from music_manager_backend.application.use_cases.matching_common import (
 from music_manager_backend.domain.entities import (
     AudioFile,
     AudioFileStatus,
+    MatchCandidate,
     MatchLink,
     MatchStatus,
     MusicEnvironment,
@@ -127,9 +136,7 @@ class ListUsbMatchCandidates:
         candidates: list[UsbSongCandidateRead] = []
 
         for song in environment_songs.songs:
-            if _accepted_link(self.match_links.list_by_song(song.id), active_files) is not None:
-                continue
-
+            preferred = preferred_match_link(self.match_links.list_by_song(song.id), active_files)
             playlist_names = environment_songs.playlist_names_by_song_id.get(song.id, set())
             global_candidates = score_song_files(
                 song,
@@ -150,11 +157,7 @@ class ListUsbMatchCandidates:
                     artist=song.display_artist,
                     duration_seconds=song.duration_seconds,
                     playlists=sorted(playlist_names),
-                    status=(
-                        MatchStatus.AMBIGUOUS.value
-                        if global_candidates
-                        else MatchStatus.MISSING_AUDIO.value
-                    ),
+                    status=_song_status(preferred, global_candidates),
                     method=selected_candidate.method if selected_candidate is not None else None,
                     confidence=(
                         selected_candidate.confidence if selected_candidate is not None else 0.0
@@ -166,6 +169,82 @@ class ListUsbMatchCandidates:
             candidates,
             key=lambda item: (-item.confidence, item.title.casefold(), item.song_id),
         )[:50]
+
+
+class CreateUsbAudioFileMapping:
+    def __init__(
+        self,
+        *,
+        environments: EnvironmentRepository,
+        playlists: PlaylistRepository,
+        songs: SongRepository,
+        audio_files: AudioFileRepository,
+        match_links: MatchLinkRepository,
+    ) -> None:
+        self.environments = environments
+        self.playlists = playlists
+        self.songs = songs
+        self.audio_files = audio_files
+        self.match_links = match_links
+
+    def execute(
+        self,
+        environment_id: str,
+        audio_file_id: str,
+        data: UsbAudioFileMappingCreate,
+    ) -> UsbFileRead:
+        environment = _environment_or_raise(self.environments, environment_id)
+        environment_songs = load_environment_songs(
+            environment_id=environment_id,
+            environments=self.environments,
+            playlists=self.playlists,
+            songs=self.songs,
+        )
+        if data.song_id not in environment_songs.song_ids:
+            raise NotFoundError(f"Song not found in environment: {data.song_id}")
+        audio_file = self.audio_files.get(audio_file_id)
+        if audio_file is None or audio_file.environment_id != environment_id:
+            raise NotFoundError(f"Audio file not found: {audio_file_id}")
+        if audio_file.status != AudioFileStatus.ACTIVE:
+            raise ValidationError(f"Audio file is not active: {audio_file_id}")
+        song = self.songs.get(data.song_id)
+        if song is None:
+            raise NotFoundError(f"Song not found in environment: {data.song_id}")
+
+        active_files = active_audio_files_by_id(
+            environment_id=environment_id,
+            audio_files=self.audio_files,
+        )
+        existing_preferred = preferred_match_link(
+            self.match_links.list_by_song(song.id),
+            active_files,
+        )
+        self.match_links.save(
+            MatchLink(
+                song_id=song.id,
+                audio_file_id=audio_file.id,
+                method="manual" if existing_preferred is None else "manual_local_copy",
+                confidence=1.0,
+                reviewed=True,
+            )
+        )
+        link_local_duplicate_files(
+            song=song,
+            anchor_file=audio_file,
+            active_files=active_files,
+            match_links=self.match_links,
+        )
+        matched_by_audio_file_id = _matched_songs_by_audio_file_id(
+            songs=environment_songs.songs,
+            playlist_names_by_song_id=environment_songs.playlist_names_by_song_id,
+            active_files=active_files,
+            match_links=self.match_links,
+        )
+        return _usb_file_read(
+            environment=environment,
+            audio_file=audio_file,
+            matched_song=matched_by_audio_file_id.get(audio_file.id),
+        )
 
 
 class QuarantineUsbAudioFile:
@@ -226,42 +305,33 @@ def _matched_songs_by_audio_file_id(
 ) -> dict[str, UsbMatchedSongRead]:
     matched: dict[str, UsbMatchedSongRead] = {}
     for song in songs:
-        accepted = _accepted_link(match_links.list_by_song(song.id), active_files)
-        if accepted is None:
+        links = active_match_links(match_links.list_by_song(song.id), active_files)
+        if not links:
             continue
-        matched.setdefault(
-            accepted.audio_file_id,
-            UsbMatchedSongRead(
+        local_audio_file_ids = sorted({link.audio_file_id for link in links})
+        local_copy_count = len(local_audio_file_ids)
+        for link in links:
+            matched[link.audio_file_id] = UsbMatchedSongRead(
                 song_id=song.id,
                 title=song.display_title,
                 artist=song.display_artist,
                 duration_seconds=song.duration_seconds,
                 playlists=sorted(playlist_names_by_song_id.get(song.id, set())),
-                method=accepted.method,
-                confidence=accepted.confidence,
-                reviewed=accepted.reviewed,
-            ),
-        )
+                method=link.method,
+                confidence=link.confidence,
+                reviewed=link.reviewed,
+                local_copy_count=local_copy_count,
+                local_audio_file_ids=local_audio_file_ids,
+            )
     return matched
 
 
-def _accepted_link(
-    links: list[MatchLink],
-    active_files: dict[str, AudioFile],
-) -> MatchLink | None:
-    manual = [
-        link
-        for link in links
-        if link.reviewed and link.method == "manual" and link.audio_file_id in active_files
-    ]
-    if manual:
-        return manual[0]
-    automatic = [
-        link
-        for link in links
-        if not link.reviewed and link.audio_file_id in active_files
-    ]
-    return automatic[0] if automatic else None
+def _song_status(preferred: MatchLink | None, global_candidates: list[MatchCandidate]) -> str:
+    if preferred is not None and preferred.method == "manual":
+        return MatchStatus.MANUALLY_MAPPED.value
+    if preferred is not None:
+        return MatchStatus.MATCHED.value
+    return MatchStatus.AMBIGUOUS.value if global_candidates else MatchStatus.MISSING_AUDIO.value
 
 
 def _usb_file_read(

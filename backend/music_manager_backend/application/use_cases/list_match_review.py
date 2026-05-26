@@ -1,4 +1,5 @@
 from music_manager_backend.application.dtos import MatchCandidateRead, MatchReviewRow
+from music_manager_backend.application.use_cases.match_link_selection import preferred_match_link
 from music_manager_backend.application.use_cases.matching_common import (
     active_audio_files_by_id,
     candidate_audio_file,
@@ -47,7 +48,7 @@ class ListMatchReview:
         rows: list[MatchReviewRow] = []
         for song in environment_songs.songs:
             links = self.match_links.list_by_song(song.id)
-            accepted = _accepted_link(links, active_files)
+            accepted = preferred_match_link(links, active_files)
             if accepted is not None:
                 status = (
                     MatchStatus.MANUALLY_MAPPED
@@ -91,25 +92,6 @@ class ListMatchReview:
                 )
             )
         return rows
-
-
-def _accepted_link(
-    links: list[MatchLink], active_files: dict[str, AudioFile]
-) -> MatchLink | None:
-    manual = [
-        link
-        for link in links
-        if link.reviewed and link.method == "manual" and link.audio_file_id in active_files
-    ]
-    if manual:
-        return manual[0]
-    automatic = [
-        link
-        for link in links
-        if not link.reviewed and link.audio_file_id in active_files
-    ]
-    return automatic[0] if automatic else None
-
 
 def _candidate_from_link(
     link: MatchLink, active_files: dict[str, AudioFile]

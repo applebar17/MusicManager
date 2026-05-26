@@ -150,6 +150,8 @@ export type UsbMatchedSongRead = {
   method: string;
   confidence: number;
   reviewed: boolean;
+  local_copy_count: number;
+  local_audio_file_ids: string[];
 };
 
 export type UsbFileRead = {
@@ -183,6 +185,10 @@ export type UsbSongCandidateRead = {
   status: MatchStatus;
   method: string | null;
   confidence: number;
+};
+
+export type UsbAudioFileMappingCreate = {
+  song_id: string;
 };
 
 export type SoundCloudPlaylistImportRequest = {

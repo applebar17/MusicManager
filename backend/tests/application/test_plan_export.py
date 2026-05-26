@@ -147,6 +147,55 @@ def test_export_plan_keeps_file_already_in_playlist_folder(
     assert not [item for item in plan.items if item.action == ExportAction.COPY_FILE]
 
 
+def test_export_plan_prefers_linked_copy_in_target_playlist_folder(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    generic_source = _source_file(root, "bongoloco.mp3")
+    folder_source = root / "03_HOUSE" / "bongoloco.mp3"
+    folder_source.parent.mkdir()
+    folder_source.write_bytes(b"audio")
+    repositories.songs.save(SongMaster(id="song_1", title="Bongoloco", artist="Bruno Furlan"))
+    repositories.audio_files.save(_audio_file("file_generic", generic_source))
+    repositories.audio_files.save(_audio_file("file_house", folder_source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_generic",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_house",
+            method="local_duplicate",
+            confidence=0.99,
+            reviewed=True,
+        )
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="03_HOUSE",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    keep_items = [item for item in plan.items if item.action == ExportAction.KEEP_EXISTING]
+    assert keep_items[0].source_path == folder_source
+    assert keep_items[0].target_path == folder_source
+    assert not [item for item in plan.items if item.action == ExportAction.COPY_FILE]
+
+
 def test_export_plan_skips_missing_and_ambiguous_tracks(
     sqlite_connection: sqlite3.Connection,
     tmp_path: Path,

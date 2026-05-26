@@ -10,6 +10,8 @@ class UsbMatchedSongRead(BaseModel):
     method: str
     confidence: float
     reviewed: bool
+    local_copy_count: int = 1
+    local_audio_file_ids: list[str] = Field(default_factory=list)
 
 
 class UsbFileRead(BaseModel):
@@ -43,3 +45,7 @@ class UsbSongCandidateRead(BaseModel):
     status: str
     method: str | None = None
     confidence: float
+
+
+class UsbAudioFileMappingCreate(BaseModel):
+    song_id: str

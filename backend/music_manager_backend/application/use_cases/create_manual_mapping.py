@@ -1,5 +1,8 @@
 from music_manager_backend.application.dtos import MatchReviewRow
 from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
+from music_manager_backend.application.use_cases.local_duplicate_linker import (
+    link_local_duplicate_files,
+)
 from music_manager_backend.application.use_cases.matching_common import (
     active_audio_files_by_id,
     load_environment_songs,
@@ -47,6 +50,10 @@ class CreateManualMapping:
         if audio_file_id not in active_files:
             raise ValidationError(f"Active audio file not found in environment: {audio_file_id}")
 
+        song = self.songs.get(song_id)
+        if song is None:
+            raise NotFoundError(f"Song not found in environment: {song_id}")
+
         self.match_links.replace_for_song(
             MatchLink(
                 song_id=song_id,
@@ -55,6 +62,12 @@ class CreateManualMapping:
                 confidence=1.0,
                 reviewed=True,
             )
+        )
+        link_local_duplicate_files(
+            song=song,
+            anchor_file=active_files[audio_file_id],
+            active_files=active_files,
+            match_links=self.match_links,
         )
         rows = ListMatchReview(
             environments=self.environments,
