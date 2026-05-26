@@ -1426,6 +1426,7 @@ button {
   display: grid;
   min-height: calc(100vh - 58px);
   grid-template-columns: 260px minmax(0, 1fr);
+  padding-bottom: 64px;
 }
 
 .usb-folder-panel {
@@ -1521,7 +1522,7 @@ button {
 }
 
 .usb-table {
-  min-width: 1080px;
+  min-width: 920px;
 }
 
 .usb-row--preview {

@@ -4,20 +4,26 @@ import {
   Folder,
   FolderTree,
   Link2,
+  Play,
   RefreshCw,
   Search,
   ShieldAlert,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent, RefObject } from "react";
 
 import { ApiError } from "../../shared/api/http";
 import type { UsbFileRead, UsbSongCandidateRead } from "../../shared/api/types";
 import { useAppState } from "../../shared/state";
 import { Button, ConfirmDialog, EmptyState, ErrorBanner, LoadingState, Panel, StatusBadge } from "../../shared/ui";
 import { createManualMapping } from "../matching/api";
-import { listUsbFiles, listUsbMatchCandidates, quarantineUsbAudioFile } from "./api";
+import {
+  listUsbFiles,
+  listUsbMatchCandidates,
+  playbackAudioUrl,
+  quarantineUsbAudioFile,
+} from "./api";
 
 type UsbStatusFilter = "all" | "matched" | "unmatched" | "preview";
 
@@ -28,8 +34,16 @@ type FolderOption = {
   count: number;
 };
 
+type PreviewState = {
+  audioFileId: string;
+  label: string;
+  detail: string;
+  url: string;
+};
+
 export function UsbFilesPanel() {
   const { selectedEnvironmentId } = useAppState();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [files, setFiles] = useState<UsbFileRead[]>([]);
   const [selectedFolderKey, setSelectedFolderKey] = useState("");
   const [search, setSearch] = useState("");
@@ -43,6 +57,9 @@ export function UsbFilesPanel() {
   const [mappingSongId, setMappingSongId] = useState<string | null>(null);
   const [quarantineFile, setQuarantineFile] = useState<UsbFileRead | null>(null);
   const [isQuarantining, setIsQuarantining] = useState(false);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   const refreshFiles = useCallback(
     async (environmentId: string) => {
@@ -70,10 +87,24 @@ export function UsbFilesPanel() {
       setFiles([]);
       setSelectedFolderKey("");
       setMatchFile(null);
+      setPreview(null);
+      setPlaybackError(null);
       return;
     }
     void refreshFiles(selectedEnvironmentId);
   }, [refreshFiles, selectedEnvironmentId]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !preview) {
+      return;
+    }
+    setPlaybackError(null);
+    void audio.play().catch((playError: unknown) => {
+      setPlaybackError(errorMessage(playError));
+      setIsPlaying(false);
+    });
+  }, [preview]);
 
   const folders = useMemo(() => buildFolderOptions(files), [files]);
   const counts = useMemo(() => usbCounts(files), [files]);
@@ -164,6 +195,23 @@ export function UsbFilesPanel() {
     }
   }
 
+  function handlePreviewAudio(file: UsbFileRead) {
+    if (!selectedEnvironmentId) {
+      return;
+    }
+    const currentAudio = audioRef.current;
+    if (preview?.audioFileId === file.audio_file_id && currentAudio && !currentAudio.paused) {
+      currentAudio.pause();
+      return;
+    }
+    setPreview({
+      audioFileId: file.audio_file_id,
+      label: file.title ?? filenameStem(file.filename),
+      detail: file.relative_path,
+      url: playbackAudioUrl(selectedEnvironmentId, file.audio_file_id),
+    });
+  }
+
   async function handleConfirmQuarantine() {
     if (!selectedEnvironmentId || !quarantineFile) {
       return;
@@ -177,6 +225,11 @@ export function UsbFilesPanel() {
       );
       if (matchFile?.audio_file_id === quarantineFile.audio_file_id) {
         setMatchFile(null);
+      }
+      if (preview?.audioFileId === quarantineFile.audio_file_id) {
+        audioRef.current?.pause();
+        setPreview(null);
+        setPlaybackError(null);
       }
       setQuarantineFile(null);
     } catch (quarantineError) {
@@ -306,7 +359,6 @@ export function UsbFilesPanel() {
                 <thead>
                   <tr>
                     <th>File</th>
-                    <th>Metadata</th>
                     <th>Dur</th>
                     <th>Status</th>
                     <th>SoundCloud Match</th>
@@ -319,6 +371,7 @@ export function UsbFilesPanel() {
                       file={file}
                       key={file.audio_file_id}
                       onMatch={() => void openMatchModal(file)}
+                      onPreview={() => handlePreviewAudio(file)}
                       onQuarantine={() => setQuarantineFile(file)}
                     />
                   ))}
@@ -362,6 +415,19 @@ export function UsbFilesPanel() {
         onCancel={() => setQuarantineFile(null)}
         onConfirm={() => void handleConfirmQuarantine()}
       />
+
+      <MiniPreviewPlayer
+        audioRef={audioRef}
+        isPlaying={isPlaying}
+        playbackError={playbackError}
+        preview={preview}
+        onPause={() => setIsPlaying(false)}
+        onPlay={() => setIsPlaying(true)}
+        onPlaybackError={() => {
+          setPlaybackError("Playback failed. The local file may be unavailable or unreadable.");
+          setIsPlaying(false);
+        }}
+      />
     </div>
   );
 }
@@ -369,10 +435,11 @@ export function UsbFilesPanel() {
 type UsbFileRowProps = {
   file: UsbFileRead;
   onMatch: () => void;
+  onPreview: () => void;
   onQuarantine: () => void;
 };
 
-function UsbFileRow({ file, onMatch, onQuarantine }: UsbFileRowProps) {
+function UsbFileRow({ file, onMatch, onPreview, onQuarantine }: UsbFileRowProps) {
   const preview = isLikelyPreview(file);
   const rowClassName = [
     "playlist-track-row",
@@ -388,10 +455,6 @@ function UsbFileRow({ file, onMatch, onQuarantine }: UsbFileRowProps) {
         <strong>{file.filename}</strong>
         <span>{file.relative_path}</span>
         {preview ? <em>Likely preview download</em> : null}
-      </td>
-      <td className="track-title-cell">
-        <strong>{file.title ?? filenameStem(file.filename)}</strong>
-        <span>{file.artist ?? "Unknown artist"}</span>
       </td>
       <td className="track-duration">{formatDuration(file.duration_seconds)}</td>
       <td>
@@ -421,6 +484,9 @@ function UsbFileRow({ file, onMatch, onQuarantine }: UsbFileRowProps) {
       </td>
       <td>
         <div className="usb-row-actions">
+          <Button icon={<Play size={14} />} onClick={onPreview}>
+            Play
+          </Button>
           {(file.match_status === "unmatched" || preview) ? (
             <Button icon={<Link2 size={14} />} onClick={onMatch}>
               Match
@@ -432,6 +498,64 @@ function UsbFileRow({ file, onMatch, onQuarantine }: UsbFileRowProps) {
         </div>
       </td>
     </tr>
+  );
+}
+
+function MiniPreviewPlayer({
+  audioRef,
+  isPlaying,
+  playbackError,
+  preview,
+  onPause,
+  onPlay,
+  onPlaybackError,
+}: {
+  audioRef: RefObject<HTMLAudioElement>;
+  isPlaying: boolean;
+  playbackError: string | null;
+  preview: PreviewState | null;
+  onPause: () => void;
+  onPlay: () => void;
+  onPlaybackError: () => void;
+}) {
+  return (
+    <footer className="mini-preview-player">
+      <audio
+        ref={audioRef}
+        src={preview?.url}
+        onEnded={onPause}
+        onError={onPlaybackError}
+        onPause={onPause}
+        onPlay={onPlay}
+      />
+      <div className="mini-preview-track">
+        <div className="mini-preview-art">
+          <Play size={18} />
+        </div>
+        <div>
+          <strong>{preview?.label ?? "No local file selected"}</strong>
+          <span>{playbackError ?? preview?.detail ?? "Select a USB audio file to preview."}</span>
+        </div>
+      </div>
+      <button
+        className="mini-preview-play"
+        disabled={!preview}
+        type="button"
+        onClick={() => {
+          const audio = audioRef.current;
+          if (!audio) {
+            return;
+          }
+          if (audio.paused) {
+            void audio.play().catch(onPlaybackError);
+          } else {
+            audio.pause();
+          }
+        }}
+      >
+        {isPlaying ? "Pause" : "Play"}
+      </button>
+    </footer>
   );
 }
 

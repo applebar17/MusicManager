@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "../../shared/api/http";
+import { apiGet, apiPost, getApiBaseUrl } from "../../shared/api/http";
 import type { UsbFileRead, UsbSongCandidateRead } from "../../shared/api/types";
 
 export function listUsbFiles(environmentId: string) {
@@ -24,4 +24,11 @@ export function quarantineUsbAudioFile(environmentId: string, audioFileId: strin
   return apiPost<UsbFileRead>(
     `/environments/${environmentId}/usb/audio-files/${audioFileId}/quarantine`,
   );
+}
+
+export function playbackAudioUrl(environmentId: string, audioFileId: string) {
+  const baseUrl = getApiBaseUrl().replace(/\/$/, "");
+  return `${baseUrl}/environments/${encodeURIComponent(
+    environmentId,
+  )}/playback/audio-files/${encodeURIComponent(audioFileId)}`;
 }
