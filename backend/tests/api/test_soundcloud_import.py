@@ -123,6 +123,48 @@ def test_sync_all_soundcloud_playlists_reimports_existing_remote_playlists(
     assert body["results"][0]["added"] == 1
 
 
+def test_sync_soundcloud_playlist_reimports_selected_playlist(
+    api_settings: Settings,
+    tmp_path: Path,
+) -> None:
+    importer = SequentialFakeSoundCloudImporter(
+        [
+            _playlist((_track(1, "One", "artist/one"),)),
+            _playlist(
+                (
+                    _track(1, "One", "artist/one"),
+                    _track(2, "Two", "artist/two"),
+                )
+            ),
+        ]
+    )
+    app = create_app(api_settings)
+    app.state.container = replace(app.state.container, soundcloud_playlist_importer=importer)
+    client = TestClient(app)
+    root = tmp_path / "usb"
+    root.mkdir()
+    environment_id = client.post(
+        "/environments",
+        json={"name": "USB", "root_path": str(root)},
+    ).json()["id"]
+    imported = client.post(
+        f"/environments/{environment_id}/soundcloud/playlists",
+        json={"url": SOURCE_URL},
+    ).json()
+
+    response = client.post(
+        f"/environments/{environment_id}/soundcloud/playlists/"
+        f"{imported['playlist_id']}/sync"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert importer.urls == [SOURCE_URL, SOURCE_URL]
+    assert body["playlist_id"] == imported["playlist_id"]
+    assert body["track_count"] == 2
+    assert body["added"] == 1
+
+
 def test_import_soundcloud_playlist_missing_environment_returns_404(
     api_settings: Settings,
 ) -> None:

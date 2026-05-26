@@ -66,6 +66,9 @@ from music_manager_backend.application.use_cases.scan_environment import ScanEnv
 from music_manager_backend.application.use_cases.sync_all_soundcloud_playlists import (
     SyncAllSoundCloudPlaylists,
 )
+from music_manager_backend.application.use_cases.sync_soundcloud_playlist import (
+    SyncSoundCloudPlaylist,
+)
 from music_manager_backend.application.use_cases.update_environment import UpdateEnvironment
 from music_manager_backend.application.use_cases.usb_files import (
     ListUsbFiles,
@@ -273,6 +276,32 @@ def sync_all_soundcloud_playlists(
         sync_snapshots=sync_snapshots,
         importer=importer,
     ).execute(environment_id)
+
+
+@router.post(
+    "/{environment_id}/soundcloud/playlists/{playlist_id}/sync",
+    response_model=SoundCloudPlaylistImportResult,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("sync_soundcloud_playlist"))],
+)
+def sync_soundcloud_playlist(
+    environment_id: str,
+    playlist_id: str,
+    environments: EnvironmentRepositoryDependency,
+    remote_playlists: RemotePlaylistRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    sync_snapshots: SyncSnapshotRepositoryDependency,
+    importer: SoundCloudPlaylistImporterDependency,
+) -> SoundCloudPlaylistImportResult:
+    return SyncSoundCloudPlaylist(
+        environments=environments,
+        remote_playlists=remote_playlists,
+        playlists=playlists,
+        songs=songs,
+        sync_snapshots=sync_snapshots,
+        importer=importer,
+    ).execute(environment_id, playlist_id)
 
 
 @router.post(

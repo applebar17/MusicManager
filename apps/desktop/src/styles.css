@@ -1126,12 +1126,17 @@ button {
 .playlist-detail-header {
   display: flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-lg);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--color-surface);
   padding: var(--space-lg) var(--space-xl);
+}
+
+.playlist-detail-header > div:first-child {
+  min-width: 0;
 }
 
 .soundcloud-badge {
@@ -1155,6 +1160,13 @@ button {
   font-size: 32px;
   font-weight: 700;
   line-height: 40px;
+}
+
+.playlist-detail-header__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
 .playlist-chip-row {

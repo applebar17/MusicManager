@@ -27,3 +27,9 @@ export function syncAllSoundCloudPlaylists(environmentId: string) {
     `/environments/${environmentId}/soundcloud/playlists/sync-all`,
   );
 }
+
+export function syncSoundCloudPlaylist(environmentId: string, playlistId: string) {
+  return apiPost<SoundCloudPlaylistImportResult>(
+    `/environments/${environmentId}/soundcloud/playlists/${playlistId}/sync`,
+  );
+}
