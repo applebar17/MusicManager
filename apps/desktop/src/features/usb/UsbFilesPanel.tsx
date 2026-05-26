@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowDownUp,
   CheckCircle2,
   Folder,
   FolderTree,
@@ -22,10 +23,13 @@ import {
   listUsbFiles,
   listUsbMatchCandidates,
   playbackAudioUrl,
+  quarantineUsbAudioFiles,
   quarantineUsbAudioFile,
 } from "./api";
 
 type UsbStatusFilter = "all" | "matched" | "unmatched" | "preview";
+type UsbSortKey = "filename" | "duration" | "status" | "match";
+type SortDirection = "asc" | "desc";
 
 type FolderOption = {
   key: string;
@@ -48,6 +52,9 @@ export function UsbFilesPanel() {
   const [selectedFolderKey, setSelectedFolderKey] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<UsbStatusFilter>("all");
+  const [sortKey, setSortKey] = useState<UsbSortKey>("filename");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(() => new Set());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matchFile, setMatchFile] = useState<UsbFileRead | null>(null);
@@ -56,7 +63,10 @@ export function UsbFilesPanel() {
   const [isSearchingCandidates, setIsSearchingCandidates] = useState(false);
   const [mappingSongId, setMappingSongId] = useState<string | null>(null);
   const [quarantineFile, setQuarantineFile] = useState<UsbFileRead | null>(null);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [bulkDeleteConfirmation, setBulkDeleteConfirmation] = useState("");
   const [isQuarantining, setIsQuarantining] = useState(false);
+  const [isBulkQuarantining, setIsBulkQuarantining] = useState(false);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
@@ -68,6 +78,10 @@ export function UsbFilesPanel() {
       try {
         const rows = await listUsbFiles(environmentId);
         setFiles(rows);
+        setSelectedFileIds((current) => {
+          const rowIds = new Set(rows.map((row) => row.audio_file_id));
+          return new Set([...current].filter((audioFileId) => rowIds.has(audioFileId)));
+        });
         setSelectedFolderKey((current) =>
           current === "" || rows.some((row) => folderKey(row.folder_parts).startsWith(current))
             ? current
@@ -87,6 +101,7 @@ export function UsbFilesPanel() {
       setFiles([]);
       setSelectedFolderKey("");
       setMatchFile(null);
+      setSelectedFileIds(new Set());
       setPreview(null);
       setPlaybackError(null);
       return;
@@ -108,38 +123,44 @@ export function UsbFilesPanel() {
 
   const folders = useMemo(() => buildFolderOptions(files), [files]);
   const counts = useMemo(() => usbCounts(files), [files]);
-  const visibleFiles = useMemo(
-    () =>
-      files.filter((file) => {
-        const query = search.trim().toLowerCase();
-        const rowFolderKey = folderKey(file.folder_parts);
-        const matchesFolder =
-          selectedFolderKey === "" ||
-          rowFolderKey === selectedFolderKey ||
-          rowFolderKey.startsWith(`${selectedFolderKey}/`);
-        const matchesSearch =
-          query.length === 0 ||
-          [
-            file.filename,
-            file.relative_path,
-            file.title ?? "",
-            file.artist ?? "",
-            file.matched_song?.title ?? "",
-            file.matched_song?.artist ?? "",
-            ...(file.matched_song?.playlists ?? []),
-          ].some((value) => value.toLowerCase().includes(query));
-        const preview = isLikelyPreview(file);
-        const matchesStatus =
-          statusFilter === "all" ||
-          (statusFilter === "preview"
-            ? preview
-            : statusFilter === "matched"
-              ? file.match_status === "matched"
-              : file.match_status === "unmatched");
-        return matchesFolder && matchesSearch && matchesStatus;
-      }),
-    [files, search, selectedFolderKey, statusFilter],
-  );
+  const visibleFiles = useMemo(() => {
+    const filteredFiles = files.filter((file) => {
+      const query = search.trim().toLowerCase();
+      const rowFolderKey = folderKey(file.folder_parts);
+      const matchesFolder =
+        selectedFolderKey === "" ||
+        rowFolderKey === selectedFolderKey ||
+        rowFolderKey.startsWith(`${selectedFolderKey}/`);
+      const matchesSearch =
+        query.length === 0 ||
+        [
+          file.filename,
+          file.relative_path,
+          file.title ?? "",
+          file.artist ?? "",
+          file.matched_song?.title ?? "",
+          file.matched_song?.artist ?? "",
+          ...(file.matched_song?.playlists ?? []),
+        ].some((value) => value.toLowerCase().includes(query));
+      const preview = isLikelyPreview(file);
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "preview"
+          ? preview
+          : statusFilter === "matched"
+            ? file.match_status === "matched"
+            : file.match_status === "unmatched");
+      return matchesFolder && matchesSearch && matchesStatus;
+    });
+    return [...filteredFiles].sort((left, right) =>
+      compareUsbFiles(left, right, sortKey, sortDirection),
+    );
+  }, [files, search, selectedFolderKey, sortDirection, sortKey, statusFilter]);
+
+  const selectedCount = selectedFileIds.size;
+  const allVisibleSelected =
+    visibleFiles.length > 0 &&
+    visibleFiles.every((file) => selectedFileIds.has(file.audio_file_id));
 
   async function openMatchModal(file: UsbFileRead) {
     if (!selectedEnvironmentId) {
@@ -212,6 +233,48 @@ export function UsbFilesPanel() {
     });
   }
 
+  function handleSort(nextSortKey: UsbSortKey) {
+    if (nextSortKey === sortKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(nextSortKey);
+    setSortDirection(nextSortKey === "duration" ? "desc" : "asc");
+  }
+
+  function handleToggleSelected(audioFileId: string) {
+    setSelectedFileIds((current) => {
+      const next = new Set(current);
+      if (next.has(audioFileId)) {
+        next.delete(audioFileId);
+      } else {
+        next.add(audioFileId);
+      }
+      return next;
+    });
+  }
+
+  function handleToggleVisibleSelected() {
+    setSelectedFileIds((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) {
+        for (const file of visibleFiles) {
+          next.delete(file.audio_file_id);
+        }
+      } else {
+        for (const file of visibleFiles) {
+          next.add(file.audio_file_id);
+        }
+      }
+      return next;
+    });
+  }
+
+  function closeBulkDeleteConfirm() {
+    setBulkDeleteConfirmOpen(false);
+    setBulkDeleteConfirmation("");
+  }
+
   async function handleConfirmQuarantine() {
     if (!selectedEnvironmentId || !quarantineFile) {
       return;
@@ -223,6 +286,11 @@ export function UsbFilesPanel() {
       setFiles((current) =>
         current.filter((file) => file.audio_file_id !== quarantineFile.audio_file_id),
       );
+      setSelectedFileIds((current) => {
+        const next = new Set(current);
+        next.delete(quarantineFile.audio_file_id);
+        return next;
+      });
       if (matchFile?.audio_file_id === quarantineFile.audio_file_id) {
         setMatchFile(null);
       }
@@ -236,6 +304,37 @@ export function UsbFilesPanel() {
       setError(errorMessage(quarantineError));
     } finally {
       setIsQuarantining(false);
+    }
+  }
+
+  async function handleConfirmBulkQuarantine() {
+    if (!selectedEnvironmentId || selectedFileIds.size === 0) {
+      return;
+    }
+    const selectedIds = [...selectedFileIds];
+    setIsBulkQuarantining(true);
+    setError(null);
+    try {
+      await quarantineUsbAudioFiles(selectedEnvironmentId, {
+        audio_file_ids: selectedIds,
+        confirmation: bulkDeleteConfirmation,
+      });
+      const removedIds = new Set(selectedIds);
+      setFiles((current) => current.filter((file) => !removedIds.has(file.audio_file_id)));
+      if (matchFile && removedIds.has(matchFile.audio_file_id)) {
+        setMatchFile(null);
+      }
+      if (preview && removedIds.has(preview.audioFileId)) {
+        audioRef.current?.pause();
+        setPreview(null);
+        setPlaybackError(null);
+      }
+      setSelectedFileIds(new Set());
+      closeBulkDeleteConfirm();
+    } catch (bulkDeleteError) {
+      setError(errorMessage(bulkDeleteError));
+    } finally {
+      setIsBulkQuarantining(false);
     }
   }
 
@@ -324,10 +423,58 @@ export function UsbFilesPanel() {
                 </p>
               </div>
               <div className="playlist-chip-row">
-                <span className="playlist-chip playlist-chip--neutral">{formatNumber(counts.total)} Files</span>
-                <span className="playlist-chip playlist-chip--success">{formatNumber(counts.matched)} Matched</span>
-                <span className="playlist-chip playlist-chip--danger">{formatNumber(counts.unmatched)} Unmatched</span>
-                <span className="playlist-chip playlist-chip--warning">{formatNumber(counts.preview)} Preview risk</span>
+                <button
+                  className={[
+                    "playlist-chip",
+                    "playlist-chip--neutral",
+                    statusFilter === "all" ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  type="button"
+                  onClick={() => setStatusFilter("all")}
+                >
+                  {formatNumber(counts.total)} Files
+                </button>
+                <button
+                  className={[
+                    "playlist-chip",
+                    "playlist-chip--success",
+                    statusFilter === "matched" ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  type="button"
+                  onClick={() => setStatusFilter("matched")}
+                >
+                  {formatNumber(counts.matched)} Matched
+                </button>
+                <button
+                  className={[
+                    "playlist-chip",
+                    "playlist-chip--danger",
+                    statusFilter === "unmatched" ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  type="button"
+                  onClick={() => setStatusFilter("unmatched")}
+                >
+                  {formatNumber(counts.unmatched)} Unmatched
+                </button>
+                <button
+                  className={[
+                    "playlist-chip",
+                    "playlist-chip--warning",
+                    statusFilter === "preview" ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  type="button"
+                  onClick={() => setStatusFilter("preview")}
+                >
+                  {formatNumber(counts.preview)} Preview risk
+                </button>
               </div>
             </section>
 
@@ -352,16 +499,65 @@ export function UsbFilesPanel() {
                 <option value="preview">Likely previews</option>
               </select>
               <span>{formatNumber(visibleFiles.length)} visible</span>
+              {selectedCount > 0 ? (
+                <>
+                  <span>{formatNumber(selectedCount)} selected</span>
+                  <Button
+                    icon={<Trash2 size={14} />}
+                    variant="danger"
+                    onClick={() => setBulkDeleteConfirmOpen(true)}
+                  >
+                    Delete Selected
+                  </Button>
+                </>
+              ) : null}
             </div>
 
             <div className="playlist-table-wrap">
               <table className="playlist-table usb-table">
                 <thead>
                   <tr>
-                    <th>File</th>
-                    <th>Dur</th>
-                    <th>Status</th>
-                    <th>SoundCloud Match</th>
+                    <th className="selection-cell">
+                      <input
+                        aria-label="Select visible USB files"
+                        checked={allVisibleSelected}
+                        disabled={visibleFiles.length === 0}
+                        type="checkbox"
+                        onChange={handleToggleVisibleSelected}
+                      />
+                    </th>
+                    <th>
+                      <SortHeader
+                        active={sortKey === "filename"}
+                        direction={sortDirection}
+                        label="File"
+                        onClick={() => handleSort("filename")}
+                      />
+                    </th>
+                    <th>
+                      <SortHeader
+                        active={sortKey === "duration"}
+                        direction={sortDirection}
+                        label="Dur"
+                        onClick={() => handleSort("duration")}
+                      />
+                    </th>
+                    <th>
+                      <SortHeader
+                        active={sortKey === "status"}
+                        direction={sortDirection}
+                        label="Status"
+                        onClick={() => handleSort("status")}
+                      />
+                    </th>
+                    <th>
+                      <SortHeader
+                        active={sortKey === "match"}
+                        direction={sortDirection}
+                        label="SoundCloud Match"
+                        onClick={() => handleSort("match")}
+                      />
+                    </th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -369,10 +565,12 @@ export function UsbFilesPanel() {
                   {visibleFiles.map((file) => (
                     <UsbFileRow
                       file={file}
+                      isSelected={selectedFileIds.has(file.audio_file_id)}
                       key={file.audio_file_id}
                       onMatch={() => void openMatchModal(file)}
                       onPreview={() => handlePreviewAudio(file)}
                       onQuarantine={() => setQuarantineFile(file)}
+                      onSelect={() => handleToggleSelected(file.audio_file_id)}
                     />
                   ))}
                 </tbody>
@@ -416,6 +614,25 @@ export function UsbFilesPanel() {
         onConfirm={() => void handleConfirmQuarantine()}
       />
 
+      <ConfirmDialog
+        confirmLabel={isBulkQuarantining ? "Moving..." : "Delete Selected"}
+        confirmationPlaceholder="delete"
+        confirmationRequiredValue="delete"
+        confirmationValue={bulkDeleteConfirmation}
+        message={
+          selectedCount > 0
+            ? `Move ${formatNumber(selectedCount)} selected local audio file${
+                selectedCount === 1 ? "" : "s"
+              } into the app-managed deprecated folder and remove any matches that point to them.`
+            : ""
+        }
+        open={bulkDeleteConfirmOpen}
+        title="Delete selected USB files?"
+        onCancel={closeBulkDeleteConfirm}
+        onConfirmationChange={setBulkDeleteConfirmation}
+        onConfirm={() => void handleConfirmBulkQuarantine()}
+      />
+
       <MiniPreviewPlayer
         audioRef={audioRef}
         isPlaying={isPlaying}
@@ -434,12 +651,21 @@ export function UsbFilesPanel() {
 
 type UsbFileRowProps = {
   file: UsbFileRead;
+  isSelected: boolean;
   onMatch: () => void;
   onPreview: () => void;
   onQuarantine: () => void;
+  onSelect: () => void;
 };
 
-function UsbFileRow({ file, onMatch, onPreview, onQuarantine }: UsbFileRowProps) {
+function UsbFileRow({
+  file,
+  isSelected,
+  onMatch,
+  onPreview,
+  onQuarantine,
+  onSelect,
+}: UsbFileRowProps) {
   const preview = isLikelyPreview(file);
   const rowClassName = [
     "playlist-track-row",
@@ -451,6 +677,14 @@ function UsbFileRow({ file, onMatch, onPreview, onQuarantine }: UsbFileRowProps)
 
   return (
     <tr className={rowClassName}>
+      <td className="selection-cell">
+        <input
+          aria-label={`Select ${file.filename}`}
+          checked={isSelected}
+          type="checkbox"
+          onChange={onSelect}
+        />
+      </td>
       <td className="track-title-cell">
         <strong>{file.filename}</strong>
         <span>{file.relative_path}</span>
@@ -498,6 +732,27 @@ function UsbFileRow({ file, onMatch, onPreview, onQuarantine }: UsbFileRowProps)
         </div>
       </td>
     </tr>
+  );
+}
+
+type SortHeaderProps = {
+  active: boolean;
+  direction: SortDirection;
+  label: string;
+  onClick: () => void;
+};
+
+function SortHeader({ active, direction, label, onClick }: SortHeaderProps) {
+  return (
+    <button
+      className={["table-sort-button", active ? "is-active" : ""].filter(Boolean).join(" ")}
+      type="button"
+      onClick={onClick}
+    >
+      <span>{label}</span>
+      <ArrowDownUp size={13} />
+      {active ? <em>{direction === "asc" ? "Asc" : "Desc"}</em> : null}
+    </button>
   );
 }
 
@@ -700,6 +955,52 @@ function usbCounts(files: UsbFileRead[]) {
     unmatched: files.filter((file) => file.match_status === "unmatched").length,
     preview: files.filter(isLikelyPreview).length,
   };
+}
+
+function compareUsbFiles(
+  left: UsbFileRead,
+  right: UsbFileRead,
+  sortKey: UsbSortKey,
+  direction: SortDirection,
+) {
+  const multiplier = direction === "asc" ? 1 : -1;
+  if (sortKey === "duration") {
+    return multiplier * compareNullableNumber(left.duration_seconds, right.duration_seconds);
+  }
+  if (sortKey === "status") {
+    return multiplier * (statusRank(left) - statusRank(right));
+  }
+  if (sortKey === "match") {
+    return (
+      multiplier *
+      compareText(left.matched_song?.title ?? "", right.matched_song?.title ?? "")
+    );
+  }
+  return multiplier * compareText(left.filename, right.filename);
+}
+
+function statusRank(file: UsbFileRead) {
+  if (isLikelyPreview(file)) {
+    return 0;
+  }
+  return file.match_status === "unmatched" ? 1 : 2;
+}
+
+function compareNullableNumber(left: number | null, right: number | null) {
+  if (left === null && right === null) {
+    return 0;
+  }
+  if (left === null) {
+    return 1;
+  }
+  if (right === null) {
+    return -1;
+  }
+  return left - right;
+}
+
+function compareText(left: string, right: string) {
+  return left.localeCompare(right, undefined, { sensitivity: "base", numeric: true });
 }
 
 function folderKey(parts: readonly string[]) {

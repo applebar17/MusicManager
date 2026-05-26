@@ -852,6 +852,28 @@ button {
   line-height: 24px;
 }
 
+.confirm-dialog__confirmation {
+  display: grid;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+}
+
+.confirm-dialog__confirmation span {
+  color: var(--color-on-surface-variant);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.confirm-dialog__confirmation input {
+  min-height: 34px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-on-surface);
+  outline: 0;
+  padding: 0 var(--space-sm);
+}
+
 .confirm-dialog__actions {
   display: flex;
   grid-column: 1 / -1;
@@ -1187,6 +1209,16 @@ button {
   padding: 2px var(--space-sm);
 }
 
+button.playlist-chip {
+  cursor: pointer;
+  font: inherit;
+}
+
+button.playlist-chip:hover,
+button.playlist-chip.is-active {
+  border-color: currentColor;
+}
+
 .playlist-chip--neutral {
   color: var(--color-on-surface-variant);
 }
@@ -1263,6 +1295,43 @@ button {
   letter-spacing: 0.02em;
   padding: var(--space-sm) var(--space-md);
   text-transform: uppercase;
+}
+
+.selection-cell {
+  width: 44px;
+  text-align: center;
+}
+
+.selection-cell input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+}
+
+.table-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  padding: 0;
+  text-transform: inherit;
+}
+
+.table-sort-button:hover,
+.table-sort-button.is-active {
+  color: var(--color-on-surface);
+}
+
+.table-sort-button em {
+  color: var(--color-primary);
+  font-size: 10px;
+  font-style: normal;
+  text-transform: none;
 }
 
 .playlist-table td {

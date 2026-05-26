@@ -35,6 +35,8 @@ from music_manager_backend.application.dtos import (
     SoundCloudPlaylistImportRequest,
     SoundCloudPlaylistImportResult,
     SoundCloudPlaylistSyncAllResult,
+    UsbAudioFileBatchQuarantineRequest,
+    UsbAudioFileBatchQuarantineResult,
     UsbFileRead,
     UsbSongCandidateRead,
     environment_read,
@@ -74,6 +76,7 @@ from music_manager_backend.application.use_cases.usb_files import (
     ListUsbFiles,
     ListUsbMatchCandidates,
     QuarantineUsbAudioFile,
+    QuarantineUsbAudioFiles,
 )
 from music_manager_backend.domain.entities import AudioFile
 from music_manager_backend.infrastructure.audio import MetadataReader
@@ -417,6 +420,30 @@ def list_usb_match_candidates(
         audio_files=audio_files,
         match_links=match_links,
     ).execute(environment_id, audio_file_id=audio_file_id, query=q)
+
+
+@router.post(
+    "/{environment_id}/usb/audio-files/quarantine",
+    response_model=UsbAudioFileBatchQuarantineResult,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("quarantine_usb_audio_files"))],
+)
+def quarantine_usb_audio_files(
+    environment_id: str,
+    data: UsbAudioFileBatchQuarantineRequest,
+    environments: EnvironmentRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+) -> UsbAudioFileBatchQuarantineResult:
+    return QuarantineUsbAudioFiles(
+        environments=environments,
+        audio_files=audio_files,
+        match_links=match_links,
+    ).execute(
+        environment_id,
+        audio_file_ids=data.audio_file_ids,
+        confirmation=data.confirmation,
+    )
 
 
 @router.post(
