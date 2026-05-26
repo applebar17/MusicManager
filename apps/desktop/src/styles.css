@@ -1397,6 +1397,226 @@ button {
   color: var(--color-outline);
 }
 
+.usb-workspace {
+  display: flex;
+  min-height: 100vh;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.usb-workspace > .error-banner {
+  margin: var(--space-md) var(--space-xl) 0;
+}
+
+.usb-browser {
+  display: grid;
+  min-height: calc(100vh - 58px);
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.usb-folder-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--color-surface-container);
+}
+
+.usb-folder-panel .loading-state {
+  padding: var(--space-md);
+}
+
+.usb-folder-list {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: var(--space-xs) 0;
+}
+
+.usb-folder-item {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-sm);
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  min-height: 34px;
+  padding-right: var(--space-md);
+  text-align: left;
+}
+
+.usb-folder-item:hover {
+  background: var(--color-surface-container-high);
+  color: var(--color-on-surface);
+}
+
+.usb-folder-item.is-selected {
+  border-left-color: var(--color-primary);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-on-surface);
+}
+
+.usb-folder-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usb-folder-item em {
+  color: var(--color-outline);
+  font-size: 11px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.usb-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.usb-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--color-surface);
+  padding: var(--space-lg) var(--space-xl);
+}
+
+.usb-header h2 {
+  margin: 0;
+  color: var(--color-on-surface-strong);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 32px;
+}
+
+.usb-header p {
+  max-width: 760px;
+  margin: var(--space-sm) 0 0;
+  color: var(--color-on-surface-variant);
+}
+
+.usb-table {
+  min-width: 1080px;
+}
+
+.usb-row--preview {
+  box-shadow: inset 2px 0 0 var(--color-tertiary);
+}
+
+.usb-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.usb-row-actions .button {
+  min-height: 28px;
+  padding: 4px var(--space-sm);
+}
+
+.usb-match-dialog {
+  display: grid;
+  width: min(780px, calc(100vw - 48px));
+  max-height: calc(100vh - 96px);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-container-low);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-lg);
+}
+
+.usb-match-dialog header,
+.usb-match-dialog footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.usb-match-dialog h2 {
+  margin: 0;
+  color: var(--color-on-surface-strong);
+}
+
+.usb-match-dialog footer {
+  align-items: center;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-md);
+}
+
+.usb-match-search {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.usb-candidate-list {
+  display: grid;
+  min-height: 0;
+  gap: var(--space-sm);
+  overflow-y: auto;
+}
+
+.usb-candidate-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-md);
+  align-items: center;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-md);
+}
+
+.usb-candidate-card:hover {
+  border-color: rgba(172, 199, 255, 0.35);
+  background: var(--color-surface-container);
+}
+
+.usb-candidate-card strong,
+.usb-candidate-card span,
+.usb-candidate-card em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usb-candidate-card strong {
+  color: var(--color-on-surface-strong);
+}
+
+.usb-candidate-card span {
+  color: var(--color-on-surface-variant);
+  font-size: 12px;
+}
+
+.usb-candidate-card p {
+  margin: var(--space-xs) 0 0;
+  color: var(--color-secondary-fixed);
+  font-size: 12px;
+}
+
+.usb-candidate-card em {
+  color: var(--color-primary);
+  font-size: 12px;
+  font-style: normal;
+}
+
 .matching-workspace {
   display: flex;
   min-height: 100vh;
@@ -2450,6 +2670,10 @@ button {
     grid-template-columns: 190px minmax(0, 1fr);
   }
 
+  .usb-browser {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
   .playlist-detail-header h2 {
     font-size: 24px;
     line-height: 32px;
@@ -2458,9 +2682,19 @@ button {
   .soundcloud-import-panel,
   .playlist-detail-header,
   .playlist-detail-tools,
+  .usb-header,
   .matching-main,
   .export-main {
     padding-inline: var(--space-md);
+  }
+
+  .usb-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .usb-match-dialog {
+    width: min(720px, calc(100vw - 24px));
   }
 
   .candidate-card {

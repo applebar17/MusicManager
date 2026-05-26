@@ -4,6 +4,7 @@ import { EnvironmentPanel } from "../features/environments/EnvironmentPanel";
 import { ExportPanel } from "../features/export/ExportPanel";
 import { MatchingPanel } from "../features/matching/MatchingPanel";
 import { PlaylistPanel } from "../features/playlists/PlaylistPanel";
+import { UsbFilesPanel } from "../features/usb/UsbFilesPanel";
 import { ApiError, apiGet } from "../shared/api/http";
 import type { HealthRead } from "../shared/api/types";
 import { useAppState } from "../shared/state";
@@ -52,6 +53,8 @@ export function Dashboard() {
       ) : null}
       {activeView === "playlists" ? (
         <PlaylistPanel />
+      ) : activeView === "usb" ? (
+        <UsbFilesPanel />
       ) : activeView === "matching" ? (
         <MatchingPanel />
       ) : activeView === "export" ? (

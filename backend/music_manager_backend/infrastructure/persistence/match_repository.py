@@ -51,6 +51,13 @@ class SqliteMatchLinkRepository:
         )
         self.connection.commit()
 
+    def delete_by_audio_file(self, audio_file_id: str) -> None:
+        self.connection.execute(
+            "DELETE FROM match_links WHERE audio_file_id = ?",
+            (audio_file_id,),
+        )
+        self.connection.commit()
+
     def replace_for_song(self, match_link: MatchLink) -> None:
         self.connection.execute("DELETE FROM match_links WHERE song_id = ?", (match_link.song_id,))
         self.connection.execute(

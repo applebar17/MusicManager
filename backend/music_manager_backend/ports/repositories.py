@@ -108,6 +108,9 @@ class MatchLinkRepository(Protocol):
     def delete_automatic_by_song(self, song_id: str) -> None:
         pass
 
+    def delete_by_audio_file(self, audio_file_id: str) -> None:
+        pass
+
     def replace_for_song(self, match_link: MatchLink) -> None:
         pass
 

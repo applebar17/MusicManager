@@ -1,5 +1,6 @@
 import {
   ClipboardCheck,
+  FolderTree,
   LayoutDashboard,
   ListMusic,
   Music,
@@ -26,6 +27,7 @@ export function AppShell({ children }: AppShellProps) {
   }> = [
     { label: "Dashboard", icon: LayoutDashboard, view: "dashboard" },
     { label: "Playlists", icon: ListMusic, view: "playlists" },
+    { label: "USB Files", icon: FolderTree, view: "usb" },
     { label: "Matching Review", icon: ClipboardCheck, view: "matching" },
     { label: "Export", icon: Upload, view: "export" },
     { label: "Settings", icon: Settings, view: "settings", bottom: true, disabled: true },

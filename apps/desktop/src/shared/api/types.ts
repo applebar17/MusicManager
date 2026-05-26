@@ -141,6 +141,50 @@ export type ManualMappingCreate = {
   audio_file_id: string;
 };
 
+export type UsbMatchedSongRead = {
+  song_id: string;
+  title: string;
+  artist: string | null;
+  duration_seconds: number | null;
+  playlists: string[];
+  method: string;
+  confidence: number;
+  reviewed: boolean;
+};
+
+export type UsbFileRead = {
+  audio_file_id: string;
+  environment_id: string;
+  path: string;
+  relative_path: string;
+  folder_parts: string[];
+  filename: string;
+  audio_status: "active" | "removed";
+  match_status: "matched" | "unmatched";
+  warnings: string[];
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  duration_seconds: number | null;
+  bpm: number | null;
+  key: string | null;
+  comment: string | null;
+  size_bytes: number;
+  modified_at: number;
+  matched_song: UsbMatchedSongRead | null;
+};
+
+export type UsbSongCandidateRead = {
+  song_id: string;
+  title: string;
+  artist: string | null;
+  duration_seconds: number | null;
+  playlists: string[];
+  status: MatchStatus;
+  method: string | null;
+  confidence: number;
+};
+
 export type SoundCloudPlaylistImportRequest = {
   url: string;
 };

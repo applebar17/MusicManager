@@ -317,6 +317,47 @@ def test_match_repository_deletes_automatic_links_only(
     assert repository.list_by_song("song_1") == [manual]
 
 
+def test_match_repository_deletes_links_by_audio_file(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    _save_environment(sqlite_connection)
+    SqliteSongRepository(sqlite_connection).save(SongMaster(id="song_1", title="Track"))
+    SqliteSongRepository(sqlite_connection).save(SongMaster(id="song_2", title="Track 2"))
+    audio_repository = SqliteAudioFileRepository(sqlite_connection)
+    audio_repository.save(
+        AudioFile(
+            id="file_1",
+            environment_id="env_1",
+            path=Path("/Volumes/GIG/file_1.mp3"),
+            size_bytes=123,
+            modified_at=12.5,
+        )
+    )
+    repository = SqliteMatchLinkRepository(sqlite_connection)
+    repository.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    repository.save(
+        MatchLink(
+            song_id="song_2",
+            audio_file_id="file_1",
+            method="metadata_exact",
+            confidence=0.95,
+        )
+    )
+
+    repository.delete_by_audio_file("file_1")
+
+    assert repository.list_by_song("song_1") == []
+    assert repository.list_by_song("song_2") == []
+
+
 def test_sync_snapshot_repository_round_trips_json_payload(
     sqlite_connection: sqlite3.Connection,
 ) -> None:

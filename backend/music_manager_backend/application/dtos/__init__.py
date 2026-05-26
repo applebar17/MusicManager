@@ -34,6 +34,11 @@ from music_manager_backend.application.dtos.soundcloud import (
     SoundCloudPlaylistSyncAllResult,
     SoundCloudPlaylistSyncItemResult,
 )
+from music_manager_backend.application.dtos.usb import (
+    UsbFileRead,
+    UsbMatchedSongRead,
+    UsbSongCandidateRead,
+)
 
 __all__ = [
     "AudioFileRead",
@@ -59,6 +64,9 @@ __all__ = [
     "SoundCloudPlaylistImportResult",
     "SoundCloudPlaylistSyncAllResult",
     "SoundCloudPlaylistSyncItemResult",
+    "UsbFileRead",
+    "UsbMatchedSongRead",
+    "UsbSongCandidateRead",
     "environment_read",
     "export_apply_run_read",
     "export_plan_read",
