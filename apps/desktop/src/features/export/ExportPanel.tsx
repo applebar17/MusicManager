@@ -35,11 +35,9 @@ import { applyExportPlan, createExportPlan, getExportApplyRun, getExportPlan } f
 
 const EXPORT_ACTIONS: ExportAction[] = [
   "copy_file",
-  "keep_existing",
   "create_folder",
   "remove_stale_copy",
   "preserve_deprecated",
-  "skip",
 ];
 
 export function ExportPanel() {
@@ -49,7 +47,6 @@ export function ExportPanel() {
     selectedExportPlanId,
     selectExportApplyRun,
     selectExportPlan,
-    selectView,
   } = useAppState();
   const [playlists, setPlaylists] = useState<PlaylistSummaryRead[]>([]);
   const [selectedPlaylistIds, setSelectedPlaylistIds] = useState<string[]>([]);
@@ -143,6 +140,10 @@ export function ExportPanel() {
     selectedPlaylistIds.length > 0 ? selectedPlaylistIds.length : playlists.length;
 
   const targetRoot = useMemo(() => planTargetRoot(plan), [plan]);
+  const changeItems = useMemo(
+    () => plan?.items.filter((item) => isChangeAction(item.action)) ?? [],
+    [plan],
+  );
 
   async function handleCreatePlan() {
     if (!selectedEnvironmentId) {
@@ -344,10 +345,7 @@ export function ExportPanel() {
                 ))}
               </section>
 
-              <ExportActionLog
-                items={plan.items}
-                onResolveSkips={() => selectView("matching")}
-              />
+              <ExportActionLog items={changeItems} />
 
               {applyRun ? (
                 <ExportApplyResults
@@ -381,7 +379,7 @@ export function ExportPanel() {
         message={
           applyRun
             ? "This will re-run the same persisted plan and may replace managed export copies again. Create a fresh preview first if the library, matches, or export folder changed."
-            : "This will write files inside the managed export folder using the currently previewed plan. Review skipped and stale actions before applying."
+            : "This will write files inside the managed export folder using the currently previewed plan. Review planned copy, stale removal, and deprecated preservation actions before applying."
         }
         open={isConfirmingApply}
         title={applyRun ? "Reapply this export plan?" : "Apply this export plan?"}
@@ -479,22 +477,21 @@ function ExportActionCard({ action, count }: { action: ExportAction; count: numb
 
 type ExportActionLogProps = {
   items: ExportPlanItemRead[];
-  onResolveSkips: () => void;
 };
 
-function ExportActionLog({ items, onResolveSkips }: ExportActionLogProps) {
+function ExportActionLog({ items }: ExportActionLogProps) {
   return (
     <section className="export-plan-panel">
       <header>
-        <h3>Detailed Action Log</h3>
+        <h3>Filesystem Changes</h3>
         <span>
-          <Filter size={14} /> All Actions
+          <Filter size={14} /> Planned Changes
         </span>
       </header>
       {items.length === 0 ? (
         <EmptyState
-          title="This plan has no item actions"
-          description="The selected playlists did not produce export work for the current repository state."
+          title="No filesystem changes required"
+          description="The selected playlists already match the current managed export state."
         />
       ) : (
         <div className="export-action-table-wrap">
@@ -513,7 +510,6 @@ function ExportActionLog({ items, onResolveSkips }: ExportActionLogProps) {
                   index={index}
                   item={item}
                   key={`${item.action}-${item.target_path}-${index}`}
-                  onResolveSkips={onResolveSkips}
                 />
               ))}
             </tbody>
@@ -562,6 +558,8 @@ type ExportApplyResultsProps = {
 
 function ExportApplyResults({ applyRun, isRefreshing, onRefresh }: ExportApplyResultsProps) {
   const status = applyRunStatusMeta(applyRun.status);
+  const changeResults = applyRun.item_results.filter((item) => isChangeAction(item.action));
+  const changeCounts = countApplyStatuses(changeResults);
   return (
     <section className={["export-apply-results", `export-apply-results--${status.tone}`].join(" ")}>
       <header>
@@ -582,19 +580,19 @@ function ExportApplyResults({ applyRun, isRefreshing, onRefresh }: ExportApplyRe
       </header>
 
       <div className="export-result-count-grid" aria-label="Export apply result counts">
-        {(["succeeded", "failed", "skipped"] as ExportApplyItemStatus[]).map((statusKey) => (
+        {(["succeeded", "failed"] as ExportApplyItemStatus[]).map((statusKey) => (
           <ExportResultCountCard
-            count={applyRun.counts[statusKey] ?? 0}
+            count={changeCounts[statusKey] ?? 0}
             key={statusKey}
             status={statusKey}
           />
         ))}
       </div>
 
-      {applyRun.item_results.length === 0 ? (
+      {changeResults.length === 0 ? (
         <EmptyState
-          title="This apply run has no item results"
-          description="The backend returned a persisted run without per-item records."
+          title="No filesystem changes were applied"
+          description="This run did not contain copy, create, stale removal, or deprecated preservation work."
         />
       ) : (
         <div className="export-action-table-wrap">
@@ -608,7 +606,7 @@ function ExportApplyResults({ applyRun, isRefreshing, onRefresh }: ExportApplyRe
               </tr>
             </thead>
             <tbody>
-              {applyRun.item_results.map((item, index) => (
+              {changeResults.map((item, index) => (
                 <ExportApplyResultRow
                   index={index}
                   item={item}
@@ -691,15 +689,12 @@ function ExportApplyResultRow({
 function ExportActionRow({
   index,
   item,
-  onResolveSkips,
 }: {
   index: number;
   item: ExportPlanItemRead;
-  onResolveSkips: () => void;
 }) {
   const meta = actionMeta(item.action);
   const sourceText = item.source_path ?? item.reason ?? "No source path";
-  const targetText = item.action === "skip" ? "No action taken" : item.target_path;
   return (
     <tr className={index % 2 === 0 ? undefined : "export-action-row--alt"}>
       <td>
@@ -709,30 +704,17 @@ function ExportActionRow({
         </span>
       </td>
       <td>
-        <span className={item.action === "skip" ? "export-action-muted" : undefined} title={sourceText}>
-          {sourceText}
-        </span>
-        {item.action === "skip" ? (
-          <button className="export-inline-link" type="button" onClick={onResolveSkips}>
-            Resolve in Matching Review
-          </button>
-        ) : null}
+        <span title={sourceText}>{sourceText}</span>
       </td>
       <td className="export-action-flow">
-        {item.action === "skip" ? (
-          <Ban size={15} />
-        ) : item.action === "keep_existing" ? (
-          <CheckCircle2 size={15} />
-        ) : (
-          <ArrowRight size={15} />
-        )}
+        <ArrowRight size={15} />
       </td>
       <td>
         <span
           className={item.action === "remove_stale_copy" ? "export-action-remove-target" : undefined}
-          title={targetText}
+          title={item.target_path}
         >
-          {targetText}
+          {item.target_path}
         </span>
       </td>
     </tr>
@@ -836,6 +818,25 @@ function actionMeta(action: ExportAction): {
   };
 }
 
+function isChangeAction(action: ExportAction) {
+  return (
+    action === "copy_file" ||
+    action === "create_folder" ||
+    action === "remove_stale_copy" ||
+    action === "preserve_deprecated"
+  );
+}
+
+function countApplyStatuses(items: ExportApplyItemResultRead[]) {
+  return items.reduce<Record<ExportApplyItemStatus, number>>(
+    (counts, item) => {
+      counts[item.status] += 1;
+      return counts;
+    },
+    { succeeded: 0, failed: 0, skipped: 0 },
+  );
+}
+
 function planTargetRoot(plan: ExportPlanRead | null) {
   if (!plan) {
     return "Export target";
@@ -849,10 +850,19 @@ function planTargetRoot(plan: ExportPlanRead | null) {
     return metadataPath.slice(0, markerIndex).replace(/[\\/]+$/, "") || "/";
   }
   const firstTarget = plan.items[0]?.target_path;
-  if (!firstTarget) {
+  const firstItem = plan.items[0];
+  if (!firstTarget || !firstItem) {
     return "Export target";
   }
-  return firstTarget.replace(/[\\/][^\\/]*$/, "") || firstTarget;
+  if (firstItem.action === "copy_file" || firstItem.action === "remove_stale_copy") {
+    const playlistFolder = parentPath(firstTarget);
+    return parentPath(playlistFolder) || playlistFolder || firstTarget;
+  }
+  return parentPath(firstTarget) || firstTarget;
+}
+
+function parentPath(path: string) {
+  return path.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]*$/, "");
 }
 
 function errorMessage(error: unknown) {

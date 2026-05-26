@@ -75,7 +75,7 @@ describe("desktop v1 workflow", () => {
 
     await user.click(screen.getByRole("button", { name: /^export$/i }));
     await user.click(await screen.findByRole("button", { name: /preview export plan/i }));
-    expect(await screen.findByText("Detailed Action Log")).toBeInTheDocument();
+    expect(await screen.findByText("Filesystem Changes")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^apply export plan$/i }));
     const dialog = screen.getByRole("dialog", { name: /apply this export plan/i });

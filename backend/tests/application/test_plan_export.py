@@ -140,14 +140,50 @@ def test_export_plan_keeps_file_already_in_playlist_folder(
 
     plan = _plan_export(repositories).execute("env_1")
 
-    keep_items = [item for item in plan.items if item.action == ExportAction.KEEP_EXISTING]
-    assert keep_items[0].source_path == source
-    assert keep_items[0].target_path == source
-    assert keep_items[0].reason == "matched audio is already in this playlist folder"
+    assert not [item for item in plan.items if item.action == ExportAction.KEEP_EXISTING]
     assert not [item for item in plan.items if item.action == ExportAction.COPY_FILE]
+    assert not [
+        item
+        for item in plan.items
+        if item.action == ExportAction.REMOVE_STALE_COPY and item.target_path == source
+    ]
 
 
-def test_export_plan_skips_missing_and_ambiguous_tracks(
+def test_export_plan_omits_existing_folders(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    (root / ".music_manager" / "_deprecated").mkdir(parents=True)
+    (root / "Set").mkdir()
+    source = _source_file(root, "source.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Track", artist="Artist"))
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+    repositories.audio_files.save(_audio_file("file_1", source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="metadata_exact",
+            confidence=0.95,
+        )
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    assert not [item for item in plan.items if item.action == ExportAction.CREATE_FOLDER]
+
+
+def test_export_plan_omits_missing_and_ambiguous_tracks(
     sqlite_connection: sqlite3.Connection,
     tmp_path: Path,
 ) -> None:
@@ -172,8 +208,8 @@ def test_export_plan_skips_missing_and_ambiguous_tracks(
 
     plan = _plan_export(repositories).execute("env_1")
 
-    skip_reasons = [item.reason for item in plan.items if item.action == ExportAction.SKIP]
-    assert skip_reasons == ["missing audio", "ambiguous audio match"]
+    assert not [item for item in plan.items if item.action == ExportAction.SKIP]
+    assert not [item for item in plan.items if item.action == ExportAction.COPY_FILE]
 
 
 def test_export_plan_skips_likely_preview_matches(
@@ -207,9 +243,7 @@ def test_export_plan_skips_likely_preview_matches(
     plan = _plan_export(repositories).execute("env_1")
 
     assert not [item for item in plan.items if item.action == ExportAction.COPY_FILE]
-    skip = [item for item in plan.items if item.action == ExportAction.SKIP]
-    assert skip[0].reason is not None
-    assert "likely preview download" in skip[0].reason
+    assert not [item for item in plan.items if item.action == ExportAction.SKIP]
 
 
 def test_export_plan_detects_stale_files(
@@ -233,6 +267,51 @@ def test_export_plan_detects_stale_files(
         item.action == ExportAction.REMOVE_STALE_COPY and item.target_path == stale
         for item in plan.items
     )
+
+
+def test_export_plan_existing_target_is_not_reported_or_removed_as_stale(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = _source_file(root, "source.mp3")
+    target = root / "Set" / "source.mp3"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"existing")
+    update_export_manifest(root_path=root, add_targets={target}, remove_targets=set())
+    repositories.songs.save(SongMaster(id="song_1", title="Track", artist="Artist"))
+    repositories.audio_files.save(_audio_file("file_1", source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="metadata_exact",
+            confidence=0.95,
+        )
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    assert not [
+        item
+        for item in plan.items
+        if item.action in {ExportAction.COPY_FILE, ExportAction.KEEP_EXISTING}
+    ]
+    assert not [
+        item
+        for item in plan.items
+        if item.action == ExportAction.REMOVE_STALE_COPY and item.target_path == target
+    ]
 
 
 def test_export_plan_does_not_mark_unowned_root_files_as_stale(
@@ -325,11 +404,12 @@ def test_export_plan_keeps_existing_deprecated_backup(
 
     plan = _plan_export(repositories).execute("env_1")
 
-    keep_items = [item for item in plan.items if item.action == ExportAction.KEEP_EXISTING]
-    assert keep_items[0].target_path == backup
-    assert keep_items[0].reason == (
-        "song no longer belongs to any active playlist; deprecated backup already exists"
-    )
+    assert not [item for item in plan.items if item.action == ExportAction.KEEP_EXISTING]
+    assert not [
+        item
+        for item in plan.items
+        if item.action == ExportAction.PRESERVE_DEPRECATED and item.target_path == backup
+    ]
 
 
 class _Repositories:
