@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from music_manager_backend.application.dtos import (
+    UsbAudioFileBatchQuarantineResult,
     UsbAudioFileMappingCreate,
     UsbFileRead,
     UsbMatchedSongRead,
@@ -262,27 +263,92 @@ class QuarantineUsbAudioFile:
     def execute(self, environment_id: str, audio_file_id: str) -> UsbFileRead:
         environment = _environment_or_raise(self.environments, environment_id)
         audio_file = self.audio_files.get(audio_file_id)
-        if audio_file is None or audio_file.environment_id != environment_id:
-            raise NotFoundError(f"Audio file not found: {audio_file_id}")
-        if audio_file.status != AudioFileStatus.ACTIVE:
-            raise ValidationError(f"Audio file is not active: {audio_file_id}")
+        audio_file = _quarantine_audio_file_or_raise(environment_id, audio_file_id, audio_file)
 
         source = _validated_quarantine_source(environment, audio_file)
-        target = _next_available_deprecated_path(environment, source)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(source), str(target))
-
-        removed_audio_file = replace(
-            audio_file,
-            status=AudioFileStatus.REMOVED,
-            removed_at=utc_now_iso(),
+        target = _next_available_deprecated_path(environment, source, reserved_targets=set())
+        removed_audio_file = _move_to_deprecated(
+            audio_file=audio_file,
+            target=target,
+            audio_files=self.audio_files,
+            match_links=self.match_links,
         )
-        self.match_links.delete_by_audio_file(audio_file.id)
-        self.audio_files.save(removed_audio_file)
         return _usb_file_read(
             environment=environment,
             audio_file=removed_audio_file,
             matched_song=None,
+        )
+
+
+class QuarantineUsbAudioFiles:
+    def __init__(
+        self,
+        *,
+        environments: EnvironmentRepository,
+        audio_files: AudioFileRepository,
+        match_links: MatchLinkRepository,
+    ) -> None:
+        self.environments = environments
+        self.audio_files = audio_files
+        self.match_links = match_links
+
+    def execute(
+        self,
+        environment_id: str,
+        *,
+        audio_file_ids: list[str],
+        confirmation: str,
+    ) -> UsbAudioFileBatchQuarantineResult:
+        if confirmation != "delete":
+            raise ValidationError(
+                'Type "delete" to move selected files to deprecated.',
+                code="delete_confirmation_required",
+            )
+        selected_ids = list(dict.fromkeys(audio_file_ids))
+        if not selected_ids:
+            raise ValidationError(
+                "Select at least one audio file to move to deprecated.",
+                code="no_audio_files_selected",
+            )
+
+        environment = _environment_or_raise(self.environments, environment_id)
+        reserved_targets: set[Path] = set()
+        planned_items: list[tuple[AudioFile, Path]] = []
+        for audio_file_id in selected_ids:
+            audio_file = self.audio_files.get(audio_file_id)
+            audio_file = _quarantine_audio_file_or_raise(
+                environment_id,
+                audio_file_id,
+                audio_file,
+            )
+            source = _validated_quarantine_source(environment, audio_file)
+            target = _next_available_deprecated_path(
+                environment,
+                source,
+                reserved_targets=reserved_targets,
+            )
+            reserved_targets.add(target.resolve(strict=False))
+            planned_items.append((audio_file, target))
+
+        removed_files = [
+            _move_to_deprecated(
+                audio_file=audio_file,
+                target=target,
+                audio_files=self.audio_files,
+                match_links=self.match_links,
+            )
+            for audio_file, target in planned_items
+        ]
+        return UsbAudioFileBatchQuarantineResult(
+            removed=len(removed_files),
+            files=[
+                _usb_file_read(
+                    environment=environment,
+                    audio_file=audio_file,
+                    matched_song=None,
+                )
+                for audio_file in removed_files
+            ],
         )
 
 
@@ -294,6 +360,18 @@ def _environment_or_raise(
     if environment is None:
         raise NotFoundError(f"Environment not found: {environment_id}")
     return environment
+
+
+def _quarantine_audio_file_or_raise(
+    environment_id: str,
+    audio_file_id: str,
+    audio_file: AudioFile | None,
+) -> AudioFile:
+    if audio_file is None or audio_file.environment_id != environment_id:
+        raise NotFoundError(f"Audio file not found: {audio_file_id}")
+    if audio_file.status != AudioFileStatus.ACTIVE:
+        raise ValidationError(f"Audio file is not active: {audio_file_id}")
+    return audio_file
 
 
 def _matched_songs_by_audio_file_id(
@@ -414,14 +492,39 @@ def _validated_quarantine_source(
     return source
 
 
-def _next_available_deprecated_path(environment: MusicEnvironment, source: Path) -> Path:
+def _move_to_deprecated(
+    *,
+    audio_file: AudioFile,
+    target: Path,
+    audio_files: AudioFileRepository,
+    match_links: MatchLinkRepository,
+) -> AudioFile:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(audio_file.path), str(target))
+
+    removed_audio_file = replace(
+        audio_file,
+        status=AudioFileStatus.REMOVED,
+        removed_at=utc_now_iso(),
+    )
+    match_links.delete_by_audio_file(audio_file.id)
+    audio_files.save(removed_audio_file)
+    return removed_audio_file
+
+
+def _next_available_deprecated_path(
+    environment: MusicEnvironment,
+    source: Path,
+    *,
+    reserved_targets: set[Path],
+) -> Path:
     layout = ExportLayout(environment)
     stem = sanitize_path_part(source.stem, fallback="audio")
     suffix = source.suffix
     deprecated_root = layout.deprecated_folder
     candidate = deprecated_root / f"{stem}{suffix}"
     index = 2
-    while candidate.exists():
+    while candidate.exists() or candidate.resolve(strict=False) in reserved_targets:
         candidate = deprecated_root / f"{stem} ({index}){suffix}"
         index += 1
     resolved_root = deprecated_root.resolve(strict=False)

@@ -166,6 +166,129 @@ def test_apply_export_plan_is_idempotent_for_existing_outputs(
     assert second.status == ExportApplyRunStatus.COMPLETED
 
 
+def test_apply_export_plan_preserves_deprecated_before_removing_stale_source(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = root / "Old Set" / "old.mp3"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"old audio")
+    deprecated = root / ".music_manager" / "_deprecated" / "old.mp3"
+    update_export_manifest(root_path=root, add_targets={source}, remove_targets=set())
+    repositories.audio_files.save(_audio_file("file_1", source))
+    repositories.export_plans.save(
+        ExportPlan(
+            id="plan_1",
+            environment_id="env_1",
+            items=(
+                ExportPlanItem(
+                    action=ExportAction.PRESERVE_DEPRECATED,
+                    source_path=source,
+                    target_path=deprecated,
+                ),
+                ExportPlanItem(
+                    action=ExportAction.REMOVE_STALE_COPY,
+                    target_path=source,
+                ),
+            ),
+        )
+    )
+
+    apply_run = _apply_export_plan(repositories).execute("env_1", "plan_1")
+
+    assert deprecated.read_bytes() == b"old audio"
+    assert not source.exists()
+    assert apply_run.status == ExportApplyRunStatus.COMPLETED
+    assert [item.status for item in apply_run.item_results] == [
+        ExportApplyItemStatus.SUCCEEDED,
+        ExportApplyItemStatus.SUCCEEDED,
+    ]
+
+
+def test_apply_export_plan_blocks_stale_removal_when_deprecated_preserve_fails(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = root / "Old Set" / "old.mp3"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"old audio")
+    deprecated = root / ".music_manager" / "_deprecated" / "old.mp3"
+    update_export_manifest(root_path=root, add_targets={source}, remove_targets=set())
+    repositories.export_plans.save(
+        ExportPlan(
+            id="plan_1",
+            environment_id="env_1",
+            items=(
+                ExportPlanItem(
+                    action=ExportAction.PRESERVE_DEPRECATED,
+                    source_path=source,
+                    target_path=deprecated,
+                ),
+                ExportPlanItem(
+                    action=ExportAction.REMOVE_STALE_COPY,
+                    target_path=source,
+                ),
+            ),
+        )
+    )
+
+    apply_run = _apply_export_plan(repositories).execute("env_1", "plan_1")
+
+    assert source.exists()
+    assert not deprecated.exists()
+    assert apply_run.status == ExportApplyRunStatus.FAILED
+    assert [item.status for item in apply_run.item_results] == [
+        ExportApplyItemStatus.FAILED,
+        ExportApplyItemStatus.FAILED,
+    ]
+    assert apply_run.item_results[1].error_code == "stale_removal_blocked"
+
+
+def test_apply_export_plan_blocks_stale_removal_when_active_copy_fails(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = root / "Old Set" / "shared.mp3"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"shared audio")
+    active_target = root / "Current Set" / "shared.mp3"
+    update_export_manifest(root_path=root, add_targets={source}, remove_targets=set())
+    repositories.export_plans.save(
+        ExportPlan(
+            id="plan_1",
+            environment_id="env_1",
+            items=(
+                ExportPlanItem(
+                    action=ExportAction.COPY_FILE,
+                    source_path=source,
+                    target_path=active_target,
+                ),
+                ExportPlanItem(
+                    action=ExportAction.REMOVE_STALE_COPY,
+                    target_path=source,
+                ),
+            ),
+        )
+    )
+
+    apply_run = _apply_export_plan(repositories).execute("env_1", "plan_1")
+
+    assert source.exists()
+    assert not active_target.exists()
+    assert apply_run.status == ExportApplyRunStatus.FAILED
+    assert [item.status for item in apply_run.item_results] == [
+        ExportApplyItemStatus.FAILED,
+        ExportApplyItemStatus.FAILED,
+    ]
+    assert apply_run.item_results[1].error_code == "stale_removal_blocked"
+
+
 def test_apply_export_plan_rejects_wrong_environment(
     sqlite_connection: sqlite3.Connection,
     tmp_path: Path,

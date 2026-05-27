@@ -15,7 +15,6 @@ from music_manager_backend.domain.entities import (
 from music_manager_backend.domain.entities.export_plan import ExportAction
 from music_manager_backend.domain.services.audio_quality import is_likely_preview_duration
 from music_manager_backend.domain.services.export_layout import ExportLayout
-from music_manager_backend.domain.services.match_scoring import score_song_files
 from music_manager_backend.infrastructure.filesystem import read_export_manifest
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
@@ -61,16 +60,19 @@ class PlanExport:
             )
         }
         layout = ExportLayout(environment)
-        items: list[ExportPlanItem] = [
-            ExportPlanItem(action=ExportAction.CREATE_FOLDER, target_path=layout.metadata_root),
-            ExportPlanItem(action=ExportAction.CREATE_FOLDER, target_path=layout.deprecated_folder),
-        ]
+        items: list[ExportPlanItem] = []
+        for folder in (layout.metadata_root, layout.deprecated_folder):
+            folder_item = _folder_item_if_missing(folder)
+            if folder_item is not None:
+                items.append(folder_item)
         planned_copy_targets: set[Path] = set()
         active_song_ids = _active_song_ids(all_playlists)
 
         for playlist in selected_playlists:
             folder = layout.playlist_folder(playlist)
-            items.append(ExportPlanItem(action=ExportAction.CREATE_FOLDER, target_path=folder))
+            folder_item = _folder_item_if_missing(folder)
+            if folder_item is not None:
+                items.append(folder_item)
             for playlist_item in playlist.items:
                 if not playlist_item.remote_membership_active:
                     continue
@@ -82,45 +84,41 @@ class PlanExport:
                     active_files=active_files,
                     match_links=self.match_links,
                 )
-                if linked_files:
-                    accepted_file = _preferred_audio_file_for_folder(
-                        folder=folder,
-                        linked_files=linked_files,
-                    )
-                    if accepted_file is None:
-                        items.append(
-                            ExportPlanItem(
-                                action=ExportAction.SKIP,
-                                target_path=folder,
-                                reason=_preview_skip_reason(linked_files[0]),
-                            )
+                if not linked_files:
+                    items.append(
+                        ExportPlanItem(
+                            action=ExportAction.SKIP,
+                            target_path=folder,
+                            reason=f"No accepted audio file for {song.display_title}",
                         )
-                        continue
-                    item = _copy_or_keep_item(
-                        folder=folder,
-                        position=playlist_item.position,
-                        song=song,
-                        audio_file=accepted_file,
-                        layout=layout,
                     )
-                    planned_copy_targets.add(item.target_path)
-                    items.append(item)
                     continue
-                items.append(
-                    ExportPlanItem(
-                        action=ExportAction.SKIP,
-                        target_path=folder,
-                        reason=_skip_reason(song, list(active_files.values())),
-                    )
-                )
 
-        items.extend(
-            _stale_copy_items(
-                selected_playlists=selected_playlists,
-                layout=layout,
-                planned_copy_targets=planned_copy_targets,
-            )
-        )
+                accepted_file = _preferred_audio_file_for_folder(
+                    folder=folder,
+                    linked_files=linked_files,
+                )
+                if accepted_file is None:
+                    items.append(
+                        ExportPlanItem(
+                            action=ExportAction.SKIP,
+                            target_path=folder,
+                            reason=_preview_skip_reason(linked_files),
+                        )
+                    )
+                    continue
+
+                target, item = _copy_or_keep_item(
+                    folder=folder,
+                    position=playlist_item.position,
+                    song=song,
+                    audio_file=accepted_file,
+                    layout=layout,
+                )
+                planned_copy_targets.add(target)
+                if item is not None:
+                    items.append(item)
+
         items.extend(
             _deprecated_items(
                 all_playlists=all_playlists,
@@ -129,6 +127,13 @@ class PlanExport:
                 songs=self.songs,
                 match_links=self.match_links,
                 layout=layout,
+            )
+        )
+        items.extend(
+            _stale_copy_items(
+                selected_playlists=selected_playlists,
+                layout=layout,
+                planned_copy_targets=planned_copy_targets,
             )
         )
         plan = ExportPlan(
@@ -204,25 +209,6 @@ def _exportable_audio_files(linked_files: list[AudioFile]) -> list[AudioFile]:
     ]
 
 
-def _skip_reason(song: SongMaster, active_files: list[AudioFile]) -> str:
-    candidates = score_song_files(song, active_files)
-    if candidates and all(item.method.startswith("likely_preview_") for item in candidates):
-        return "likely preview download: local candidate is shorter than 1 minute"
-    return "ambiguous audio match" if candidates else "missing audio"
-
-
-def _preview_skip_reason(audio_file: AudioFile) -> str:
-    duration = (
-        f"{audio_file.duration_seconds}s"
-        if audio_file.duration_seconds is not None
-        else "under 1 minute"
-    )
-    return (
-        f"likely preview download ({duration}): unmatch this audio and move it to deprecated "
-        "before exporting"
-    )
-
-
 def _active_song_ids(playlists: list[Playlist]) -> set[str]:
     return {
         item.song_id
@@ -291,14 +277,20 @@ def _deprecated_items(
         accepted_file = _best_exportable_audio_file(linked_files)
         if accepted_file is None:
             continue
-        items.append(
-            _deprecated_copy_or_keep_item(
-                song=song,
-                audio_file=accepted_file,
-                layout=layout,
-            )
+        item = _deprecated_copy_item_if_missing(
+            song=song,
+            audio_file=accepted_file,
+            layout=layout,
         )
+        if item is not None:
+            items.append(item)
     return items
+
+
+def _folder_item_if_missing(folder: Path) -> ExportPlanItem | None:
+    if folder.exists():
+        return None
+    return ExportPlanItem(action=ExportAction.CREATE_FOLDER, target_path=folder)
 
 
 def _copy_or_keep_item(
@@ -308,16 +300,19 @@ def _copy_or_keep_item(
     song: SongMaster,
     audio_file: AudioFile,
     layout: ExportLayout,
-) -> ExportPlanItem:
+) -> tuple[Path, ExportPlanItem | None]:
     source = audio_file.path
     source_parent = source.parent.resolve(strict=False)
     folder_resolved = folder.resolve(strict=False)
     if source_parent == folder_resolved:
-        return ExportPlanItem(
-            action=ExportAction.KEEP_EXISTING,
-            source_path=source,
-            target_path=source,
-            reason="matched audio is already in this playlist folder",
+        return (
+            source,
+            ExportPlanItem(
+                action=ExportAction.KEEP_EXISTING,
+                source_path=source,
+                target_path=source,
+                reason="linked file already exists in playlist folder",
+            ),
         )
 
     target = layout.track_target(
@@ -327,43 +322,45 @@ def _copy_or_keep_item(
         audio_file=audio_file,
     )
     if target.exists() and target.is_file():
-        return ExportPlanItem(
-            action=ExportAction.KEEP_EXISTING,
-            source_path=source,
-            target_path=target,
-            reason="matching filename already exists in this playlist folder",
+        return (
+            target,
+            ExportPlanItem(
+                action=ExportAction.KEEP_EXISTING,
+                source_path=source,
+                target_path=target,
+                reason="target file already exists",
+            ),
         )
 
-    return ExportPlanItem(
-        action=ExportAction.COPY_FILE,
-        source_path=source,
-        target_path=target,
+    return (
+        target,
+        ExportPlanItem(
+            action=ExportAction.COPY_FILE,
+            source_path=source,
+            target_path=target,
+        ),
     )
 
 
-def _deprecated_copy_or_keep_item(
+def _preview_skip_reason(linked_files: list[AudioFile]) -> str:
+    if len(linked_files) == 1:
+        return "Matched audio file is likely a preview download under 60 seconds"
+    return "Only matched local copies are likely preview downloads under 60 seconds"
+
+
+def _deprecated_copy_item_if_missing(
     *,
     song: SongMaster,
     audio_file: AudioFile,
     layout: ExportLayout,
-) -> ExportPlanItem:
+) -> ExportPlanItem | None:
     source = audio_file.path
     target = layout.deprecated_target(song=song, audio_file=audio_file)
     reason = "song no longer belongs to any active playlist"
     if source.resolve(strict=False).is_relative_to(layout.deprecated_folder.resolve(strict=False)):
-        return ExportPlanItem(
-            action=ExportAction.KEEP_EXISTING,
-            source_path=source,
-            target_path=source,
-            reason=f"{reason}; already preserved in deprecated folder",
-        )
+        return None
     if target.exists() and target.is_file():
-        return ExportPlanItem(
-            action=ExportAction.KEEP_EXISTING,
-            source_path=source,
-            target_path=target,
-            reason=f"{reason}; deprecated backup already exists",
-        )
+        return None
     return ExportPlanItem(
         action=ExportAction.PRESERVE_DEPRECATED,
         source_path=source,

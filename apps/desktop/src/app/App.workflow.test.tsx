@@ -58,6 +58,9 @@ describe("desktop v1 workflow", () => {
     expect(screen.getByLabelText("SoundCloud playlist URL")).toHaveValue("");
     expect(screen.queryByText("soundcloud_api_enrichment_used")).not.toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: /^sync playlist$/i }));
+    expect(await screen.findByText("Synced")).toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: /^sync all$/i }));
     expect(await screen.findByText("Synced all")).toBeInTheDocument();
 
@@ -72,7 +75,7 @@ describe("desktop v1 workflow", () => {
 
     await user.click(screen.getByRole("button", { name: /^export$/i }));
     await user.click(await screen.findByRole("button", { name: /preview export plan/i }));
-    expect(await screen.findByText("Detailed Action Log")).toBeInTheDocument();
+    expect(await screen.findByText("Filesystem Changes")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^apply export plan$/i }));
     const dialog = screen.getByRole("dialog", { name: /apply this export plan/i });
@@ -195,6 +198,25 @@ function mockFetch() {
         ],
         succeeded: 1,
         total: 1,
+      });
+    }
+
+    if (path === "/environments/env_1/soundcloud/playlists/playlist_1/sync" && method === "POST") {
+      imported = true;
+      return jsonResponse({
+        added: 0,
+        environment_id: "env_1",
+        metadata_changed: 1,
+        playlist_id: "playlist_1",
+        playlist_name: "Wave 6 Smoke",
+        reactivated: 0,
+        remote_playlist_id: "remote_1",
+        removed: 0,
+        reordered: 0,
+        sync_snapshot_id: "snapshot_2",
+        track_count: 1,
+        unchanged: 1,
+        warnings: [],
       });
     }
 

@@ -10,6 +10,9 @@ from music_manager_backend.application.use_cases.import_soundcloud_playlist impo
 from music_manager_backend.application.use_cases.sync_all_soundcloud_playlists import (
     SyncAllSoundCloudPlaylists,
 )
+from music_manager_backend.application.use_cases.sync_soundcloud_playlist import (
+    SyncSoundCloudPlaylist,
+)
 from music_manager_backend.domain.entities import MusicEnvironment, Playlist, SongMaster
 from music_manager_backend.infrastructure.persistence import (
     SqliteEnvironmentRepository,
@@ -336,6 +339,83 @@ def test_sync_all_soundcloud_playlists_records_per_playlist_failures(
     assert "make it public" in (result.results[0].error_message or "")
 
 
+def test_sync_soundcloud_playlist_reimports_selected_remote_playlist(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    repositories.environments.save(
+        MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
+    )
+    first = _use_case(
+        repositories,
+        FakeSoundCloudImporter(
+            [
+                _playlist(
+                    (_track(1, "One", "artist/one"),),
+                    source_url=SOURCE_URL,
+                    title="A Funk",
+                ),
+            ]
+        ),
+    ).execute("env_1", SOURCE_URL)
+    _use_case(
+        repositories,
+        FakeSoundCloudImporter(
+            [
+                _playlist(
+                    (_track(1, "Two", "artist/two"),),
+                    source_url=SECOND_SOURCE_URL,
+                    title="B House",
+                )
+            ]
+        ),
+    ).execute("env_1", SECOND_SOURCE_URL)
+    importer = FakeSoundCloudImporter(
+        [
+            _playlist(
+                (
+                    _track(1, "One", "artist/one"),
+                    _track(2, "Three", "artist/three"),
+                ),
+                source_url=SOURCE_URL,
+                title="A Funk",
+            )
+        ]
+    )
+
+    result = _sync_playlist_use_case(repositories, importer).execute(
+        "env_1", first.playlist_id
+    )
+
+    assert importer.urls == [SOURCE_URL]
+    assert result.playlist_id == first.playlist_id
+    assert result.added == 1
+    assert result.track_count == 2
+    playlists = repositories.playlists.list_by_environment("env_1")
+    assert [playlist.display_name for playlist in playlists] == ["A Funk", "B House"]
+    assert [len(playlist.items) for playlist in playlists] == [2, 1]
+
+
+def test_sync_soundcloud_playlist_rejects_local_only_playlist(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    repositories.environments.save(
+        MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
+    )
+    repositories.playlists.save(
+        Playlist(id="playlist_1", environment_id="env_1", name="Local Set")
+    )
+
+    with pytest.raises(ValidationError) as error:
+        _sync_playlist_use_case(
+            repositories,
+            FakeSoundCloudImporter([_playlist((_track(1, "One", "artist/one"),))]),
+        ).execute("env_1", "playlist_1")
+
+    assert error.value.code == "playlist_not_soundcloud_backed"
+
+
 def _repositories(sqlite_connection: sqlite3.Connection) -> Repositories:
     return Repositories(
         environments=SqliteEnvironmentRepository(sqlite_connection),
@@ -363,6 +443,19 @@ def _sync_all_use_case(
     repositories: Repositories, importer: FakeSoundCloudImporter
 ) -> SyncAllSoundCloudPlaylists:
     return SyncAllSoundCloudPlaylists(
+        environments=repositories.environments,
+        remote_playlists=repositories.remote_playlists,
+        playlists=repositories.playlists,
+        songs=repositories.songs,
+        sync_snapshots=repositories.sync_snapshots,
+        importer=importer,
+    )
+
+
+def _sync_playlist_use_case(
+    repositories: Repositories, importer: FakeSoundCloudImporter
+) -> SyncSoundCloudPlaylist:
+    return SyncSoundCloudPlaylist(
         environments=repositories.environments,
         remote_playlists=repositories.remote_playlists,
         playlists=repositories.playlists,

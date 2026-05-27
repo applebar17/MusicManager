@@ -36,6 +36,16 @@ class UsbFileRead(BaseModel):
     matched_song: UsbMatchedSongRead | None = None
 
 
+class UsbAudioFileBatchQuarantineRequest(BaseModel):
+    audio_file_ids: list[str] = Field(default_factory=list)
+    confirmation: str
+
+
+class UsbAudioFileBatchQuarantineResult(BaseModel):
+    removed: int
+    files: list[UsbFileRead] = Field(default_factory=list)
+
+
 class UsbSongCandidateRead(BaseModel):
     song_id: str
     title: str

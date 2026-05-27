@@ -147,6 +147,59 @@ def test_usb_quarantine_moves_file_and_removes_matches(
         assert repositories.match_link_repository.list_by_song("song_1") == []
 
 
+def test_usb_batch_quarantine_requires_delete_confirmation(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    _seed_usb_data(_container(api_client), tmp_path)
+
+    response = api_client.post(
+        "/environments/env_1/usb/audio-files/quarantine",
+        json={"audio_file_ids": ["file_matched"], "confirmation": "remove"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "delete_confirmation_required"
+
+
+def test_usb_batch_quarantine_moves_selected_files(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    container = _container(api_client)
+    root = _seed_usb_data(container, tmp_path)
+
+    response = api_client.post(
+        "/environments/env_1/usb/audio-files/quarantine",
+        json={
+            "audio_file_ids": ["file_matched", "file_candidate"],
+            "confirmation": "delete",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["removed"] == 2
+    assert {item["audio_file_id"] for item in data["files"]} == {
+        "file_matched",
+        "file_candidate",
+    }
+    assert not (root / "01_TECH" / "Track One.mp3").exists()
+    assert not (root / "03_HOUSE" / "Missing Song.mp3").exists()
+    assert (root / ".music_manager" / "_deprecated" / "Track One.mp3").read_bytes() == b"audio"
+    assert (
+        root / ".music_manager" / "_deprecated" / "Missing Song.mp3"
+    ).read_bytes() == b"candidate"
+    with container.repository_bundle() as repositories:
+        matched = repositories.audio_file_repository.get("file_matched")
+        candidate = repositories.audio_file_repository.get("file_candidate")
+        assert matched is not None
+        assert candidate is not None
+        assert matched.status.value == "removed"
+        assert candidate.status.value == "removed"
+        assert repositories.match_link_repository.list_by_song("song_1") == []
+
+
 def test_usb_quarantine_rejects_outside_root_paths(
     api_client: TestClient,
     tmp_path: Path,

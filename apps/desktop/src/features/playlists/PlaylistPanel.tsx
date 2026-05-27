@@ -26,6 +26,7 @@ import {
   importSoundCloudPlaylist,
   listPlaylists,
   syncAllSoundCloudPlaylists,
+  syncSoundCloudPlaylist,
 } from "./api";
 
 export function PlaylistPanel() {
@@ -33,6 +34,8 @@ export function PlaylistPanel() {
   const [playlists, setPlaylists] = useState<PlaylistSummaryRead[]>([]);
   const [playlistDetail, setPlaylistDetail] = useState<PlaylistDetailRead | null>(null);
   const [importResult, setImportResult] = useState<SoundCloudPlaylistImportResult | null>(null);
+  const [syncPlaylistResult, setSyncPlaylistResult] =
+    useState<SoundCloudPlaylistImportResult | null>(null);
   const [syncAllResult, setSyncAllResult] = useState<SoundCloudPlaylistSyncAllResult | null>(null);
   const [importUrl, setImportUrl] = useState("");
   const [playlistSearch, setPlaylistSearch] = useState("");
@@ -41,6 +44,7 @@ export function PlaylistPanel() {
   const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isSyncingPlaylist, setIsSyncingPlaylist] = useState(false);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,11 +69,11 @@ export function PlaylistPanel() {
         setPlaylists(items);
         if (!selectedPlaylistId || !items.some((item) => item.id === selectedPlaylistId)) {
           selectPlaylist(items[0]?.id ?? null);
-      }
-    } catch (loadError) {
-      setError(errorMessage(loadError));
-    } finally {
-      setIsLoadingPlaylists(false);
+        }
+      } catch (loadError) {
+        setError(errorMessage(loadError));
+      } finally {
+        setIsLoadingPlaylists(false);
       }
     },
     [selectPlaylist, selectedPlaylistId],
@@ -92,6 +96,7 @@ export function PlaylistPanel() {
       setPlaylists([]);
       setPlaylistDetail(null);
       setImportResult(null);
+      setSyncPlaylistResult(null);
       setSyncAllResult(null);
       selectPlaylist(null);
       return;
@@ -101,6 +106,7 @@ export function PlaylistPanel() {
 
   useEffect(() => {
     setImportResult(null);
+    setSyncPlaylistResult(null);
     setSyncAllResult(null);
     setImportUrl("");
     setPlaylistSearch("");
@@ -132,6 +138,7 @@ export function PlaylistPanel() {
     setIsImporting(true);
     setError(null);
     setImportResult(null);
+    setSyncPlaylistResult(null);
     setSyncAllResult(null);
     try {
       const result = await importSoundCloudPlaylist(selectedEnvironmentId, url);
@@ -161,6 +168,7 @@ export function PlaylistPanel() {
     setIsSyncingAll(true);
     setError(null);
     setImportResult(null);
+    setSyncPlaylistResult(null);
     setSyncAllResult(null);
     try {
       const result = await syncAllSoundCloudPlaylists(selectedEnvironmentId);
@@ -181,6 +189,35 @@ export function PlaylistPanel() {
       setError(errorMessage(syncError));
     } finally {
       setIsSyncingAll(false);
+    }
+  }
+
+  async function handleSyncSelectedPlaylist() {
+    if (!selectedEnvironmentId || !selectedPlaylistId) {
+      setError("Select a SoundCloud playlist before syncing it.");
+      return;
+    }
+    if (!selectedPlaylist?.remote_playlist_id) {
+      setError("The selected playlist is not backed by SoundCloud.");
+      return;
+    }
+
+    setIsSyncingPlaylist(true);
+    setError(null);
+    setImportResult(null);
+    setSyncPlaylistResult(null);
+    setSyncAllResult(null);
+    try {
+      const result = await syncSoundCloudPlaylist(selectedEnvironmentId, selectedPlaylistId);
+      setSyncPlaylistResult(result);
+      const items = await listPlaylists(selectedEnvironmentId);
+      setPlaylists(items);
+      selectPlaylist(result.playlist_id);
+      setPlaylistDetail(await getPlaylistDetail(selectedEnvironmentId, result.playlist_id));
+    } catch (syncError) {
+      setError(errorMessage(syncError));
+    } finally {
+      setIsSyncingPlaylist(false);
     }
   }
 
@@ -251,6 +288,7 @@ export function PlaylistPanel() {
               isImporting={isImporting}
               isSyncingAll={isSyncingAll}
               playlistCount={playlists.length}
+              syncPlaylistResult={syncPlaylistResult}
               syncAllResult={syncAllResult}
               onImportUrlChange={setImportUrl}
               onSyncAll={handleSyncAll}
@@ -271,8 +309,10 @@ export function PlaylistPanel() {
             {selectedPlaylist && playlistDetail ? (
               <PlaylistDetailView
                 detail={playlistDetail}
+                isSyncingPlaylist={isSyncingPlaylist}
                 statusFilter={trackStatusFilter}
                 summary={selectedPlaylist}
+                onSyncPlaylist={handleSyncSelectedPlaylist}
                 trackSearch={trackSearch}
                 onStatusFilterChange={setTrackStatusFilter}
                 onTrackSearchChange={setTrackSearch}
@@ -334,6 +374,7 @@ type ImportPanelProps = {
   isImporting: boolean;
   isSyncingAll: boolean;
   playlistCount: number;
+  syncPlaylistResult: SoundCloudPlaylistImportResult | null;
   syncAllResult: SoundCloudPlaylistSyncAllResult | null;
   onImportUrlChange: (url: string) => void;
   onSyncAll: () => void;
@@ -346,6 +387,7 @@ function ImportPanel({
   isImporting,
   isSyncingAll,
   playlistCount,
+  syncPlaylistResult,
   syncAllResult,
   onImportUrlChange,
   onSyncAll,
@@ -375,18 +417,27 @@ function ImportPanel({
       </form>
 
       {importResult ? <ImportResultSummary result={importResult} /> : null}
+      {syncPlaylistResult ? (
+        <ImportResultSummary result={syncPlaylistResult} statusLabel="Synced" />
+      ) : null}
       {syncAllResult ? <SyncAllResultSummary result={syncAllResult} /> : null}
     </section>
   );
 }
 
-function ImportResultSummary({ result }: { result: SoundCloudPlaylistImportResult }) {
+function ImportResultSummary({
+  result,
+  statusLabel = "Imported",
+}: {
+  result: SoundCloudPlaylistImportResult;
+  statusLabel?: string;
+}) {
   const warningMessages = importWarningMessages(result.warnings);
 
   return (
     <div className="import-result">
       <div className="import-result__summary">
-        <StatusBadge tone="success">Imported</StatusBadge>
+        <StatusBadge tone="success">{statusLabel}</StatusBadge>
         <span>{result.playlist_name}</span>
         <span>{formatNumber(result.track_count)} tracks</span>
         <span>{formatNumber(result.added)} added</span>
@@ -484,9 +535,11 @@ function importWarningMessages(warnings: readonly string[]) {
 
 type PlaylistDetailViewProps = {
   detail: PlaylistDetailRead;
+  isSyncingPlaylist: boolean;
   statusFilter: TrackStatusFilter;
   summary: PlaylistSummaryRead;
   trackSearch: string;
+  onSyncPlaylist: () => void;
   onStatusFilterChange: (filter: TrackStatusFilter) => void;
   onTrackSearchChange: (query: string) => void;
 };
@@ -495,9 +548,11 @@ type TrackStatusFilter = "all" | MatchStatus | "inactive";
 
 function PlaylistDetailView({
   detail,
+  isSyncingPlaylist,
   statusFilter,
   summary,
   trackSearch,
+  onSyncPlaylist,
   onStatusFilterChange,
   onTrackSearchChange,
 }: PlaylistDetailViewProps) {
@@ -549,6 +604,18 @@ function PlaylistDetailView({
             ) : null}
           </div>
         </div>
+        {summary.remote_playlist_id ? (
+          <div className="playlist-detail-header__actions">
+            <Button
+              disabled={isSyncingPlaylist}
+              icon={<RefreshCw size={16} />}
+              variant="primary"
+              onClick={onSyncPlaylist}
+            >
+              {isSyncingPlaylist ? "Syncing" : "Sync Playlist"}
+            </Button>
+          </div>
+        ) : null}
       </header>
 
       <div className="playlist-detail-tools">

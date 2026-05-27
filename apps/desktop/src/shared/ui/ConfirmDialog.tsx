@@ -7,7 +7,11 @@ type ConfirmDialogProps = {
   message: string;
   confirmLabel: string;
   open: boolean;
+  confirmationPlaceholder?: string;
+  confirmationRequiredValue?: string;
+  confirmationValue?: string;
   onCancel: () => void;
+  onConfirmationChange?: (value: string) => void;
   onConfirm: () => void;
 };
 
@@ -16,12 +20,19 @@ export function ConfirmDialog({
   message,
   confirmLabel,
   open,
+  confirmationPlaceholder,
+  confirmationRequiredValue,
+  confirmationValue = "",
   onCancel,
+  onConfirmationChange,
   onConfirm,
 }: ConfirmDialogProps) {
   if (!open) {
     return null;
   }
+
+  const confirmationMatches =
+    !confirmationRequiredValue || confirmationValue === confirmationRequiredValue;
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -32,10 +43,21 @@ export function ConfirmDialog({
         <div>
           <h2 id="dialog-title">{title}</h2>
           <p className="muted">{message}</p>
+          {confirmationRequiredValue ? (
+            <label className="confirm-dialog__confirmation">
+              <span>Type {confirmationRequiredValue} to confirm</span>
+              <input
+                autoFocus
+                placeholder={confirmationPlaceholder}
+                value={confirmationValue}
+                onChange={(event) => onConfirmationChange?.(event.target.value)}
+              />
+            </label>
+          ) : null}
         </div>
         <div className="confirm-dialog__actions">
           <Button onClick={onCancel}>Cancel</Button>
-          <Button variant="danger" onClick={onConfirm}>
+          <Button disabled={!confirmationMatches} variant="danger" onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </div>
