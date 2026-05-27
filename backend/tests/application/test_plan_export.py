@@ -371,6 +371,98 @@ def test_export_plan_preserves_deprecated_matched_songs(
     assert deprecated[0].target_path == root / ".music_manager" / "_deprecated" / "old.mp3"
 
 
+def test_export_plan_preserves_removed_song_before_removing_stale_playlist_copy(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = root / "Set" / "old.mp3"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"old audio")
+    update_export_manifest(root_path=root, add_targets={source}, remove_targets=set())
+    repositories.songs.save(SongMaster(id="song_1", title="Old", artist="Artist"))
+    repositories.audio_files.save(_audio_file("file_1", source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1, remote_membership_active=False),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    preserve = next(item for item in plan.items if item.action == ExportAction.PRESERVE_DEPRECATED)
+    remove = next(item for item in plan.items if item.action == ExportAction.REMOVE_STALE_COPY)
+    assert plan.items.index(preserve) < plan.items.index(remove)
+    assert preserve.source_path == source
+    assert preserve.target_path == root / ".music_manager" / "_deprecated" / "old.mp3"
+    assert remove.target_path == source
+
+
+def test_export_plan_copies_active_elsewhere_before_removing_stale_playlist_copy(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = root / "Old Set" / "shared.mp3"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"shared audio")
+    update_export_manifest(root_path=root, add_targets={source}, remove_targets=set())
+    repositories.songs.save(SongMaster(id="song_1", title="Shared", artist="Artist"))
+    repositories.audio_files.save(_audio_file("file_1", source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Old Set",
+            items=(PlaylistItem(song_id="song_1", position=1, remote_membership_active=False),),
+        ),
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_2",
+            environment_id="env_1",
+            name="Current Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    copy = next(item for item in plan.items if item.action == ExportAction.COPY_FILE)
+    remove = next(item for item in plan.items if item.action == ExportAction.REMOVE_STALE_COPY)
+    assert not [item for item in plan.items if item.action == ExportAction.PRESERVE_DEPRECATED]
+    assert plan.items.index(copy) < plan.items.index(remove)
+    assert copy.source_path == source
+    assert copy.target_path == root / "Current Set" / "shared.mp3"
+    assert remove.target_path == source
+
+
 def test_export_plan_keeps_existing_deprecated_backup(
     sqlite_connection: sqlite3.Connection,
     tmp_path: Path,

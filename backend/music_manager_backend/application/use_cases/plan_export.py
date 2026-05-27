@@ -96,13 +96,6 @@ class PlanExport:
                         items.append(item)
 
         items.extend(
-            _stale_copy_items(
-                selected_playlists=selected_playlists,
-                layout=layout,
-                planned_copy_targets=planned_copy_targets,
-            )
-        )
-        items.extend(
             _deprecated_items(
                 all_playlists=all_playlists,
                 active_song_ids=active_song_ids,
@@ -110,6 +103,13 @@ class PlanExport:
                 songs=self.songs,
                 match_links=self.match_links,
                 layout=layout,
+            )
+        )
+        items.extend(
+            _stale_copy_items(
+                selected_playlists=selected_playlists,
+                layout=layout,
+                planned_copy_targets=planned_copy_targets,
             )
         )
         plan = ExportPlan(

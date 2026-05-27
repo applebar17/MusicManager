@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from music_manager_backend.domain.entities import (
     AudioFileStatus,
@@ -6,6 +7,7 @@ from music_manager_backend.domain.entities import (
     ExportApplyItemStatus,
     ExportApplyRun,
     ExportApplyRunStatus,
+    ExportPlanItem,
 )
 from music_manager_backend.domain.entities.export_plan import ExportAction
 from music_manager_backend.infrastructure.filesystem import ExportFileWriter, update_export_manifest
@@ -62,6 +64,7 @@ class ApplyExportPlan:
         results: list[ExportApplyItemResult] = []
         manifest_add_targets = set()
         manifest_remove_targets = set()
+        failed_source_paths: set[Path] = set()
         started_at = utc_now_iso()
         for item in plan.items:
             created_at = utc_now_iso()
@@ -74,6 +77,25 @@ class ApplyExportPlan:
                         status=ExportApplyItemStatus.SKIPPED,
                         error_code="skipped",
                         error_message=item.reason,
+                        created_at=created_at,
+                    )
+                )
+                continue
+            if (
+                item.action == ExportAction.REMOVE_STALE_COPY
+                and item.target_path.resolve(strict=False) in failed_source_paths
+            ):
+                results.append(
+                    ExportApplyItemResult(
+                        action=item.action,
+                        source_path=item.source_path,
+                        target_path=item.target_path,
+                        status=ExportApplyItemStatus.FAILED,
+                        error_code="stale_removal_blocked",
+                        error_message=(
+                            "Stale removal blocked because preserving or copying this "
+                            "source file failed earlier in the export plan."
+                        ),
                         created_at=created_at,
                     )
                 )
@@ -96,6 +118,7 @@ class ApplyExportPlan:
                         created_at=created_at,
                     )
                 )
+                _record_failed_source(item, failed_source_paths)
             except OSError as exc:
                 results.append(
                     ExportApplyItemResult(
@@ -108,6 +131,7 @@ class ApplyExportPlan:
                         created_at=created_at,
                     )
                 )
+                _record_failed_source(item, failed_source_paths)
             else:
                 if item.action in {ExportAction.COPY_FILE, ExportAction.PRESERVE_DEPRECATED}:
                     manifest_add_targets.add(item.target_path)
@@ -153,3 +177,11 @@ def _run_status(results: list[ExportApplyItemResult]) -> ExportApplyRunStatus:
     if failures:
         return ExportApplyRunStatus.COMPLETED_WITH_FAILURES
     return ExportApplyRunStatus.COMPLETED
+
+
+def _record_failed_source(item: ExportPlanItem, failed_source_paths: set[Path]) -> None:
+    if item.action not in {ExportAction.COPY_FILE, ExportAction.PRESERVE_DEPRECATED}:
+        return
+    if item.source_path is None:
+        return
+    failed_source_paths.add(item.source_path.resolve(strict=False))
