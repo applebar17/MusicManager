@@ -282,6 +282,59 @@ def test_manual_mapping_auto_links_duplicate_local_copies(
     ]
 
 
+def test_manual_mapping_auto_links_duplicate_filename_copies_without_artist_metadata(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    _seed_song_playlist(
+        repositories,
+        SongMaster(
+            id="song_1",
+            title="Lucio Battisti - Un'Avventura (Daniele Critesi Edit)",
+            artist="Lucio Battisti",
+        ),
+    )
+    repositories.audio_files.save(
+        _audio_file(
+            "file_dance",
+            path=Path(
+                "/Volumes/USB/04_DANCE/"
+                "Lucio Battisti - Un'Avventura (Daniele Critesi Edit).mp3"
+            ),
+            duration_seconds=202,
+        )
+    )
+    repositories.audio_files.save(
+        _audio_file(
+            "file_pop",
+            path=Path(
+                "/Volumes/USB/08_POP/"
+                "Lucio Battisti - Un'Avventura (Daniele Critesi Edit).mp3"
+            ),
+            duration_seconds=202,
+        )
+    )
+
+    _create_manual_mapping(repositories).execute("env_1", "song_1", "file_dance")
+
+    assert repositories.match_links.list_by_song("song_1") == [
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_dance",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        ),
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_pop",
+            method="local_duplicate",
+            confidence=0.99,
+            reviewed=True,
+        ),
+    ]
+
+
 def test_duplicate_linking_skips_preview_duration_files(
     sqlite_connection: sqlite3.Connection,
 ) -> None:

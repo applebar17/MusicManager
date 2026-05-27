@@ -52,11 +52,17 @@ def _is_duplicate_audio_file(anchor: AudioFile, candidate: AudioFile) -> bool:
     candidate_artist = normalize_title(candidate.artist or "")
     if not anchor_title or anchor_title != candidate_title:
         return False
-    if not anchor_artist or anchor_artist != candidate_artist:
-        return False
     if anchor.duration_seconds is None or candidate.duration_seconds is None:
         return False
-    return (
+    if (
         abs(anchor.duration_seconds - candidate.duration_seconds)
-        <= LOCAL_DUPLICATE_DURATION_TOLERANCE_SECONDS
-    )
+        > LOCAL_DUPLICATE_DURATION_TOLERANCE_SECONDS
+    ):
+        return False
+
+    if anchor_artist and candidate_artist:
+        return anchor_artist == candidate_artist
+
+    anchor_stem = normalize_title(Path(anchor.path).stem)
+    candidate_stem = normalize_title(Path(candidate.path).stem)
+    return bool(anchor_stem and anchor_stem == candidate_stem)
