@@ -7,6 +7,7 @@ class ExportAction(StrEnum):
     CREATE_FOLDER = "create_folder"
     COPY_FILE = "copy_file"
     KEEP_EXISTING = "keep_existing"
+    REMOVE_DUPLICATE_COPY = "remove_duplicate_copy"
     REMOVE_STALE_COPY = "remove_stale_copy"
     PRESERVE_DEPRECATED = "preserve_deprecated"
     SKIP = "skip"

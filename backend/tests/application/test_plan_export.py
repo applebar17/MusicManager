@@ -200,6 +200,68 @@ def test_export_plan_prefers_linked_copy_in_target_playlist_folder(
     assert not [item for item in plan.items if item.action == ExportAction.COPY_FILE]
 
 
+def test_export_plan_removes_duplicate_linked_copy_in_target_playlist_folder(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    keep_source = root / "Set" / "song.mp3"
+    duplicate_source = root / "Set" / "song duplicate.mp3"
+    keep_source.parent.mkdir()
+    keep_source.write_bytes(b"audio")
+    duplicate_source.write_bytes(b"duplicate")
+    update_export_manifest(
+        root_path=root,
+        add_targets={duplicate_source},
+        remove_targets=set(),
+    )
+    repositories.songs.save(SongMaster(id="song_1", title="Song", artist="Artist"))
+    repositories.audio_files.save(_audio_file("file_keep", keep_source))
+    repositories.audio_files.save(_audio_file("file_duplicate", duplicate_source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_keep",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_duplicate",
+            method="local_duplicate",
+            confidence=0.99,
+            reviewed=True,
+        )
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    duplicate_items = [
+        item for item in plan.items if item.action == ExportAction.REMOVE_DUPLICATE_COPY
+    ]
+    assert duplicate_items[0].target_path == duplicate_source
+    assert "duplicate local copy of Song" in (duplicate_items[0].reason or "")
+    assert not [
+        item
+        for item in plan.items
+        if item.action == ExportAction.REMOVE_STALE_COPY
+        and item.target_path == duplicate_source
+    ]
+
+
 def test_export_plan_omits_existing_folders(
     sqlite_connection: sqlite3.Connection,
     tmp_path: Path,

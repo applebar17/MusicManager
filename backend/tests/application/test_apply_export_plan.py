@@ -33,8 +33,15 @@ def test_apply_export_plan_writes_expected_files_and_results(
     stale = root / "Set" / "stale.mp3"
     stale.parent.mkdir(parents=True)
     stale.write_bytes(b"stale")
-    update_export_manifest(root_path=root, add_targets={stale}, remove_targets=set())
+    duplicate = root / "Set" / "duplicate.mp3"
+    duplicate.write_bytes(b"duplicate")
+    update_export_manifest(
+        root_path=root,
+        add_targets={duplicate, stale},
+        remove_targets=set(),
+    )
     repositories.audio_files.save(_audio_file("file_1", source))
+    repositories.audio_files.save(_audio_file("file_duplicate", duplicate))
     plan = ExportPlan(
         id="plan_1",
         environment_id="env_1",
@@ -63,6 +70,11 @@ def test_apply_export_plan_writes_expected_files_and_results(
                 target_path=stale,
             ),
             ExportPlanItem(
+                action=ExportAction.REMOVE_DUPLICATE_COPY,
+                target_path=duplicate,
+                reason="duplicate local copy",
+            ),
+            ExportPlanItem(
                 action=ExportAction.SKIP,
                 target_path=root / "Set",
                 reason="missing audio",
@@ -76,9 +88,11 @@ def test_apply_export_plan_writes_expected_files_and_results(
     copied = root / "Set" / "001 - Track.mp3"
     assert copied.read_bytes() == b"playlist audio"
     assert not stale.exists()
+    assert not duplicate.exists()
     assert source.exists()
     assert apply_run.status == ExportApplyRunStatus.COMPLETED
     assert [item.status for item in apply_run.item_results] == [
+        ExportApplyItemStatus.SUCCEEDED,
         ExportApplyItemStatus.SUCCEEDED,
         ExportApplyItemStatus.SUCCEEDED,
         ExportApplyItemStatus.SUCCEEDED,

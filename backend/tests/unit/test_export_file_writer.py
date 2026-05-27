@@ -96,6 +96,47 @@ def test_writer_rejects_non_manifest_stale_copy(tmp_path: Path) -> None:
         )
 
 
+def test_writer_removes_duplicate_active_audio_file(tmp_path: Path) -> None:
+    root = tmp_path / "usb"
+    root.mkdir()
+    duplicate = root / "Set" / "duplicate.mp3"
+    duplicate.parent.mkdir()
+    duplicate.write_bytes(b"duplicate")
+
+    ExportFileWriter().apply_item(
+        environment=MusicEnvironment(id="env_1", name="USB", root_path=root),
+        item=ExportPlanItem(
+            action=ExportAction.REMOVE_DUPLICATE_COPY,
+            target_path=duplicate,
+            reason="duplicate local copy",
+        ),
+        active_source_paths={duplicate.resolve(strict=False)},
+    )
+
+    assert not duplicate.exists()
+
+
+def test_writer_rejects_duplicate_removal_for_non_active_audio_file(tmp_path: Path) -> None:
+    root = tmp_path / "usb"
+    root.mkdir()
+    duplicate = root / "Set" / "duplicate.mp3"
+    duplicate.parent.mkdir()
+    duplicate.write_bytes(b"duplicate")
+
+    with pytest.raises(ValidationError):
+        ExportFileWriter().apply_item(
+            environment=MusicEnvironment(id="env_1", name="USB", root_path=root),
+            item=ExportPlanItem(
+                action=ExportAction.REMOVE_DUPLICATE_COPY,
+                target_path=duplicate,
+                reason="duplicate local copy",
+            ),
+            active_source_paths=set(),
+        )
+
+    assert duplicate.exists()
+
+
 def test_writer_keeps_existing_file_without_modifying_it(tmp_path: Path) -> None:
     root = tmp_path / "usb"
     root.mkdir()

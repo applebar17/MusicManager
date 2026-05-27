@@ -66,6 +66,7 @@ class PlanExport:
             if folder_item is not None:
                 items.append(folder_item)
         planned_copy_targets: set[Path] = set()
+        planned_removal_targets: set[Path] = set()
         active_song_ids = _active_song_ids(all_playlists)
 
         for playlist in selected_playlists:
@@ -118,6 +119,16 @@ class PlanExport:
                 planned_copy_targets.add(target)
                 if item is not None:
                     items.append(item)
+                duplicate_items = _duplicate_copy_items(
+                    folder=folder,
+                    linked_files=linked_files,
+                    kept_target=target,
+                    song=song,
+                )
+                planned_removal_targets.update(
+                    item.target_path for item in duplicate_items
+                )
+                items.extend(duplicate_items)
 
         items.extend(
             _deprecated_items(
@@ -134,6 +145,7 @@ class PlanExport:
                 selected_playlists=selected_playlists,
                 layout=layout,
                 planned_copy_targets=planned_copy_targets,
+                planned_removal_targets=planned_removal_targets,
             )
         )
         plan = ExportPlan(
@@ -223,6 +235,7 @@ def _stale_copy_items(
     selected_playlists: list[Playlist],
     layout: ExportLayout,
     planned_copy_targets: set[Path],
+    planned_removal_targets: set[Path],
 ) -> list[ExportPlanItem]:
     playlist_folders = [layout.playlist_folder(playlist) for playlist in selected_playlists]
     if not playlist_folders:
@@ -230,10 +243,15 @@ def _stale_copy_items(
 
     manifest = read_export_manifest(layout.environment.root_path)
     planned_resolved = {target.resolve(strict=False) for target in planned_copy_targets}
+    planned_removal_resolved = {
+        target.resolve(strict=False) for target in planned_removal_targets
+    }
     items: list[ExportPlanItem] = []
     folder_roots = [folder.resolve(strict=False) for folder in playlist_folders]
     for path in sorted(manifest.targets):
         if path in planned_resolved:
+            continue
+        if path in planned_removal_resolved:
             continue
         if not any(path.is_relative_to(folder) for folder in folder_roots):
             continue
@@ -340,6 +358,42 @@ def _copy_or_keep_item(
             target_path=target,
         ),
     )
+
+
+def _duplicate_copy_items(
+    *,
+    folder: Path,
+    linked_files: list[AudioFile],
+    kept_target: Path,
+    song: SongMaster,
+) -> list[ExportPlanItem]:
+    folder_resolved = folder.resolve(strict=False)
+    kept_resolved = kept_target.resolve(strict=False)
+    items: list[ExportPlanItem] = []
+    seen: set[Path] = set()
+    for audio_file in linked_files:
+        path = audio_file.path
+        resolved_path = path.resolve(strict=False)
+        if resolved_path == kept_resolved:
+            continue
+        if path.parent.resolve(strict=False) != folder_resolved:
+            continue
+        if not path.exists() or not path.is_file():
+            continue
+        if resolved_path in seen:
+            continue
+        seen.add(resolved_path)
+        items.append(
+            ExportPlanItem(
+                action=ExportAction.REMOVE_DUPLICATE_COPY,
+                target_path=path,
+                reason=(
+                    f"duplicate local copy of {song.display_title}; "
+                    f"keeping {kept_target.name}"
+                ),
+            )
+        )
+    return items
 
 
 def _preview_skip_reason(linked_files: list[AudioFile]) -> str:

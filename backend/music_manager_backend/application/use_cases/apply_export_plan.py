@@ -135,7 +135,10 @@ class ApplyExportPlan:
             else:
                 if item.action in {ExportAction.COPY_FILE, ExportAction.PRESERVE_DEPRECATED}:
                     manifest_add_targets.add(item.target_path)
-                elif item.action == ExportAction.REMOVE_STALE_COPY:
+                elif item.action in {
+                    ExportAction.REMOVE_DUPLICATE_COPY,
+                    ExportAction.REMOVE_STALE_COPY,
+                }:
                     manifest_remove_targets.add(item.target_path)
                 results.append(
                     ExportApplyItemResult(

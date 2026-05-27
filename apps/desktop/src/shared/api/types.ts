@@ -245,6 +245,7 @@ export type ExportAction =
   | "create_folder"
   | "copy_file"
   | "keep_existing"
+  | "remove_duplicate_copy"
   | "remove_stale_copy"
   | "preserve_deprecated"
   | "skip";

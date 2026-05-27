@@ -76,6 +76,29 @@ class ExportFileWriter:
             raise ValidationError(f"Stale export target is a directory: {target_path}")
         target.unlink()
 
+    def remove_duplicate_copy(
+        self,
+        *,
+        environment: MusicEnvironment,
+        target_path: Path,
+        active_source_paths: set[Path],
+    ) -> None:
+        planned_target = target_path.resolve(strict=False)
+        if planned_target not in active_source_paths:
+            raise ValidationError(
+                f"Duplicate export target is not an active audio file: {target_path}"
+            )
+        target = _validate_target_inside_export_root(
+            environment,
+            target_path,
+            allow_metadata=False,
+        )
+        if not target.exists():
+            return
+        if target.is_dir():
+            raise ValidationError(f"Duplicate export target is a directory: {target_path}")
+        target.unlink()
+
     def keep_existing(self, environment: MusicEnvironment, target_path: Path) -> None:
         target = _validate_target_inside_export_root(
             environment,
@@ -109,6 +132,13 @@ class ExportFileWriter:
         if item.action == ExportAction.REMOVE_STALE_COPY:
             self.remove_stale_copy(environment, item.target_path)
             return
+        if item.action == ExportAction.REMOVE_DUPLICATE_COPY:
+            self.remove_duplicate_copy(
+                environment=environment,
+                target_path=item.target_path,
+                active_source_paths=active_source_paths,
+            )
+            return
         if item.action == ExportAction.KEEP_EXISTING:
             self.keep_existing(environment, item.target_path)
             return
@@ -136,6 +166,12 @@ def _validate_plan_item_target(environment: MusicEnvironment, item: ExportPlanIt
             environment,
             item.target_path,
             allow_metadata=True,
+        )
+    if item.action == ExportAction.REMOVE_DUPLICATE_COPY:
+        return _validate_target_inside_export_root(
+            environment,
+            item.target_path,
+            allow_metadata=False,
         )
     return _validate_target_inside_export_root(
         environment,

@@ -36,6 +36,7 @@ import { applyExportPlan, createExportPlan, getExportApplyRun, getExportPlan } f
 const EXPORT_ACTIONS: ExportAction[] = [
   "copy_file",
   "create_folder",
+  "remove_duplicate_copy",
   "remove_stale_copy",
   "preserve_deprecated",
 ];
@@ -470,6 +471,7 @@ function ExportActionCard({ action, count }: { action: ExportAction; count: numb
         <span>{meta.countLabel}</span>
       </div>
       {meta.icon}
+      {action === "remove_duplicate_copy" ? <em>Remove duplicate local copy</em> : null}
       {action === "remove_stale_copy" ? <em>Remove stale app-owned export copy</em> : null}
     </article>
   );
@@ -711,7 +713,11 @@ function ExportActionRow({
       </td>
       <td>
         <span
-          className={item.action === "remove_stale_copy" ? "export-action-remove-target" : undefined}
+          className={
+            item.action === "remove_duplicate_copy" || item.action === "remove_stale_copy"
+              ? "export-action-remove-target"
+              : undefined
+          }
           title={item.target_path}
         >
           {item.target_path}
@@ -802,6 +808,14 @@ function actionMeta(action: ExportAction): {
       icon: <Trash2 size={16} />,
     };
   }
+  if (action === "remove_duplicate_copy") {
+    return {
+      countLabel: "Duplicates to Remove",
+      shortLabel: "Duplicate",
+      tone: "remove",
+      icon: <Trash2 size={16} />,
+    };
+  }
   if (action === "preserve_deprecated") {
     return {
       countLabel: "Deprecated to Preserve",
@@ -822,6 +836,7 @@ function isChangeAction(action: ExportAction) {
   return (
     action === "copy_file" ||
     action === "create_folder" ||
+    action === "remove_duplicate_copy" ||
     action === "remove_stale_copy" ||
     action === "preserve_deprecated"
   );
