@@ -21,6 +21,9 @@ services:
       - ./backend:/workspace/backend
       - ./alembic.ini:/workspace/alembic.ini:ro
       - ./local:/workspace/local
+      # Expose macOS mounted drives to the backend so environment roots like
+      # /Volumes/TORDIS are visible inside the container.
+      - /Volumes:/Volumes
 
   frontend:
     build:
