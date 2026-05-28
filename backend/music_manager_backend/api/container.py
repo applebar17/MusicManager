@@ -17,6 +17,7 @@ from music_manager_backend.infrastructure.persistence import (
 )
 from music_manager_backend.infrastructure.persistence.sqlite import connect
 from music_manager_backend.ports.soundcloud import SoundCloudPlaylistImporter
+from music_manager_backend.ports.soundcloud_discovery import SoundCloudTrackDiscoveryProvider
 from music_manager_backend.shared.settings import Settings
 
 
@@ -65,6 +66,7 @@ class SqliteRepositoryBundle:
 class AppContainer:
     settings: Settings
     soundcloud_playlist_importer: SoundCloudPlaylistImporter
+    soundcloud_track_discovery_provider: SoundCloudTrackDiscoveryProvider
     operation_coordinator: OperationCoordinator
 
     def repository_bundle(self) -> SqliteRepositoryBundle:

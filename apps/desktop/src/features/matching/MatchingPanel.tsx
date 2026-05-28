@@ -2,10 +2,13 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleHelp,
+  ExternalLink,
   Link2,
   Play,
   RefreshCw,
   Search,
+  ShoppingCart,
+  X,
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -17,11 +20,13 @@ import type {
   MatchingRunSummary,
   MatchReviewRow,
   MatchStatus,
+  SoundCloudTrackDiscoveryRead,
 } from "../../shared/api/types";
 import { useAppState } from "../../shared/state";
 import { Button, EmptyState, ErrorBanner, LoadingState, Panel, StatusBadge } from "../../shared/ui";
 import {
   createManualMapping,
+  discoverSoundCloudTrack,
   listMatchReview,
   playbackAudioUrl,
   runMatching,
@@ -51,8 +56,11 @@ export function MatchingPanel() {
   const [reviewSearch, setReviewSearch] = useState("");
   const [runSummary, setRunSummary] = useState<MatchingRunSummary | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [sourceDiscovery, setSourceDiscovery] = useState<SoundCloudTrackDiscoveryRead | null>(null);
+  const [sourceDiscoverySongId, setSourceDiscoverySongId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [isDiscoveringSource, setIsDiscoveringSource] = useState(false);
   const [mappingKey, setMappingKey] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +87,8 @@ export function MatchingPanel() {
       setRows([]);
       setRunSummary(null);
       setPreview(null);
+      setSourceDiscovery(null);
+      setSourceDiscoverySongId(null);
       return;
     }
     void refreshReview(selectedEnvironmentId);
@@ -222,6 +232,22 @@ export function MatchingPanel() {
     });
   }
 
+  async function handleDiscoverSource(row: MatchReviewRow) {
+    if (!selectedEnvironmentId) {
+      return;
+    }
+    setIsDiscoveringSource(true);
+    setSourceDiscoverySongId(row.song_id);
+    setError(null);
+    try {
+      setSourceDiscovery(await discoverSoundCloudTrack(selectedEnvironmentId, row.song_id));
+    } catch (discoveryError) {
+      setError(errorMessage(discoveryError));
+    } finally {
+      setIsDiscoveringSource(false);
+    }
+  }
+
   return (
     <div className="matching-workspace">
       <header className="matching-topbar">
@@ -292,6 +318,16 @@ export function MatchingPanel() {
 
           <ReviewFilters counts={counts} filter={filter} onFilterChange={setFilter} />
 
+          {sourceDiscovery ? (
+            <SourceDiscoveryPanel
+              discovery={sourceDiscovery}
+              onClose={() => {
+                setSourceDiscovery(null);
+                setSourceDiscoverySongId(null);
+              }}
+            />
+          ) : null}
+
           <label className="matching-search-field">
             <Search size={15} />
             <input
@@ -328,7 +364,11 @@ export function MatchingPanel() {
                     key={row.song_id}
                     mappingKey={mappingKey}
                     row={row}
+                    isDiscoveringSource={
+                      isDiscoveringSource && sourceDiscoverySongId === row.song_id
+                    }
                     onMapCandidate={handleMapCandidate}
+                    onDiscoverSource={handleDiscoverSource}
                     onPreviewAudio={handlePreviewAudio}
                   />
                 ))}
@@ -413,14 +453,95 @@ function RunSummary({ summary }: { summary: MatchingRunSummary }) {
   );
 }
 
+function SourceDiscoveryPanel({
+  discovery,
+  onClose,
+}: {
+  discovery: SoundCloudTrackDiscoveryRead;
+  onClose: () => void;
+}) {
+  const primaryLinks = discovery.links.filter((link) =>
+    ["buy", "download", "buy_or_download"].includes(link.kind),
+  );
+  const secondaryLinks = discovery.links.filter(
+    (link) => !["buy", "download", "buy_or_download"].includes(link.kind),
+  );
+  const links = [...primaryLinks, ...secondaryLinks];
+
+  return (
+    <section className="source-discovery-panel">
+      <header>
+        <div>
+          <p className="eyebrow">SoundCloud Source Discovery</p>
+          <h3>{discovery.title}</h3>
+          <span>{discovery.artist ?? "Unknown uploader"}</span>
+        </div>
+        <button className="icon-button" type="button" onClick={onClose} title="Close source discovery">
+          <X size={16} />
+        </button>
+      </header>
+
+      <div className="source-discovery-actions">
+        <a href={discovery.track_url} rel="noreferrer" target="_blank">
+          <ExternalLink size={15} />
+          Open SoundCloud track
+        </a>
+        {discovery.purchase_url ? (
+          <a href={discovery.purchase_url} rel="noreferrer" target="_blank">
+            <ShoppingCart size={15} />
+            {discovery.purchase_title ?? "Buy / Download"}
+          </a>
+        ) : null}
+      </div>
+
+      {discovery.warnings.length > 0 ? (
+        <div className="source-discovery-warnings">
+          <AlertTriangle size={15} />
+          <span>{discovery.warnings.map(sourceWarningLabel).join(" ")}</span>
+        </div>
+      ) : null}
+
+      {links.length > 0 ? (
+        <div className="source-link-list">
+          {links.map((link) => (
+            <a href={link.url} key={`${link.source}-${link.url}`} rel="noreferrer" target="_blank">
+              <span>{link.label || link.url}</span>
+              <em>{sourceLinkKindLabel(link.kind)} · {sourceLabel(link.source)}</em>
+              <ExternalLink size={14} />
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">No buy, download, or artist source links were exposed for this track.</p>
+      )}
+
+      {discovery.description ? (
+        <details className="source-description">
+          <summary>Description</summary>
+          <p>{discovery.description}</p>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
 type ReviewRowProps = {
   row: MatchReviewRow;
   mappingKey: string | null;
+  isDiscoveringSource: boolean;
+  onDiscoverSource: (row: MatchReviewRow) => void;
   onMapCandidate: (row: MatchReviewRow, candidate: MatchCandidateRead) => void;
   onPreviewAudio: (audioFileId: string, label: string, detail: string) => void;
 };
 
-function ReviewRow({ row, mappingKey, onMapCandidate, onPreviewAudio }: ReviewRowProps) {
+function ReviewRow({
+  row,
+  mappingKey,
+  isDiscoveringSource,
+  onDiscoverSource,
+  onMapCandidate,
+  onPreviewAudio,
+}: ReviewRowProps) {
   const expanded = row.status === "ambiguous" || row.candidates.length > 0;
   const acceptedMatch = row.match;
   return (
@@ -452,9 +573,14 @@ function ReviewRow({ row, mappingKey, onMapCandidate, onPreviewAudio }: ReviewRo
               <Play size={16} />
             </button>
           ) : (
-            <button className="icon-button" disabled title="No accepted audio" type="button">
-              <Search size={16} />
-            </button>
+            <Button
+              disabled={isDiscoveringSource}
+              icon={<ShoppingCart size={15} />}
+              type="button"
+              onClick={() => onDiscoverSource(row)}
+            >
+              {isDiscoveringSource ? "Finding" : "Find Source"}
+            </Button>
           )}
         </div>
       </div>
@@ -681,6 +807,35 @@ function hasLikelyPreviewWarning(candidate: MatchCandidateRead) {
 
 function confidenceLabel(confidence: number) {
   return `${Math.round(confidence * 100)}%`;
+}
+
+function sourceLinkKindLabel(kind: string) {
+  const labels: Record<string, string> = {
+    artist_social: "Artist profile",
+    buy: "Buy",
+    buy_or_download: "Buy / download",
+    contact: "Contact",
+    download: "Download",
+    external: "External link",
+    soundcloud_profile: "SoundCloud profile",
+  };
+  return labels[kind] ?? methodLabel(kind);
+}
+
+function sourceLabel(source: string) {
+  return source.replace(/_/g, " ");
+}
+
+function sourceWarningLabel(warning: string) {
+  const labels: Record<string, string> = {
+    free_download_mentioned_without_link:
+      "The description mentions a free download, but no public download link was exposed.",
+    no_purchase_or_download_link_found:
+      "No buy or download link was found.",
+    promotional_low_quality_notice:
+      "The description says this upload may be low quality or promotional.",
+  };
+  return labels[warning] ?? warning.replace(/_/g, " ");
 }
 
 function formatDuration(seconds: number | null) {

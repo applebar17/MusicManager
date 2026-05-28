@@ -239,6 +239,31 @@ export type SoundCloudPlaylistSyncAllResult = {
   results: SoundCloudPlaylistSyncItemResult[];
 };
 
+export type SoundCloudDiscoveryLinkRead = {
+  url: string;
+  label: string | null;
+  kind: string;
+  source: string;
+};
+
+export type SoundCloudTrackDiscoveryRead = {
+  environment_id: string;
+  song_id: string;
+  track_url: string;
+  track_urn: string | null;
+  title: string;
+  artist: string | null;
+  description: string | null;
+  purchase_title: string | null;
+  purchase_url: string | null;
+  downloadable: boolean | null;
+  download_url: string | null;
+  links: SoundCloudDiscoveryLinkRead[];
+  tags: string[];
+  release_metadata: Record<string, string>;
+  warnings: string[];
+};
+
 export type ExportPlanCreate = {
   playlist_ids?: string[] | null;
 };

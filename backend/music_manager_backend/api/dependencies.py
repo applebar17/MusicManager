@@ -17,6 +17,7 @@ from music_manager_backend.ports.repositories import (
     SyncSnapshotRepository,
 )
 from music_manager_backend.ports.soundcloud import SoundCloudPlaylistImporter
+from music_manager_backend.ports.soundcloud_discovery import SoundCloudTrackDiscoveryProvider
 
 
 def get_container(request: Request) -> AppContainer:
@@ -85,6 +86,12 @@ def get_sync_snapshot_repository(bundle: RepositoryBundleDependency) -> SyncSnap
 
 def get_soundcloud_playlist_importer(request: Request) -> SoundCloudPlaylistImporter:
     return get_container(request).soundcloud_playlist_importer
+
+
+def get_soundcloud_track_discovery_provider(
+    request: Request,
+) -> SoundCloudTrackDiscoveryProvider:
+    return get_container(request).soundcloud_track_discovery_provider
 
 
 def guard_environment_operation(

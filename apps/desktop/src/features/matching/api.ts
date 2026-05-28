@@ -3,6 +3,7 @@ import type {
   ManualMappingCreate,
   MatchingRunSummary,
   MatchReviewRow,
+  SoundCloudTrackDiscoveryRead,
 } from "../../shared/api/types";
 
 export function runMatching(environmentId: string) {
@@ -11,6 +12,12 @@ export function runMatching(environmentId: string) {
 
 export function listMatchReview(environmentId: string) {
   return apiGet<MatchReviewRow[]>(`/environments/${environmentId}/matching/review`);
+}
+
+export function discoverSoundCloudTrack(environmentId: string, songId: string) {
+  return apiGet<SoundCloudTrackDiscoveryRead>(
+    `/environments/${environmentId}/songs/${songId}/soundcloud-discovery`,
+  );
 }
 
 export function createManualMapping(

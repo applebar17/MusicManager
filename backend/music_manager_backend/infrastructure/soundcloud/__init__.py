@@ -6,6 +6,9 @@ from music_manager_backend.infrastructure.soundcloud.public_playlist_importer im
     HttpSoundCloudHtmlFetcher,
     PublicPlaylistImporter,
 )
+from music_manager_backend.infrastructure.soundcloud.track_discovery import (
+    PublicTrackDiscoveryProvider,
+)
 from music_manager_backend.ports.soundcloud_models import (
     ParsedSoundCloudPlaylist,
     ParsedSoundCloudTrack,
@@ -18,4 +21,5 @@ __all__ = [
     "ParsedSoundCloudTrack",
     "PublicPlaylistHtmlParser",
     "PublicPlaylistImporter",
+    "PublicTrackDiscoveryProvider",
 ]

@@ -13,6 +13,7 @@ from music_manager_backend.api.dependencies import (
     get_scan_run_repository,
     get_song_repository,
     get_soundcloud_playlist_importer,
+    get_soundcloud_track_discovery_provider,
     get_sync_snapshot_repository,
     guard_environment_operation,
 )
@@ -35,6 +36,7 @@ from music_manager_backend.application.dtos import (
     SoundCloudPlaylistImportRequest,
     SoundCloudPlaylistImportResult,
     SoundCloudPlaylistSyncAllResult,
+    SoundCloudTrackDiscoveryRead,
     UsbAudioFileBatchQuarantineRequest,
     UsbAudioFileBatchQuarantineResult,
     UsbAudioFileMappingCreate,
@@ -48,6 +50,9 @@ from music_manager_backend.application.use_cases.apply_export_plan import ApplyE
 from music_manager_backend.application.use_cases.archive_environment import ArchiveEnvironment
 from music_manager_backend.application.use_cases.create_environment import CreateEnvironment
 from music_manager_backend.application.use_cases.create_manual_mapping import CreateManualMapping
+from music_manager_backend.application.use_cases.discover_soundcloud_track import (
+    DiscoverSoundCloudTrack,
+)
 from music_manager_backend.application.use_cases.get_environment_overview import (
     GetEnvironmentOverview,
 )
@@ -96,6 +101,7 @@ from music_manager_backend.ports.repositories import (
     SyncSnapshotRepository,
 )
 from music_manager_backend.ports.soundcloud import SoundCloudPlaylistImporter
+from music_manager_backend.ports.soundcloud_discovery import SoundCloudTrackDiscoveryProvider
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ApiErrorRead},
@@ -149,6 +155,10 @@ SyncSnapshotRepositoryDependency = Annotated[
 SoundCloudPlaylistImporterDependency = Annotated[
     SoundCloudPlaylistImporter,
     Depends(get_soundcloud_playlist_importer),
+]
+SoundCloudTrackDiscoveryProviderDependency = Annotated[
+    SoundCloudTrackDiscoveryProvider,
+    Depends(get_soundcloud_track_discovery_provider),
 ]
 
 
@@ -376,6 +386,27 @@ def create_manual_mapping(
         audio_files=audio_files,
         match_links=match_links,
     ).execute(environment_id, data.song_id, data.audio_file_id)
+
+
+@router.get(
+    "/{environment_id}/songs/{song_id}/soundcloud-discovery",
+    response_model=SoundCloudTrackDiscoveryRead,
+    responses=ERROR_RESPONSES,
+)
+def discover_soundcloud_track(
+    environment_id: str,
+    song_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    discovery_provider: SoundCloudTrackDiscoveryProviderDependency,
+) -> SoundCloudTrackDiscoveryRead:
+    return DiscoverSoundCloudTrack(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        discovery_provider=discovery_provider,
+    ).execute(environment_id, song_id)
 
 
 @router.get(

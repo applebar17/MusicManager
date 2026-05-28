@@ -14,7 +14,10 @@ from music_manager_backend.api.logging_config import configure_logging
 from music_manager_backend.api.operation_coordinator import OperationCoordinator
 from music_manager_backend.api.routers import environments, health, playback
 from music_manager_backend.infrastructure.persistence.migration_runner import upgrade_database
-from music_manager_backend.infrastructure.soundcloud import PublicPlaylistImporter
+from music_manager_backend.infrastructure.soundcloud import (
+    PublicPlaylistImporter,
+    PublicTrackDiscoveryProvider,
+)
 from music_manager_backend.shared.errors import (
     DatabaseBusyError,
     InfrastructureError,
@@ -37,6 +40,7 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
     container = AppContainer(
         settings=resolved_settings,
         soundcloud_playlist_importer=PublicPlaylistImporter(),
+        soundcloud_track_discovery_provider=PublicTrackDiscoveryProvider(),
         operation_coordinator=OperationCoordinator(),
     )
 
