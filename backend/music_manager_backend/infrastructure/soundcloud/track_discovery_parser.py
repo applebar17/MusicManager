@@ -1,4 +1,5 @@
 import re
+import shlex
 from html import unescape
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -54,6 +55,71 @@ class SoundCloudTrackDiscoveryHtmlParser:
             warnings=tuple(warnings),
             raw={"track_urn": track_urn} if track_urn is not None else {},
         )
+
+
+def merge_soundcloud_api_track_discovery(
+    discovery: SoundCloudTrackDiscovery,
+    api_track: dict[str, object],
+) -> SoundCloudTrackDiscovery:
+    title = _api_text(api_track.get("title")) or discovery.title
+    artist = _api_user_name(api_track) or discovery.artist
+    description = _api_text(api_track.get("description")) or discovery.description
+    track_url = _api_url(api_track.get("permalink_url")) or discovery.track_url
+    track_urn = _api_track_urn(api_track) or discovery.track_urn
+    purchase_title = _api_text(api_track.get("purchase_title")) or discovery.purchase_title
+    purchase_url = _api_url(api_track.get("purchase_url")) or discovery.purchase_url
+    downloadable = _api_bool(api_track.get("downloadable"), fallback=discovery.downloadable)
+    download_url = _api_url(api_track.get("download_url")) or discovery.download_url
+
+    links = list(discovery.links)
+    if purchase_url is not None:
+        links.append(
+            SoundCloudDiscoveryLink(
+                url=purchase_url,
+                label=purchase_title or "Buy",
+                kind=_link_kind(purchase_url, context=purchase_title or "Buy"),
+                source="api_purchase_url",
+            )
+        )
+    if download_url is not None:
+        links.append(
+            SoundCloudDiscoveryLink(
+                url=download_url,
+                label="Download",
+                kind="download",
+                source="api_download_url",
+            )
+        )
+
+    deduped_links = tuple(_dedupe_links(links))
+    tags = tuple(_dedupe_text((*discovery.tags, *_api_tags(api_track))))
+    warnings = tuple(
+        _warnings(
+            description=description,
+            links=deduped_links,
+            purchase_link=next(
+                (link for link in deduped_links if link.url == purchase_url),
+                None,
+            ),
+        )
+    )
+
+    return SoundCloudTrackDiscovery(
+        track_url=track_url,
+        track_urn=track_urn,
+        title=title,
+        artist=artist,
+        description=description,
+        purchase_title=purchase_title,
+        purchase_url=purchase_url,
+        downloadable=downloadable,
+        download_url=download_url,
+        links=deduped_links,
+        tags=tags,
+        release_metadata=discovery.release_metadata,
+        warnings=warnings,
+        raw={**discovery.raw, "api_track": api_track},
+    )
 
 
 def _extract_track_urn(html: str) -> str | None:
@@ -205,6 +271,59 @@ def _normalize_url(url: str) -> str:
     return url
 
 
+def _api_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = _clean_text(value)
+    return text or None
+
+
+def _api_url(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    url = _normalize_url(_decode_soundcloud_gate_url(value))
+    return url or None
+
+
+def _api_bool(value: object, *, fallback: bool | None) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    return fallback
+
+
+def _api_track_urn(api_track: dict[str, object]) -> str | None:
+    urn = _api_text(api_track.get("urn"))
+    if urn is not None:
+        return urn
+    track_id = api_track.get("id")
+    if isinstance(track_id, (int, str)) and str(track_id).strip():
+        return f"soundcloud:tracks:{track_id}"
+    return None
+
+
+def _api_user_name(api_track: dict[str, object]) -> str | None:
+    user = api_track.get("user")
+    if not isinstance(user, dict):
+        return None
+    return _api_text(user.get("username"))
+
+
+def _api_tags(api_track: dict[str, object]) -> tuple[str, ...]:
+    tags: list[str] = []
+    genre = _api_text(api_track.get("genre"))
+    if genre is not None:
+        tags.append(genre)
+
+    raw_tag_list = _api_text(api_track.get("tag_list"))
+    if raw_tag_list is None:
+        return tuple(tags)
+    try:
+        tags.extend(shlex.split(raw_tag_list))
+    except ValueError:
+        tags.extend(raw_tag_list.split())
+    return tuple(tags)
+
+
 def _link_kind(url: str, *, context: str | None = None) -> str:
     lower_url = url.lower()
     lower_context = (context or "").lower()
@@ -235,6 +354,17 @@ def _dedupe_links(
             continue
         seen.add(link.url)
         deduped.append(link)
+    return deduped
+
+
+def _dedupe_text(values: tuple[str, ...]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
     return deduped
 
 

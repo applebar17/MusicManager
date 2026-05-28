@@ -1,5 +1,6 @@
 from music_manager_backend.infrastructure.soundcloud.track_discovery_parser import (
     SoundCloudTrackDiscoveryHtmlParser,
+    merge_soundcloud_api_track_discovery,
 )
 
 
@@ -99,3 +100,42 @@ def test_track_discovery_parser_warns_when_free_download_is_text_only() -> None:
     assert discovery.links == ()
     assert "free_download_mentioned_without_link" in discovery.warnings
     assert "no_purchase_or_download_link_found" in discovery.warnings
+
+
+def test_track_discovery_merges_api_purchase_url_when_static_html_has_none() -> None:
+    discovery = SoundCloudTrackDiscoveryHtmlParser().parse(
+        """
+        <html>
+          <head><meta property="og:title" content="Kapote - Berlin Boogie Town"></head>
+          <body>
+            <a class="userBadge__usernameLink">Kapote</a>
+            <script src="https://a-v2.sndcdn.com/assets/1-a1b2c3.js"></script>
+          </body>
+        </html>
+        """,
+        source_url="https://soundcloud.com/toytonics/kapote-berlin-boogie-bounce-extended-mix",
+    )
+
+    merged = merge_soundcloud_api_track_discovery(
+        discovery,
+        {
+            "id": 12345,
+            "kind": "track",
+            "title": "Kapote - Berlin Boogie Bounce Extended Mix",
+            "permalink_url": "https://soundcloud.com/toytonics/kapote-berlin-boogie-bounce-extended-mix",
+            "purchase_title": "Buy",
+            "purchase_url": "https://toy-tonics.lnk.to/BerlinBoogieTown",
+            "user": {"username": "Toy Tonics"},
+            "genre": "House",
+            "tag_list": '"Berlin Boogie" Disco',
+        },
+    )
+
+    assert merged.track_urn == "soundcloud:tracks:12345"
+    assert merged.artist == "Toy Tonics"
+    assert merged.purchase_url == "https://toy-tonics.lnk.to/BerlinBoogieTown"
+    assert merged.links[0].url == "https://toy-tonics.lnk.to/BerlinBoogieTown"
+    assert merged.links[0].source == "api_purchase_url"
+    assert merged.links[0].kind == "buy"
+    assert merged.tags == ("House", "Berlin Boogie", "Disco")
+    assert "no_purchase_or_download_link_found" not in merged.warnings
