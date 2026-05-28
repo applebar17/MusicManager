@@ -26,6 +26,9 @@ from music_manager_backend.infrastructure.persistence.scan_run_repository import
     SqliteScanRunRepository,
 )
 from music_manager_backend.infrastructure.persistence.song_repository import SqliteSongRepository
+from music_manager_backend.infrastructure.persistence.source_discovery_repository import (
+    SqliteSourceDiscoveryRepository,
+)
 from music_manager_backend.infrastructure.persistence.sync_snapshot_repository import (
     SqliteSyncSnapshotRepository,
 )
@@ -41,5 +44,6 @@ __all__ = [
     "SqliteRemotePlaylistRepository",
     "SqliteScanRunRepository",
     "SqliteSongRepository",
+    "SqliteSourceDiscoveryRepository",
     "SqliteSyncSnapshotRepository",
 ]

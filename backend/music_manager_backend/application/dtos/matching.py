@@ -1,5 +1,9 @@
 from pydantic import BaseModel, Field
 
+from music_manager_backend.application.dtos.soundcloud_discovery import (
+    SoundCloudTrackDiscoveryRead,
+)
+
 
 class MatchCandidateRead(BaseModel):
     audio_file_id: str
@@ -20,6 +24,7 @@ class MatchReviewRow(BaseModel):
     status: str
     match: MatchCandidateRead | None = None
     candidates: list[MatchCandidateRead] = []
+    source_discovery: SoundCloudTrackDiscoveryRead | None = None
 
 
 class MatchingRunSummary(BaseModel):

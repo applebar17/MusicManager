@@ -97,6 +97,79 @@ def test_soundcloud_discovery_endpoint_returns_track_source_links(
     assert payload["tags"] == ["Techno"]
     assert payload["release_metadata"] == {"Release date": "3 May 2024"}
     assert payload["warnings"] == ["promotional_low_quality_notice"]
+    assert payload["fetched_at"] is not None
+
+    with container.repository_bundle() as repositories:
+        stored = repositories.source_discovery_repository.get("env_1", "song_1")
+
+    assert stored is not None
+    assert stored.purchase_url == "https://label.bandcamp.com/album/song"
+
+
+def test_sync_missing_soundcloud_sources_persists_unmatched_source_links(
+    api_client: TestClient,
+) -> None:
+    container = _container(api_client)
+    provider = FakeSoundCloudDiscoveryProvider(
+        SoundCloudTrackDiscovery(
+            track_url="https://soundcloud.com/artist/missing-song",
+            title="Missing Song",
+            artist="Uploader",
+            purchase_title="Buy",
+            purchase_url="https://label.example/missing-song",
+            links=(
+                SoundCloudDiscoveryLink(
+                    url="https://label.example/missing-song",
+                    label="Buy",
+                    kind="buy",
+                    source="api_purchase_url",
+                ),
+            ),
+        )
+    )
+    cast(FastAPI, api_client.app).state.container = replace(
+        container,
+        soundcloud_track_discovery_provider=provider,
+    )
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
+        )
+        repositories.song_repository.save(
+            SongMaster(
+                id="song_1",
+                title="Missing Song",
+                artist="Artist",
+                source_url="https://soundcloud.com/artist/missing-song",
+            )
+        )
+        repositories.playlist_repository.save(
+            Playlist(
+                id="playlist_1",
+                environment_id="env_1",
+                name="Set",
+                items=(PlaylistItem(song_id="song_1", position=1),),
+            )
+        )
+
+    response = api_client.post("/environments/env_1/soundcloud-discovery/sync-missing")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["discovered"] == 1
+    assert payload["results"][0]["discovered_url"] == "https://label.example/missing-song"
+
+    review_response = api_client.get("/environments/env_1/matching/review")
+    playlist_response = api_client.get("/environments/env_1/playlists/playlist_1")
+
+    assert review_response.status_code == 200
+    assert playlist_response.status_code == 200
+    assert review_response.json()[0]["source_discovery"]["purchase_url"] == (
+        "https://label.example/missing-song"
+    )
+    assert playlist_response.json()["items"][0]["source_discovery"]["purchase_url"] == (
+        "https://label.example/missing-song"
+    )
 
 
 def test_soundcloud_discovery_endpoint_rejects_song_outside_environment(

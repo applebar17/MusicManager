@@ -14,6 +14,7 @@ from music_manager_backend.ports.repositories import (
     RemotePlaylistRepository,
     ScanRunRepository,
     SongRepository,
+    SourceDiscoveryRepository,
     SyncSnapshotRepository,
 )
 from music_manager_backend.ports.soundcloud import SoundCloudPlaylistImporter
@@ -78,6 +79,12 @@ def get_playlist_repository(bundle: RepositoryBundleDependency) -> PlaylistRepos
 
 def get_song_repository(bundle: RepositoryBundleDependency) -> SongRepository:
     return bundle.song_repository
+
+
+def get_source_discovery_repository(
+    bundle: RepositoryBundleDependency,
+) -> SourceDiscoveryRepository:
+    return bundle.source_discovery_repository
 
 
 def get_sync_snapshot_repository(bundle: RepositoryBundleDependency) -> SyncSnapshotRepository:

@@ -1,11 +1,13 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  ExternalLink,
   Link2,
   ListMusic,
   PlayCircle,
   RefreshCw,
   Search,
+  ShoppingCart,
   TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -19,6 +21,7 @@ import type {
   PlaylistSummaryRead,
   SoundCloudPlaylistSyncAllResult,
   SoundCloudPlaylistImportResult,
+  SoundCloudTrackDiscoveryRead,
 } from "../../shared/api/types";
 import { useAppState } from "../../shared/state";
 import { Button, EmptyState, ErrorBanner, LoadingState, Panel, StatusBadge } from "../../shared/ui";
@@ -650,6 +653,7 @@ function PlaylistDetailView({
             <tr>
               <th>#</th>
               <th>Title / Artist</th>
+              <th>Source</th>
               <th>Dur</th>
               <th>Status</th>
               <th>Accepted Audio</th>
@@ -688,6 +692,9 @@ function PlaylistTrackRow({ item }: { item: PlaylistItemRead }) {
         <span>{item.artist ?? "Unknown artist"}</span>
         {!item.remote_membership_active ? <em>Inactive remote membership</em> : null}
       </td>
+      <td>
+        <SourceInfoCell discovery={item.source_discovery} />
+      </td>
       <td className="track-duration">{formatDuration(item.duration_seconds)}</td>
       <td>
         <MatchStatusPill status={item.match_status} />
@@ -696,6 +703,40 @@ function PlaylistTrackRow({ item }: { item: PlaylistItemRead }) {
         <AcceptedAudioCell item={item} />
       </td>
     </tr>
+  );
+}
+
+function SourceInfoCell({ discovery }: { discovery: SoundCloudTrackDiscoveryRead | null }) {
+  if (!discovery) {
+    return <span className="source-cell source-cell--empty">Not searched</span>;
+  }
+
+  const sourceLink = bestSourceLink(discovery);
+  return (
+    <div className="source-cell">
+      <div className="source-cell__actions">
+        {sourceLink ? (
+          <a href={sourceLink.url} rel="noreferrer" target="_blank">
+            <ShoppingCart size={13} />
+            {sourceLink.label}
+          </a>
+        ) : (
+          <span>No buy/download link</span>
+        )}
+        <a href={discovery.track_url} rel="noreferrer" target="_blank" title="Open SoundCloud track">
+          <ExternalLink size={13} />
+          Track
+        </a>
+      </div>
+      {discovery.description ? (
+        <details className="source-cell__description">
+          <summary>Description</summary>
+          <p>{linkifyText(discovery.description)}</p>
+        </details>
+      ) : (
+        <em>No description stored</em>
+      )}
+    </div>
   );
 }
 
@@ -772,6 +813,39 @@ function apiUrl(pathOrUrl: string) {
     return pathOrUrl;
   }
   return `${getApiBaseUrl()}${pathOrUrl}`;
+}
+
+function bestSourceLink(discovery: SoundCloudTrackDiscoveryRead) {
+  if (discovery.download_url) {
+    return { label: "Download", url: discovery.download_url };
+  }
+  if (discovery.purchase_url) {
+    return { label: discovery.purchase_title ?? "Buy / Download", url: discovery.purchase_url };
+  }
+  const link = discovery.links.find((item) =>
+    ["download", "buy", "buy_or_download"].includes(item.kind),
+  );
+  if (!link) {
+    return null;
+  }
+  return {
+    label: link.kind === "download" ? "Download" : link.kind === "buy" ? "Buy" : "Buy / Download",
+    url: link.url,
+  };
+}
+
+function linkifyText(text: string) {
+  const parts = text.split(/(https?:\/\/[^\s)]+|mailto:[^\s)]+)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith("http://") || part.startsWith("https://") || part.startsWith("mailto:")) {
+      return (
+        <a href={part} key={`${part}-${index}`} rel="noreferrer" target="_blank">
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
 }
 
 function matchStatusLabel(status: MatchStatus) {

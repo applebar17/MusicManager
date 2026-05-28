@@ -13,6 +13,7 @@ from music_manager_backend.domain.entities.matching import MatchCandidate, Match
 from music_manager_backend.domain.entities.playlist import Playlist, PlaylistItem, RemotePlaylist
 from music_manager_backend.domain.entities.scan_run import ScanRun, ScanSummary
 from music_manager_backend.domain.entities.song import SongMaster
+from music_manager_backend.domain.entities.source_discovery import SoundCloudSourceDiscovery
 from music_manager_backend.domain.entities.sync_snapshot import SyncSnapshot
 
 __all__ = [
@@ -36,5 +37,6 @@ __all__ = [
     "ScanRun",
     "ScanSummary",
     "SongMaster",
+    "SoundCloudSourceDiscovery",
     "SyncSnapshot",
 ]

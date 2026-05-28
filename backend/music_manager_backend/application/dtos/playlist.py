@@ -1,5 +1,9 @@
 from pydantic import BaseModel, Field
 
+from music_manager_backend.application.dtos.soundcloud_discovery import (
+    SoundCloudTrackDiscoveryRead,
+)
+
 
 class PlaylistSummaryRead(BaseModel):
     id: str
@@ -26,6 +30,7 @@ class PlaylistItemRead(BaseModel):
     accepted_audio_relative_path: str | None = None
     accepted_audio_warnings: list[str] = Field(default_factory=list)
     playback_url: str | None = None
+    source_discovery: SoundCloudTrackDiscoveryRead | None = None
 
 
 class PlaylistDetailRead(BaseModel):

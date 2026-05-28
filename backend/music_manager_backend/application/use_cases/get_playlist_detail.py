@@ -1,6 +1,9 @@
 from pathlib import Path
 
 from music_manager_backend.application.dtos import PlaylistDetailRead, PlaylistItemRead
+from music_manager_backend.application.use_cases.discover_soundcloud_track import (
+    stored_discovery_read,
+)
 from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
@@ -8,6 +11,7 @@ from music_manager_backend.ports.repositories import (
     MatchLinkRepository,
     PlaylistRepository,
     SongRepository,
+    SourceDiscoveryRepository,
 )
 from music_manager_backend.shared.errors import NotFoundError
 
@@ -21,12 +25,14 @@ class GetPlaylistDetail:
         songs: SongRepository,
         audio_files: AudioFileRepository,
         match_links: MatchLinkRepository,
+        source_discoveries: SourceDiscoveryRepository | None = None,
     ) -> None:
         self.environments = environments
         self.playlists = playlists
         self.songs = songs
         self.audio_files = audio_files
         self.match_links = match_links
+        self.source_discoveries = source_discoveries
 
     def execute(self, environment_id: str, playlist_id: str) -> PlaylistDetailRead:
         environment = self.environments.get(environment_id)
@@ -44,6 +50,7 @@ class GetPlaylistDetail:
                 songs=self.songs,
                 audio_files=self.audio_files,
                 match_links=self.match_links,
+                source_discoveries=self.source_discoveries,
             ).execute(environment_id)
         }
         items: list[PlaylistItemRead] = []
@@ -79,6 +86,15 @@ class GetPlaylistDetail:
                         f"/environments/{environment_id}/playback/audio-files/"
                         f"{accepted_audio_file_id}"
                         if accepted_audio_file_id is not None
+                        else None
+                    ),
+                    source_discovery=(
+                        stored_discovery_read(
+                            environment_id=environment_id,
+                            song=song,
+                            source_discoveries=self.source_discoveries,
+                        )
+                        if self.source_discoveries is not None
                         else None
                     ),
                 )

@@ -1,4 +1,7 @@
 from music_manager_backend.application.dtos import MatchCandidateRead, MatchReviewRow
+from music_manager_backend.application.use_cases.discover_soundcloud_track import (
+    stored_discovery_read,
+)
 from music_manager_backend.application.use_cases.match_link_selection import preferred_match_link
 from music_manager_backend.application.use_cases.matching_common import (
     active_audio_files_by_id,
@@ -14,6 +17,7 @@ from music_manager_backend.ports.repositories import (
     MatchLinkRepository,
     PlaylistRepository,
     SongRepository,
+    SourceDiscoveryRepository,
 )
 
 
@@ -26,12 +30,14 @@ class ListMatchReview:
         songs: SongRepository,
         audio_files: AudioFileRepository,
         match_links: MatchLinkRepository,
+        source_discoveries: SourceDiscoveryRepository | None = None,
     ) -> None:
         self.environments = environments
         self.playlists = playlists
         self.songs = songs
         self.audio_files = audio_files
         self.match_links = match_links
+        self.source_discoveries = source_discoveries
 
     def execute(self, environment_id: str) -> list[MatchReviewRow]:
         environment_songs = load_environment_songs(
@@ -64,6 +70,15 @@ class ListMatchReview:
                         status=status.value,
                         match=_candidate_from_link(accepted, active_files),
                         candidates=[],
+                        source_discovery=(
+                            stored_discovery_read(
+                                environment_id=environment_id,
+                                song=song,
+                                source_discoveries=self.source_discoveries,
+                            )
+                            if self.source_discoveries is not None
+                            else None
+                        ),
                     )
                 )
                 continue
@@ -89,6 +104,15 @@ class ListMatchReview:
                         for candidate in candidates
                         if candidate_audio_file(candidate, active_files) is not None
                     ],
+                    source_discovery=(
+                        stored_discovery_read(
+                            environment_id=environment_id,
+                            song=song,
+                            source_discoveries=self.source_discoveries,
+                        )
+                        if self.source_discoveries is not None
+                        else None
+                    ),
                 )
             )
         return rows

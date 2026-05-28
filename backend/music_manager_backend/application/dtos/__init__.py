@@ -36,12 +36,14 @@ from music_manager_backend.application.dtos.soundcloud import (
 )
 from music_manager_backend.application.dtos.soundcloud_discovery import (
     SoundCloudDiscoveryLinkRead,
+    SoundCloudSourceSyncItemRead,
+    SoundCloudSourceSyncResultRead,
     SoundCloudTrackDiscoveryRead,
 )
 from music_manager_backend.application.dtos.usb import (
-    UsbAudioFileMappingCreate,
     UsbAudioFileBatchQuarantineRequest,
     UsbAudioFileBatchQuarantineResult,
+    UsbAudioFileMappingCreate,
     UsbFileRead,
     UsbMatchedSongRead,
     UsbSongCandidateRead,
@@ -72,6 +74,8 @@ __all__ = [
     "SoundCloudPlaylistSyncAllResult",
     "SoundCloudPlaylistSyncItemResult",
     "SoundCloudDiscoveryLinkRead",
+    "SoundCloudSourceSyncItemRead",
+    "SoundCloudSourceSyncResultRead",
     "SoundCloudTrackDiscoveryRead",
     "UsbAudioFileMappingCreate",
     "UsbAudioFileBatchQuarantineRequest",

@@ -20,6 +20,7 @@ import type {
   MatchingRunSummary,
   MatchReviewRow,
   MatchStatus,
+  SoundCloudSourceSyncResultRead,
   SoundCloudTrackDiscoveryRead,
 } from "../../shared/api/types";
 import { useAppState } from "../../shared/state";
@@ -30,6 +31,7 @@ import {
   listMatchReview,
   playbackAudioUrl,
   runMatching,
+  syncMissingSoundCloudSources,
 } from "./api";
 
 type ReviewFilter =
@@ -55,12 +57,15 @@ export function MatchingPanel() {
   const [filter, setFilter] = useState<ReviewFilter>("needs_review");
   const [reviewSearch, setReviewSearch] = useState("");
   const [runSummary, setRunSummary] = useState<MatchingRunSummary | null>(null);
+  const [sourceSyncResult, setSourceSyncResult] =
+    useState<SoundCloudSourceSyncResultRead | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [sourceDiscovery, setSourceDiscovery] = useState<SoundCloudTrackDiscoveryRead | null>(null);
   const [sourceDiscoverySongId, setSourceDiscoverySongId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [isDiscoveringSource, setIsDiscoveringSource] = useState(false);
+  const [isSyncingSources, setIsSyncingSources] = useState(false);
   const [mappingKey, setMappingKey] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +91,7 @@ export function MatchingPanel() {
     if (!selectedEnvironmentId) {
       setRows([]);
       setRunSummary(null);
+      setSourceSyncResult(null);
       setPreview(null);
       setSourceDiscovery(null);
       setSourceDiscoverySongId(null);
@@ -187,6 +193,7 @@ export function MatchingPanel() {
     try {
       const summary = await runMatching(selectedEnvironmentId);
       setRunSummary(summary);
+      setSourceSyncResult(null);
       await refreshReview(selectedEnvironmentId);
     } catch (runError) {
       setError(errorMessage(runError));
@@ -241,10 +248,29 @@ export function MatchingPanel() {
     setError(null);
     try {
       setSourceDiscovery(await discoverSoundCloudTrack(selectedEnvironmentId, row.song_id));
+      await refreshReview(selectedEnvironmentId);
     } catch (discoveryError) {
       setError(errorMessage(discoveryError));
     } finally {
       setIsDiscoveringSource(false);
+    }
+  }
+
+  async function handleSyncSources() {
+    if (!selectedEnvironmentId) {
+      setError("Select an environment before syncing source links.");
+      return;
+    }
+    setIsSyncingSources(true);
+    setError(null);
+    try {
+      const result = await syncMissingSoundCloudSources(selectedEnvironmentId);
+      setSourceSyncResult(result);
+      await refreshReview(selectedEnvironmentId);
+    } catch (syncError) {
+      setError(errorMessage(syncError));
+    } finally {
+      setIsSyncingSources(false);
     }
   }
 
@@ -304,17 +330,27 @@ export function MatchingPanel() {
               <h2>Matching Review</h2>
               <p className="muted">Resolve track mismatches and map ambiguous candidates.</p>
             </div>
-            <Button
-              disabled={isRunning}
-              icon={<Zap size={18} />}
-              variant="primary"
-              onClick={handleRunMatching}
-            >
-              {isRunning ? "Running" : "Run Matching"}
-            </Button>
+            <div className="matching-header-actions">
+              <Button
+                disabled={isSyncingSources}
+                icon={<ShoppingCart size={18} />}
+                onClick={handleSyncSources}
+              >
+                {isSyncingSources ? "Syncing Sources" : "Sync Sources"}
+              </Button>
+              <Button
+                disabled={isRunning}
+                icon={<Zap size={18} />}
+                variant="primary"
+                onClick={handleRunMatching}
+              >
+                {isRunning ? "Running" : "Run Matching"}
+              </Button>
+            </div>
           </section>
 
           {runSummary ? <RunSummary summary={runSummary} /> : null}
+          {sourceSyncResult ? <SourceSyncSummary result={sourceSyncResult} /> : null}
 
           <ReviewFilters counts={counts} filter={filter} onFilterChange={setFilter} />
 
@@ -453,6 +489,20 @@ function RunSummary({ summary }: { summary: MatchingRunSummary }) {
   );
 }
 
+function SourceSyncSummary({ result }: { result: SoundCloudSourceSyncResultRead }) {
+  return (
+    <div className="matching-run-summary">
+      <StatusBadge tone={result.failed > 0 ? "warning" : "success"}>
+        {result.failed > 0 ? "Source Sync Issues" : "Sources Synced"}
+      </StatusBadge>
+      <span>{formatNumber(result.total)} unmatched songs checked</span>
+      <span>{formatNumber(result.discovered)} discovered</span>
+      <span>{formatNumber(result.skipped)} already known</span>
+      <span>{formatNumber(result.failed)} failed</span>
+    </div>
+  );
+}
+
 function SourceDiscoveryPanel({
   discovery,
   onClose,
@@ -518,7 +568,7 @@ function SourceDiscoveryPanel({
       {discovery.description ? (
         <details className="source-description">
           <summary>Description</summary>
-          <p>{discovery.description}</p>
+          <p>{linkifyText(discovery.description)}</p>
         </details>
       ) : null}
     </section>
@@ -544,6 +594,7 @@ function ReviewRow({
 }: ReviewRowProps) {
   const expanded = row.status === "ambiguous" || row.candidates.length > 0;
   const acceptedMatch = row.match;
+  const sourceLink = bestSourceLink(row.source_discovery);
   return (
     <article className={["matching-row", `matching-row--${row.status}`].join(" ")}>
       <div className="matching-row-main">
@@ -572,6 +623,26 @@ function ReviewRow({
             >
               <Play size={16} />
             </button>
+          ) : sourceLink ? (
+            <a
+              className="button button--ghost source-action-link"
+              href={sourceLink.url}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <ShoppingCart size={15} />
+              {sourceLink.label}
+            </a>
+          ) : row.source_discovery ? (
+            <a
+              className="button button--ghost source-action-link"
+              href={row.source_discovery.track_url}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <ExternalLink size={15} />
+              Open Track
+            </a>
           ) : (
             <Button
               disabled={isDiscoveringSource}
@@ -584,6 +655,13 @@ function ReviewRow({
           )}
         </div>
       </div>
+
+      {!acceptedMatch && row.source_discovery?.description ? (
+        <details className="matching-source-description">
+          <summary>Source description</summary>
+          <p>{linkifyText(row.source_discovery.description)}</p>
+        </details>
+      ) : null}
 
       {acceptedMatch ? (
         <div className="accepted-match-row">
@@ -809,6 +887,22 @@ function confidenceLabel(confidence: number) {
   return `${Math.round(confidence * 100)}%`;
 }
 
+function bestSourceLink(discovery: SoundCloudTrackDiscoveryRead | null) {
+  if (!discovery) {
+    return null;
+  }
+  if (discovery.download_url) {
+    return { label: "Download", url: discovery.download_url };
+  }
+  if (discovery.purchase_url) {
+    return { label: discovery.purchase_title ?? "Buy / Download", url: discovery.purchase_url };
+  }
+  const link = discovery.links.find((item) =>
+    ["download", "buy", "buy_or_download"].includes(item.kind),
+  );
+  return link ? { label: sourceLinkKindLabel(link.kind), url: link.url } : null;
+}
+
 function sourceLinkKindLabel(kind: string) {
   const labels: Record<string, string> = {
     artist_social: "Artist profile",
@@ -836,6 +930,20 @@ function sourceWarningLabel(warning: string) {
       "The description says this upload may be low quality or promotional.",
   };
   return labels[warning] ?? warning.replace(/_/g, " ");
+}
+
+function linkifyText(text: string) {
+  const parts = text.split(/(https?:\/\/[^\s)]+|mailto:[^\s)]+)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith("http://") || part.startsWith("https://") || part.startsWith("mailto:")) {
+      return (
+        <a href={part} key={`${part}-${index}`} rel="noreferrer" target="_blank">
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
 }
 
 function formatDuration(seconds: number | null) {

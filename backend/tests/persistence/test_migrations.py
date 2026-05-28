@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "remote_playlists",
     "scan_runs",
     "songs",
+    "soundcloud_source_discoveries",
     "sync_snapshots",
 }
 
@@ -39,4 +40,4 @@ def test_migrations_are_idempotent(database_path: Path) -> None:
     with sqlite3.connect(database_path) as connection:
         version = connection.execute("SELECT version_num FROM alembic_version").fetchone()
 
-    assert version == ("0004",)
+    assert version == ("0005",)

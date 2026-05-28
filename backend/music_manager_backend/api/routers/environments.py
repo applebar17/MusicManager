@@ -14,6 +14,7 @@ from music_manager_backend.api.dependencies import (
     get_song_repository,
     get_soundcloud_playlist_importer,
     get_soundcloud_track_discovery_provider,
+    get_source_discovery_repository,
     get_sync_snapshot_repository,
     guard_environment_operation,
 )
@@ -36,6 +37,7 @@ from music_manager_backend.application.dtos import (
     SoundCloudPlaylistImportRequest,
     SoundCloudPlaylistImportResult,
     SoundCloudPlaylistSyncAllResult,
+    SoundCloudSourceSyncResultRead,
     SoundCloudTrackDiscoveryRead,
     UsbAudioFileBatchQuarantineRequest,
     UsbAudioFileBatchQuarantineResult,
@@ -77,6 +79,9 @@ from music_manager_backend.application.use_cases.sync_all_soundcloud_playlists i
 from music_manager_backend.application.use_cases.sync_soundcloud_playlist import (
     SyncSoundCloudPlaylist,
 )
+from music_manager_backend.application.use_cases.sync_soundcloud_sources import (
+    SyncMissingSoundCloudSources,
+)
 from music_manager_backend.application.use_cases.update_environment import UpdateEnvironment
 from music_manager_backend.application.use_cases.usb_files import (
     CreateUsbAudioFileMapping,
@@ -98,6 +103,7 @@ from music_manager_backend.ports.repositories import (
     RemotePlaylistRepository,
     ScanRunRepository,
     SongRepository,
+    SourceDiscoveryRepository,
     SyncSnapshotRepository,
 )
 from music_manager_backend.ports.soundcloud import SoundCloudPlaylistImporter
@@ -147,6 +153,10 @@ PlaylistRepositoryDependency = Annotated[
 SongRepositoryDependency = Annotated[
     SongRepository,
     Depends(get_song_repository),
+]
+SourceDiscoveryRepositoryDependency = Annotated[
+    SourceDiscoveryRepository,
+    Depends(get_source_discovery_repository),
 ]
 SyncSnapshotRepositoryDependency = Annotated[
     SyncSnapshotRepository,
@@ -354,6 +364,7 @@ def list_match_review(
     songs: SongRepositoryDependency,
     audio_files: AudioFileRepositoryDependency,
     match_links: MatchLinkRepositoryDependency,
+    source_discoveries: SourceDiscoveryRepositoryDependency,
 ) -> list[MatchReviewRow]:
     return ListMatchReview(
         environments=environments,
@@ -361,6 +372,7 @@ def list_match_review(
         songs=songs,
         audio_files=audio_files,
         match_links=match_links,
+        source_discoveries=source_discoveries,
     ).execute(environment_id)
 
 
@@ -399,14 +411,43 @@ def discover_soundcloud_track(
     environments: EnvironmentRepositoryDependency,
     playlists: PlaylistRepositoryDependency,
     songs: SongRepositoryDependency,
+    source_discoveries: SourceDiscoveryRepositoryDependency,
     discovery_provider: SoundCloudTrackDiscoveryProviderDependency,
 ) -> SoundCloudTrackDiscoveryRead:
     return DiscoverSoundCloudTrack(
         environments=environments,
         playlists=playlists,
         songs=songs,
+        source_discoveries=source_discoveries,
         discovery_provider=discovery_provider,
     ).execute(environment_id, song_id)
+
+
+@router.post(
+    "/{environment_id}/soundcloud-discovery/sync-missing",
+    response_model=SoundCloudSourceSyncResultRead,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("sync_soundcloud_sources"))],
+)
+def sync_missing_soundcloud_sources(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+    source_discoveries: SourceDiscoveryRepositoryDependency,
+    discovery_provider: SoundCloudTrackDiscoveryProviderDependency,
+) -> SoundCloudSourceSyncResultRead:
+    return SyncMissingSoundCloudSources(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+        source_discoveries=source_discoveries,
+        discovery_provider=discovery_provider,
+    ).execute(environment_id)
 
 
 @router.get(
@@ -581,6 +622,7 @@ def get_playlist_detail(
     songs: SongRepositoryDependency,
     audio_files: AudioFileRepositoryDependency,
     match_links: MatchLinkRepositoryDependency,
+    source_discoveries: SourceDiscoveryRepositoryDependency,
 ) -> PlaylistDetailRead:
     return GetPlaylistDetail(
         environments=environments,
@@ -588,6 +630,7 @@ def get_playlist_detail(
         songs=songs,
         audio_files=audio_files,
         match_links=match_links,
+        source_discoveries=source_discoveries,
     ).execute(environment_id, playlist_id)
 
 

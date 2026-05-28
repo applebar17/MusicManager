@@ -96,6 +96,7 @@ export type PlaylistItemRead = {
   accepted_audio_relative_path?: string | null;
   accepted_audio_warnings: string[];
   playback_url: string | null;
+  source_discovery: SoundCloudTrackDiscoveryRead | null;
 };
 
 export type PlaylistDetailRead = {
@@ -127,6 +128,7 @@ export type MatchReviewRow = {
   status: MatchStatus;
   match: MatchCandidateRead | null;
   candidates: MatchCandidateRead[];
+  source_discovery: SoundCloudTrackDiscoveryRead | null;
 };
 
 export type MatchingRunSummary = {
@@ -262,6 +264,26 @@ export type SoundCloudTrackDiscoveryRead = {
   tags: string[];
   release_metadata: Record<string, string>;
   warnings: string[];
+  fetched_at: string | null;
+};
+
+export type SoundCloudSourceSyncItemRead = {
+  song_id: string;
+  title: string;
+  status: "discovered" | "skipped" | "failed";
+  source_url: string | null;
+  discovered_url: string | null;
+  error_code: string | null;
+  error_message: string | null;
+};
+
+export type SoundCloudSourceSyncResultRead = {
+  environment_id: string;
+  total: number;
+  discovered: number;
+  skipped: number;
+  failed: number;
+  results: SoundCloudSourceSyncItemRead[];
 };
 
 export type ExportPlanCreate = {

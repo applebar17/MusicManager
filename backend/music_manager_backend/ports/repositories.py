@@ -11,6 +11,7 @@ from music_manager_backend.domain.entities import (
     RemotePlaylist,
     ScanRun,
     SongMaster,
+    SoundCloudSourceDiscovery,
     SyncSnapshot,
 )
 from music_manager_backend.domain.entities.audio_file import AudioFileStatus
@@ -65,6 +66,14 @@ class SongRepository(Protocol):
         pass
 
     def get_by_source_url(self, source_url: str) -> SongMaster | None:
+        pass
+
+
+class SourceDiscoveryRepository(Protocol):
+    def save(self, discovery: SoundCloudSourceDiscovery) -> None:
+        pass
+
+    def get(self, environment_id: str, song_id: str) -> SoundCloudSourceDiscovery | None:
         pass
 
 

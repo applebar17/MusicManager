@@ -13,6 +13,7 @@ from music_manager_backend.infrastructure.persistence import (
     SqliteRemotePlaylistRepository,
     SqliteScanRunRepository,
     SqliteSongRepository,
+    SqliteSourceDiscoveryRepository,
     SqliteSyncSnapshotRepository,
 )
 from music_manager_backend.infrastructure.persistence.sqlite import connect
@@ -33,6 +34,7 @@ class SqliteRepositoryBundle:
     remote_playlist_repository: SqliteRemotePlaylistRepository
     scan_run_repository: SqliteScanRunRepository
     song_repository: SqliteSongRepository
+    source_discovery_repository: SqliteSourceDiscoveryRepository
     sync_snapshot_repository: SqliteSyncSnapshotRepository
 
     @classmethod
@@ -49,6 +51,7 @@ class SqliteRepositoryBundle:
             remote_playlist_repository=SqliteRemotePlaylistRepository(connection),
             scan_run_repository=SqliteScanRunRepository(connection),
             song_repository=SqliteSongRepository(connection),
+            source_discovery_repository=SqliteSourceDiscoveryRepository(connection),
             sync_snapshot_repository=SqliteSyncSnapshotRepository(connection),
         )
 

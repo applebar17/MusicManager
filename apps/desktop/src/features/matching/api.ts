@@ -4,6 +4,7 @@ import type {
   MatchingRunSummary,
   MatchReviewRow,
   SoundCloudTrackDiscoveryRead,
+  SoundCloudSourceSyncResultRead,
 } from "../../shared/api/types";
 
 export function runMatching(environmentId: string) {
@@ -17,6 +18,12 @@ export function listMatchReview(environmentId: string) {
 export function discoverSoundCloudTrack(environmentId: string, songId: string) {
   return apiGet<SoundCloudTrackDiscoveryRead>(
     `/environments/${environmentId}/songs/${songId}/soundcloud-discovery`,
+  );
+}
+
+export function syncMissingSoundCloudSources(environmentId: string) {
+  return apiPost<SoundCloudSourceSyncResultRead>(
+    `/environments/${environmentId}/soundcloud-discovery/sync-missing`,
   );
 }
 
