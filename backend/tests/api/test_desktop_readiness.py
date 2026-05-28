@@ -78,6 +78,8 @@ def test_environment_overview_and_playlist_views(api_client: TestClient) -> None
     ]
     assert detail["items"][0]["match_status"] == "matched"
     assert detail["items"][0]["accepted_audio_file_id"] == "file_1"
+    assert detail["items"][0]["accepted_audio_filename"] == "matched.mp3"
+    assert detail["items"][0]["accepted_audio_relative_path"] == "matched.mp3"
     assert detail["items"][0]["playback_url"] == (
         "/environments/env_1/playback/audio-files/file_1"
     )

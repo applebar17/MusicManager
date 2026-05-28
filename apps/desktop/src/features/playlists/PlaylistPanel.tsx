@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   Link2,
   ListMusic,
+  PlayCircle,
   RefreshCw,
   Search,
   TriangleAlert,
@@ -10,7 +11,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
-import { ApiError } from "../../shared/api/http";
+import { ApiError, getApiBaseUrl } from "../../shared/api/http";
 import type {
   MatchStatus,
   PlaylistDetailRead,
@@ -714,18 +715,43 @@ function MatchStatusPill({ status }: { status: MatchStatus }) {
 function AcceptedAudioCell({ item }: { item: PlaylistItemRead }) {
   if (item.accepted_audio_file_id) {
     const likelyPreview = item.accepted_audio_warnings.includes("likely_preview_download");
+    const filename = item.accepted_audio_filename ?? "Accepted audio file";
+    const relativePath = item.accepted_audio_relative_path;
     return (
-      <span className={`accepted-audio ${likelyPreview ? "accepted-audio--preview" : "accepted-audio--ready"}`}>
-        {likelyPreview ? (
-          <TriangleAlert size={13} />
-        ) : item.match_status === "manually_mapped" ? (
-          <Link2 size={13} />
-        ) : (
-          <CheckCircle2 size={13} />
-        )}
-        <span>{shortId(item.accepted_audio_file_id)}</span>
-        {likelyPreview ? <em>likely preview</em> : item.playback_url ? <em>playback ready</em> : null}
-      </span>
+      <div
+        className={`accepted-audio ${
+          likelyPreview ? "accepted-audio--preview" : "accepted-audio--ready"
+        }`}
+      >
+        <div className="accepted-audio__main">
+          {likelyPreview ? (
+            <TriangleAlert size={14} />
+          ) : item.match_status === "manually_mapped" ? (
+            <Link2 size={14} />
+          ) : (
+            <CheckCircle2 size={14} />
+          )}
+          <span className="accepted-audio__text">
+            <span title={relativePath ?? filename}>{filename}</span>
+            {relativePath && relativePath !== filename ? (
+              <em title={relativePath}>{relativePath}</em>
+            ) : null}
+            {likelyPreview ? <strong>Likely preview download</strong> : null}
+          </span>
+        </div>
+        {item.playback_url ? (
+          <a
+            className="accepted-audio__play"
+            href={apiUrl(item.playback_url)}
+            rel="noreferrer"
+            target="_blank"
+            title={`Play ${filename}`}
+          >
+            <PlayCircle size={14} />
+            Play
+          </a>
+        ) : null}
+      </div>
     );
   }
 
@@ -739,6 +765,13 @@ function AcceptedAudioCell({ item }: { item: PlaylistItemRead }) {
   }
 
   return <span className="accepted-audio accepted-audio--empty">No accepted file</span>;
+}
+
+function apiUrl(pathOrUrl: string) {
+  if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
+    return pathOrUrl;
+  }
+  return `${getApiBaseUrl()}${pathOrUrl}`;
 }
 
 function matchStatusLabel(status: MatchStatus) {
@@ -758,10 +791,6 @@ function formatDuration(seconds: number | null) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-}
-
-function shortId(value: string) {
-  return value.length > 12 ? `${value.slice(0, 8)}...` : value;
 }
 
 function errorMessage(error: unknown) {

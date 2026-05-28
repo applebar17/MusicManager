@@ -92,6 +92,8 @@ export type PlaylistItemRead = {
   remote_membership_active: boolean;
   match_status: MatchStatus;
   accepted_audio_file_id: string | null;
+  accepted_audio_filename?: string | null;
+  accepted_audio_relative_path?: string | null;
   accepted_audio_warnings: string[];
   playback_url: string | null;
 };
