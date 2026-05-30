@@ -11,5 +11,6 @@ class InMemoryEnvironmentRepository:
     def get(self, environment_id: str) -> MusicEnvironment | None:
         return self._items.get(environment_id)
 
-    def list(self) -> list[MusicEnvironment]:
+    def list(self, *, include_archived: bool = False) -> list[MusicEnvironment]:
+        _ = include_archived
         return list(self._items.values())

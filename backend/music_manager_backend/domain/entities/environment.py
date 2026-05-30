@@ -7,6 +7,7 @@ class MusicEnvironment:
     id: str
     name: str
     root_path: Path
+    download_path: Path | None = None
     deprecated_folder_name: str = "_deprecated"
     default_export_profile: str = "generic_usb_folder_mirror"
     archived_at: str | None = None

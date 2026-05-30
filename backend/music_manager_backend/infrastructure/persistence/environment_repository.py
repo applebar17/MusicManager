@@ -16,14 +16,16 @@ class SqliteEnvironmentRepository:
                 id,
                 name,
                 root_path,
+                download_path,
                 deprecated_folder_name,
                 default_export_profile,
                 archived_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 root_path = excluded.root_path,
+                download_path = excluded.download_path,
                 deprecated_folder_name = excluded.deprecated_folder_name,
                 default_export_profile = excluded.default_export_profile,
                 archived_at = excluded.archived_at
@@ -32,6 +34,7 @@ class SqliteEnvironmentRepository:
                 environment.id,
                 environment.name,
                 str(environment.root_path),
+                str(environment.download_path) if environment.download_path is not None else None,
                 environment.deprecated_folder_name,
                 environment.default_export_profile,
                 environment.archived_at,
@@ -69,10 +72,12 @@ class SqliteEnvironmentRepository:
 
 
 def _environment_from_row(row: sqlite3.Row) -> MusicEnvironment:
+    download_path = cast(str | None, row["download_path"])
     return MusicEnvironment(
         id=cast(str, row["id"]),
         name=cast(str, row["name"]),
         root_path=Path(cast(str, row["root_path"])),
+        download_path=Path(download_path) if download_path is not None else None,
         deprecated_folder_name=cast(str, row["deprecated_folder_name"]),
         default_export_profile=cast(str, row["default_export_profile"]),
         archived_at=cast(str | None, row["archived_at"]),

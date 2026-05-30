@@ -11,10 +11,13 @@ class CreateEnvironment:
 
     def execute(self, data: EnvironmentCreate) -> MusicEnvironment:
         validate_readable_directory(data.root_path)
+        if data.download_path is not None:
+            validate_readable_directory(data.download_path)
         environment = MusicEnvironment(
             id=new_id("env"),
             name=data.name,
             root_path=data.root_path,
+            download_path=data.download_path,
             deprecated_folder_name=data.deprecated_folder_name,
         )
         self.environments.save(environment)

@@ -8,12 +8,14 @@ from music_manager_backend.domain.entities import MusicEnvironment
 class EnvironmentCreate(BaseModel):
     name: str
     root_path: Path
+    download_path: Path | None = None
     deprecated_folder_name: str = "_deprecated"
 
 
 class EnvironmentUpdate(BaseModel):
     name: str | None = None
     root_path: Path | None = None
+    download_path: Path | None = None
     deprecated_folder_name: str | None = None
 
 
@@ -21,6 +23,7 @@ class EnvironmentRead(BaseModel):
     id: str
     name: str
     root_path: str
+    download_path: str | None
     deprecated_folder_name: str
     archived_at: str | None = None
 
@@ -56,6 +59,7 @@ def environment_read(environment: MusicEnvironment) -> EnvironmentRead:
         id=environment.id,
         name=environment.name,
         root_path=str(environment.root_path),
+        download_path=str(environment.download_path) if environment.download_path is not None else None,
         deprecated_folder_name=environment.deprecated_folder_name,
         archived_at=environment.archived_at,
     )
