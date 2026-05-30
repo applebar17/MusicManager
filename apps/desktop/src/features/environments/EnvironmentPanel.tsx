@@ -54,6 +54,7 @@ type DashboardData = {
 type EnvironmentFormState = {
   name: string;
   rootPath: string;
+  downloadPath: string;
   deprecatedFolderName: string;
 };
 
@@ -67,6 +68,7 @@ type ActivityItem = {
 const emptyForm: EnvironmentFormState = {
   name: "",
   rootPath: "",
+  downloadPath: "",
   deprecatedFolderName: "_deprecated",
 };
 
@@ -151,10 +153,11 @@ export function EnvironmentPanel() {
       return;
     }
     setEditForm({
-      name: selectedEnvironment.name,
-      rootPath: selectedEnvironment.root_path,
-      deprecatedFolderName: selectedEnvironment.deprecated_folder_name,
-    });
+        name: selectedEnvironment.name,
+        rootPath: selectedEnvironment.root_path,
+        downloadPath: selectedEnvironment.download_path ?? "",
+        deprecatedFolderName: selectedEnvironment.deprecated_folder_name,
+      });
   }, [selectedEnvironment]);
 
   async function handleCreateEnvironment(event: FormEvent<HTMLFormElement>) {
@@ -165,6 +168,7 @@ export function EnvironmentPanel() {
       const created = await createEnvironment({
         name: createForm.name.trim(),
         root_path: createForm.rootPath.trim(),
+        download_path: nullablePath(createForm.downloadPath),
         deprecated_folder_name: createForm.deprecatedFolderName.trim() || "_deprecated",
       });
       setCreateForm(emptyForm);
@@ -188,6 +192,7 @@ export function EnvironmentPanel() {
       const updated = await updateEnvironment(selectedEnvironment.id, {
         name: editForm.name.trim(),
         root_path: editForm.rootPath.trim(),
+        download_path: nullablePath(editForm.downloadPath),
         deprecated_folder_name: editForm.deprecatedFolderName.trim() || "_deprecated",
       });
       setEnvironments((current) =>
@@ -239,16 +244,22 @@ export function EnvironmentPanel() {
     }
   }
 
-  async function handlePickFolder(target: "create" | "edit") {
+  async function handlePickFolder(
+    target: "createRoot" | "editRoot" | "createDownload" | "editDownload",
+  ) {
     setIsPickingFolder(true);
     setError(null);
     try {
       const result = await pickMusicFolder();
       if (result.status === "selected") {
-        if (target === "create") {
+        if (target === "createRoot") {
           setCreateForm((current) => ({ ...current, rootPath: result.path }));
-        } else {
+        } else if (target === "editRoot") {
           setEditForm((current) => ({ ...current, rootPath: result.path }));
+        } else if (target === "createDownload") {
+          setCreateForm((current) => ({ ...current, downloadPath: result.path }));
+        } else {
+          setEditForm((current) => ({ ...current, downloadPath: result.path }));
         }
       } else if (result.status === "unavailable") {
         setError(result.message);
@@ -269,7 +280,7 @@ export function EnvironmentPanel() {
         isPickingFolder={isPickingFolder}
         isScanning={isScanning}
         onBrowseFolder={() => {
-          void handlePickFolder("edit");
+          void handlePickFolder("editRoot");
         }}
         onSelectEnvironment={selectEnvironment}
         onScan={handleScanEnvironment}
@@ -299,7 +310,10 @@ export function EnvironmentPanel() {
           onSubmit={handleCreateEnvironment}
           onChange={setCreateForm}
           onPickRoot={() => {
-            void handlePickFolder("create");
+            void handlePickFolder("createRoot");
+          }}
+          onPickDownload={() => {
+            void handlePickFolder("createDownload");
           }}
         />
       ) : null}
@@ -408,7 +422,10 @@ export function EnvironmentPanel() {
                     onArchive={() => setArchiveConfirmOpen(true)}
                     onChange={setEditForm}
                     onPickRoot={() => {
-                      void handlePickFolder("edit");
+                      void handlePickFolder("editRoot");
+                    }}
+                    onPickDownload={() => {
+                      void handlePickFolder("editDownload");
                     }}
                     onSubmit={handleUpdateEnvironment}
                   />
@@ -526,6 +543,7 @@ type EnvironmentFormProps = {
   isPickingFolder: boolean;
   isSubmitting: boolean;
   onChange: (form: EnvironmentFormState) => void;
+  onPickDownload: () => void;
   onPickRoot: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
@@ -535,6 +553,7 @@ function CreateEnvironmentPanel({
   isPickingFolder,
   isSubmitting,
   onChange,
+  onPickDownload,
   onPickRoot,
   onSubmit,
 }: EnvironmentFormProps) {
@@ -550,6 +569,7 @@ function CreateEnvironmentPanel({
         isPickingFolder={isPickingFolder}
         isSubmitting={isSubmitting}
         onChange={onChange}
+        onPickDownload={onPickDownload}
         onPickRoot={onPickRoot}
         onSubmit={onSubmit}
       />
@@ -567,6 +587,7 @@ function EnvironmentEditForm({
   isSubmitting,
   onArchive,
   onChange,
+  onPickDownload,
   onPickRoot,
   onSubmit,
 }: EnvironmentEditFormProps) {
@@ -583,6 +604,16 @@ function EnvironmentEditForm({
         onChange={(value) => onChange({ ...form, rootPath: value })}
         action={
           <Button disabled={isPickingFolder || isSubmitting} type="button" onClick={onPickRoot}>
+            {isPickingFolder ? "Browsing" : "Browse"}
+          </Button>
+        }
+      />
+      <Field
+        label="Download folder"
+        value={form.downloadPath}
+        onChange={(value) => onChange({ ...form, downloadPath: value })}
+        action={
+          <Button disabled={isPickingFolder || isSubmitting} type="button" onClick={onPickDownload}>
             {isPickingFolder ? "Browsing" : "Browse"}
           </Button>
         }
@@ -614,6 +645,7 @@ function EnvironmentForm({
   isPickingFolder,
   isSubmitting,
   onChange,
+  onPickDownload,
   onPickRoot,
   onSubmit,
 }: EnvironmentFormFieldsProps) {
@@ -634,6 +666,17 @@ function EnvironmentForm({
         onChange={(value) => onChange({ ...form, rootPath: value })}
         action={
           <Button disabled={isPickingFolder || isSubmitting} type="button" onClick={onPickRoot}>
+            {isPickingFolder ? "Browsing" : "Browse"}
+          </Button>
+        }
+      />
+      <Field
+        label="Download folder"
+        placeholder="/Users/me/Downloads/Music"
+        value={form.downloadPath}
+        onChange={(value) => onChange({ ...form, downloadPath: value })}
+        action={
+          <Button disabled={isPickingFolder || isSubmitting} type="button" onClick={onPickDownload}>
             {isPickingFolder ? "Browsing" : "Browse"}
           </Button>
         }
@@ -809,4 +852,9 @@ function errorMessage(error: unknown) {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat().format(value);
+}
+
+function nullablePath(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }

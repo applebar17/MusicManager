@@ -11,6 +11,7 @@ export type EnvironmentRead = {
   id: string;
   name: string;
   root_path: string;
+  download_path: string | null;
   deprecated_folder_name: string;
   archived_at: string | null;
 };
@@ -18,12 +19,14 @@ export type EnvironmentRead = {
 export type EnvironmentCreate = {
   name: string;
   root_path: string;
+  download_path?: string | null;
   deprecated_folder_name?: string;
 };
 
 export type EnvironmentUpdate = {
   name?: string | null;
   root_path?: string | null;
+  download_path?: string | null;
   deprecated_folder_name?: string | null;
 };
 
@@ -112,6 +115,7 @@ export type PlaylistDetailRead = {
 export type MatchCandidateRead = {
   audio_file_id: string;
   path: string;
+  source_area: "download" | "usb" | "other";
   title: string | null;
   artist: string | null;
   duration_seconds: number | null;
@@ -138,6 +142,21 @@ export type MatchingRunSummary = {
   missing_audio: number;
   ambiguous: number;
   manually_mapped: number;
+};
+
+export type DownloadMatchSummaryRead = {
+  checked: number;
+  matched: number;
+  missing_audio: number;
+  ambiguous: number;
+  preserved_reviewed: number;
+};
+
+export type DownloadMatchRunResultRead = {
+  environment_id: string;
+  download_path: string;
+  scan: ScanSummaryRead;
+  matching: DownloadMatchSummaryRead;
 };
 
 export type ManualMappingCreate = {

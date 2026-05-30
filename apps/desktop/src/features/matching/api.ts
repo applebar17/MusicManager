@@ -1,6 +1,7 @@
 import { apiGet, apiPost, getApiBaseUrl } from "../../shared/api/http";
 import type {
   ManualMappingCreate,
+  DownloadMatchRunResultRead,
   MatchingRunSummary,
   MatchReviewRow,
   SoundCloudTrackDiscoveryRead,
@@ -9,6 +10,12 @@ import type {
 
 export function runMatching(environmentId: string) {
   return apiPost<MatchingRunSummary>(`/environments/${environmentId}/matching/run`);
+}
+
+export function matchDownloads(environmentId: string) {
+  return apiPost<DownloadMatchRunResultRead>(
+    `/environments/${environmentId}/matching/downloads/run`,
+  );
 }
 
 export function listMatchReview(environmentId: string) {

@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleHelp,
+  Download,
   ExternalLink,
   Link2,
   Play,
@@ -16,6 +17,8 @@ import type { RefObject } from "react";
 
 import { ApiError } from "../../shared/api/http";
 import type {
+  DownloadMatchRunResultRead,
+  EnvironmentRead,
   MatchCandidateRead,
   MatchingRunSummary,
   MatchReviewRow,
@@ -25,10 +28,12 @@ import type {
 } from "../../shared/api/types";
 import { useAppState } from "../../shared/state";
 import { Button, EmptyState, ErrorBanner, LoadingState, Panel, StatusBadge } from "../../shared/ui";
+import { listEnvironments } from "../environments/api";
 import {
   createManualMapping,
   discoverSoundCloudTrack,
   listMatchReview,
+  matchDownloads,
   playbackAudioUrl,
   runMatching,
   syncMissingSoundCloudSources,
@@ -54,9 +59,12 @@ export function MatchingPanel() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [rows, setRows] = useState<MatchReviewRow[]>([]);
+  const [selectedEnvironment, setSelectedEnvironment] = useState<EnvironmentRead | null>(null);
   const [filter, setFilter] = useState<ReviewFilter>("needs_review");
   const [reviewSearch, setReviewSearch] = useState("");
   const [runSummary, setRunSummary] = useState<MatchingRunSummary | null>(null);
+  const [downloadMatchResult, setDownloadMatchResult] =
+    useState<DownloadMatchRunResultRead | null>(null);
   const [sourceSyncResult, setSourceSyncResult] =
     useState<SoundCloudSourceSyncResultRead | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
@@ -64,6 +72,7 @@ export function MatchingPanel() {
   const [sourceDiscoverySongId, setSourceDiscoverySongId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [isMatchingDownloads, setIsMatchingDownloads] = useState(false);
   const [isDiscoveringSource, setIsDiscoveringSource] = useState(false);
   const [isSyncingSources, setIsSyncingSources] = useState(false);
   const [mappingKey, setMappingKey] = useState<string | null>(null);
@@ -90,7 +99,9 @@ export function MatchingPanel() {
   useEffect(() => {
     if (!selectedEnvironmentId) {
       setRows([]);
+      setSelectedEnvironment(null);
       setRunSummary(null);
+      setDownloadMatchResult(null);
       setSourceSyncResult(null);
       setPreview(null);
       setSourceDiscovery(null);
@@ -98,6 +109,15 @@ export function MatchingPanel() {
       return;
     }
     void refreshReview(selectedEnvironmentId);
+    void listEnvironments()
+      .then((environments) => {
+        setSelectedEnvironment(
+          environments.find((environment) => environment.id === selectedEnvironmentId) ?? null,
+        );
+      })
+      .catch(() => {
+        setSelectedEnvironment(null);
+      });
   }, [refreshReview, selectedEnvironmentId]);
 
   useEffect(() => {
@@ -193,12 +213,37 @@ export function MatchingPanel() {
     try {
       const summary = await runMatching(selectedEnvironmentId);
       setRunSummary(summary);
+      setDownloadMatchResult(null);
       setSourceSyncResult(null);
       await refreshReview(selectedEnvironmentId);
     } catch (runError) {
       setError(errorMessage(runError));
     } finally {
       setIsRunning(false);
+    }
+  }
+
+  async function handleMatchDownloads() {
+    if (!selectedEnvironmentId) {
+      setError("Select an environment before matching downloads.");
+      return;
+    }
+    if (!selectedEnvironment?.download_path) {
+      setError("Configure a download folder before matching downloads.");
+      return;
+    }
+    setIsMatchingDownloads(true);
+    setError(null);
+    try {
+      const result = await matchDownloads(selectedEnvironmentId);
+      setDownloadMatchResult(result);
+      setRunSummary(null);
+      setSourceSyncResult(null);
+      await refreshReview(selectedEnvironmentId);
+    } catch (matchError) {
+      setError(errorMessage(matchError));
+    } finally {
+      setIsMatchingDownloads(false);
     }
   }
 
@@ -266,6 +311,7 @@ export function MatchingPanel() {
     try {
       const result = await syncMissingSoundCloudSources(selectedEnvironmentId);
       setSourceSyncResult(result);
+      setDownloadMatchResult(null);
       await refreshReview(selectedEnvironmentId);
     } catch (syncError) {
       setError(errorMessage(syncError));
@@ -339,6 +385,15 @@ export function MatchingPanel() {
                 {isSyncingSources ? "Syncing Sources" : "Sync Sources"}
               </Button>
               <Button
+                disabled={
+                  isMatchingDownloads || !selectedEnvironmentId || !selectedEnvironment?.download_path
+                }
+                icon={<Download size={18} />}
+                onClick={handleMatchDownloads}
+              >
+                {isMatchingDownloads ? "Matching Downloads" : "Match Downloads"}
+              </Button>
+              <Button
                 disabled={isRunning}
                 icon={<Zap size={18} />}
                 variant="primary"
@@ -350,6 +405,7 @@ export function MatchingPanel() {
           </section>
 
           {runSummary ? <RunSummary summary={runSummary} /> : null}
+          {downloadMatchResult ? <DownloadMatchSummary result={downloadMatchResult} /> : null}
           {sourceSyncResult ? <SourceSyncSummary result={sourceSyncResult} /> : null}
 
           <ReviewFilters counts={counts} filter={filter} onFilterChange={setFilter} />
@@ -485,6 +541,20 @@ function RunSummary({ summary }: { summary: MatchingRunSummary }) {
       <span>{formatNumber(summary.missing_audio)} missing</span>
       <span>{formatNumber(summary.ambiguous)} ambiguous</span>
       <span>{formatNumber(summary.manually_mapped)} manual</span>
+    </div>
+  );
+}
+
+function DownloadMatchSummary({ result }: { result: DownloadMatchRunResultRead }) {
+  return (
+    <div className="matching-run-summary">
+      <StatusBadge tone="success">Downloads Matched</StatusBadge>
+      <span>{formatNumber(result.scan.added)} new files</span>
+      <span>{formatNumber(result.scan.changed + result.scan.moved)} changed or moved</span>
+      <span>{formatNumber(result.matching.checked)} songs checked</span>
+      <span>{formatNumber(result.matching.matched)} matched</span>
+      <span>{formatNumber(result.matching.ambiguous)} ambiguous</span>
+      <span>{formatNumber(result.matching.preserved_reviewed)} preserved</span>
     </div>
   );
 }
@@ -667,7 +737,10 @@ function ReviewRow({
         <div className="accepted-match-row">
           <CheckCircle2 size={15} />
           <span>{acceptedMatch.path}</span>
-          <em>{confidenceLabel(acceptedMatch.confidence)} via {methodLabel(acceptedMatch.method)}</em>
+          <em>
+            {sourceAreaLabel(acceptedMatch.source_area)} - {confidenceLabel(acceptedMatch.confidence)} via{" "}
+            {methodLabel(acceptedMatch.method)}
+          </em>
           {hasLikelyPreviewWarning(acceptedMatch) ? (
             <strong className="accepted-match-warning">
               Likely preview download. Unmatch this audio and move it to deprecated before exporting.
@@ -742,6 +815,7 @@ function CandidateCard({
         </span>
         <div>
           <em>{confidenceLabel(candidate.confidence)} match</em>
+          <span>{sourceAreaLabel(candidate.source_area)}</span>
           <span>{methodLabel(candidate.method)}</span>
           <span>{formatDuration(candidate.duration_seconds)}</span>
         </div>
@@ -877,6 +951,16 @@ function matchStatusLabel(status: MatchStatus) {
 
 function methodLabel(method: string) {
   return method.replace(/_/g, " ");
+}
+
+function sourceAreaLabel(sourceArea: MatchCandidateRead["source_area"]) {
+  if (sourceArea === "download") {
+    return "Downloads";
+  }
+  if (sourceArea === "usb") {
+    return "USB";
+  }
+  return "Other";
 }
 
 function hasLikelyPreviewWarning(candidate: MatchCandidateRead) {

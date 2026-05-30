@@ -67,6 +67,12 @@ describe("desktop v1 workflow", () => {
     await user.click(screen.getByRole("button", { name: /matching review/i }));
     expect(await screen.findByText("Resolve track mismatches and map ambiguous candidates.")).toBeInTheDocument();
 
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /match downloads/i })).toBeEnabled(),
+    );
+    await user.click(screen.getByRole("button", { name: /match downloads/i }));
+    expect(await screen.findByText("Downloads Matched")).toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: /run matching/i }));
     expect(await screen.findByText("smoke-track-candidate.mp3")).toBeInTheDocument();
 
@@ -117,6 +123,7 @@ function mockFetch() {
         {
           archived_at: null,
           deprecated_folder_name: "_deprecated",
+          download_path: "/Users/demo/Downloads",
           id: "env_1",
           name: "USB Smoke",
           root_path: "/Volumes/USB",
@@ -256,6 +263,30 @@ function mockFetch() {
       });
     }
 
+    if (path === "/environments/env_1/matching/downloads/run" && method === "POST") {
+      return jsonResponse({
+        download_path: "/Users/demo/Downloads",
+        environment_id: "env_1",
+        matching: {
+          ambiguous: mapped ? 0 : 1,
+          checked: 1,
+          matched: mapped ? 1 : 0,
+          missing_audio: 0,
+          preserved_reviewed: 0,
+        },
+        scan: {
+          added: 1,
+          changed: 0,
+          environment_id: "env_1",
+          moved: 0,
+          removed: 0,
+          scan_run_id: "scan_downloads_1",
+          total_active: 1,
+          unchanged: 0,
+        },
+      });
+    }
+
     if (path === "/environments/env_1/matching/review" && method === "GET") {
       return jsonResponse([
         {
@@ -324,6 +355,7 @@ function candidate() {
     duration_seconds: 184,
     method: "title_duration",
     path: "/Volumes/USB/smoke-track-candidate.mp3",
+    source_area: "download",
     title: "Smoke Track",
     warnings: [],
   };
