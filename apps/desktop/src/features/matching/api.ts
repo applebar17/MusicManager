@@ -2,6 +2,7 @@ import { apiGet, apiPost, getApiBaseUrl } from "../../shared/api/http";
 import type {
   ManualMappingCreate,
   DownloadMatchRunResultRead,
+  MatchCandidateRead,
   MatchingRunSummary,
   MatchReviewRow,
   SoundCloudTrackDiscoveryRead,
@@ -20,6 +21,20 @@ export function matchDownloads(environmentId: string) {
 
 export function listMatchReview(environmentId: string) {
   return apiGet<MatchReviewRow[]>(`/environments/${environmentId}/matching/review`);
+}
+
+export function listManualFileCandidates(
+  environmentId: string,
+  songId: string,
+  query: string,
+) {
+  const params = new URLSearchParams({ song_id: songId });
+  if (query.trim()) {
+    params.set("q", query.trim());
+  }
+  return apiGet<MatchCandidateRead[]>(
+    `/environments/${environmentId}/matching/manual-file-candidates?${params.toString()}`,
+  );
 }
 
 export function discoverSoundCloudTrack(environmentId: string, songId: string) {

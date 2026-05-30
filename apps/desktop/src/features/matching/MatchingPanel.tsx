@@ -13,7 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { FormEvent, RefObject } from "react";
 
 import { ApiError } from "../../shared/api/http";
 import type {
@@ -32,6 +32,7 @@ import { listEnvironments } from "../environments/api";
 import {
   createManualMapping,
   discoverSoundCloudTrack,
+  listManualFileCandidates,
   listMatchReview,
   matchDownloads,
   playbackAudioUrl,
@@ -76,6 +77,10 @@ export function MatchingPanel() {
   const [isDiscoveringSource, setIsDiscoveringSource] = useState(false);
   const [isSyncingSources, setIsSyncingSources] = useState(false);
   const [mappingKey, setMappingKey] = useState<string | null>(null);
+  const [manualMatchRow, setManualMatchRow] = useState<MatchReviewRow | null>(null);
+  const [manualCandidateQuery, setManualCandidateQuery] = useState("");
+  const [manualCandidates, setManualCandidates] = useState<MatchCandidateRead[]>([]);
+  const [isSearchingManualCandidates, setIsSearchingManualCandidates] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
@@ -106,6 +111,9 @@ export function MatchingPanel() {
       setPreview(null);
       setSourceDiscovery(null);
       setSourceDiscoverySongId(null);
+      setManualMatchRow(null);
+      setManualCandidates([]);
+      setManualCandidateQuery("");
       return;
     }
     void refreshReview(selectedEnvironmentId);
@@ -260,10 +268,51 @@ export function MatchingPanel() {
         audio_file_id: candidate.audio_file_id,
       });
       await refreshReview(selectedEnvironmentId);
+      if (manualMatchRow?.song_id === row.song_id) {
+        setManualMatchRow(null);
+        setManualCandidates([]);
+        setManualCandidateQuery("");
+      }
     } catch (mappingError) {
       setError(errorMessage(mappingError));
     } finally {
       setMappingKey(null);
+    }
+  }
+
+  async function openManualMatchModal(row: MatchReviewRow) {
+    if (!selectedEnvironmentId) {
+      return;
+    }
+    const initialQuery = [row.title, row.artist].filter(Boolean).join(" ");
+    setManualMatchRow(row);
+    setManualCandidateQuery(initialQuery);
+    setManualCandidates([]);
+    await loadManualCandidates(row, initialQuery);
+  }
+
+  async function loadManualCandidates(row: MatchReviewRow, query: string) {
+    if (!selectedEnvironmentId) {
+      return;
+    }
+    setIsSearchingManualCandidates(true);
+    setError(null);
+    try {
+      setManualCandidates(
+        await listManualFileCandidates(selectedEnvironmentId, row.song_id, query),
+      );
+    } catch (candidateError) {
+      setManualCandidates([]);
+      setError(errorMessage(candidateError));
+    } finally {
+      setIsSearchingManualCandidates(false);
+    }
+  }
+
+  async function handleManualCandidateSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (manualMatchRow) {
+      await loadManualCandidates(manualMatchRow, manualCandidateQuery);
     }
   }
 
@@ -461,6 +510,7 @@ export function MatchingPanel() {
                     }
                     onMapCandidate={handleMapCandidate}
                     onDiscoverSource={handleDiscoverSource}
+                    onOpenManualMatch={openManualMatchModal}
                     onPreviewAudio={handlePreviewAudio}
                   />
                 ))}
@@ -476,6 +526,23 @@ export function MatchingPanel() {
           ) : null}
         </main>
       )}
+
+      <ManualMatchModal
+        candidates={manualCandidates}
+        isMapping={mappingKey}
+        isSearching={isSearchingManualCandidates}
+        query={manualCandidateQuery}
+        row={manualMatchRow}
+        onClose={() => {
+          setManualMatchRow(null);
+          setManualCandidates([]);
+          setManualCandidateQuery("");
+        }}
+        onMapCandidate={handleMapCandidate}
+        onPreviewAudio={handlePreviewAudio}
+        onQueryChange={setManualCandidateQuery}
+        onSearch={handleManualCandidateSearch}
+      />
 
       <MiniPreviewPlayer
         audioRef={audioRef}
@@ -651,6 +718,7 @@ type ReviewRowProps = {
   isDiscoveringSource: boolean;
   onDiscoverSource: (row: MatchReviewRow) => void;
   onMapCandidate: (row: MatchReviewRow, candidate: MatchCandidateRead) => void;
+  onOpenManualMatch: (row: MatchReviewRow) => void;
   onPreviewAudio: (audioFileId: string, label: string, detail: string) => void;
 };
 
@@ -660,6 +728,7 @@ function ReviewRow({
   isDiscoveringSource,
   onDiscoverSource,
   onMapCandidate,
+  onOpenManualMatch,
   onPreviewAudio,
 }: ReviewRowProps) {
   const expanded = row.status === "ambiguous" || row.candidates.length > 0;
@@ -693,35 +762,46 @@ function ReviewRow({
             >
               <Play size={16} />
             </button>
-          ) : sourceLink ? (
-            <a
-              className="button button--ghost source-action-link"
-              href={sourceLink.url}
-              rel="noreferrer"
-              target="_blank"
-            >
-              <ShoppingCart size={15} />
-              {sourceLink.label}
-            </a>
-          ) : row.source_discovery ? (
-            <a
-              className="button button--ghost source-action-link"
-              href={row.source_discovery.track_url}
-              rel="noreferrer"
-              target="_blank"
-            >
-              <ExternalLink size={15} />
-              Open Track
-            </a>
           ) : (
-            <Button
-              disabled={isDiscoveringSource}
-              icon={<ShoppingCart size={15} />}
-              type="button"
-              onClick={() => onDiscoverSource(row)}
-            >
-              {isDiscoveringSource ? "Finding" : "Find Source"}
-            </Button>
+            <>
+              <Button
+                icon={<Link2 size={15} />}
+                type="button"
+                onClick={() => onOpenManualMatch(row)}
+              >
+                Map Local File
+              </Button>
+              {sourceLink ? (
+                <a
+                  className="button button--ghost source-action-link"
+                  href={sourceLink.url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <ShoppingCart size={15} />
+                  {sourceLink.label}
+                </a>
+              ) : row.source_discovery ? (
+                <a
+                  className="button button--ghost source-action-link"
+                  href={row.source_discovery.track_url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <ExternalLink size={15} />
+                  Open Track
+                </a>
+              ) : (
+                <Button
+                  disabled={isDiscoveringSource}
+                  icon={<ShoppingCart size={15} />}
+                  type="button"
+                  onClick={() => onDiscoverSource(row)}
+                >
+                  {isDiscoveringSource ? "Finding" : "Find Source"}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -832,6 +912,97 @@ function CandidateCard({
       >
         {isMapping ? "Mapping" : "Map File"}
       </Button>
+    </div>
+  );
+}
+
+type ManualMatchModalProps = {
+  candidates: MatchCandidateRead[];
+  isMapping: string | null;
+  isSearching: boolean;
+  query: string;
+  row: MatchReviewRow | null;
+  onClose: () => void;
+  onMapCandidate: (row: MatchReviewRow, candidate: MatchCandidateRead) => void;
+  onPreviewAudio: (audioFileId: string, label: string, detail: string) => void;
+  onQueryChange: (query: string) => void;
+  onSearch: (event: FormEvent<HTMLFormElement>) => void;
+};
+
+function ManualMatchModal({
+  candidates,
+  isMapping,
+  isSearching,
+  query,
+  row,
+  onClose,
+  onMapCandidate,
+  onPreviewAudio,
+  onQueryChange,
+  onSearch,
+}: ManualMatchModalProps) {
+  if (!row) {
+    return null;
+  }
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <div
+        className="usb-match-dialog manual-match-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="manual-match-title"
+      >
+        <header>
+          <div>
+            <p className="eyebrow">Map local file</p>
+            <h2 id="manual-match-title">{row.title}</h2>
+            <p className="muted">
+              {row.artist ?? "Unknown artist"} · {formatDuration(row.duration_seconds)}
+            </p>
+          </div>
+          <MatchStatusPill status={row.status} />
+        </header>
+
+        <form className="usb-match-search" onSubmit={onSearch}>
+          <label className="playlist-search-field playlist-search-field--wide">
+            <Search size={14} />
+            <input
+              aria-label="Search local audio files"
+              placeholder="Search USB and download files..."
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+            />
+          </label>
+          <Button disabled={isSearching} type="submit">
+            {isSearching ? "Searching" : "Search"}
+          </Button>
+        </form>
+
+        <div className="usb-candidate-list manual-file-candidate-list">
+          {isSearching ? <LoadingState label="Searching local files" /> : null}
+          {!isSearching && candidates.length === 0 ? (
+            <EmptyState
+              title="No local files found"
+              description="No active unmapped USB or download files match this search."
+            />
+          ) : null}
+          {candidates.map((candidate) => (
+            <CandidateCard
+              candidate={candidate}
+              isMapping={isMapping === `${row.song_id}-${candidate.audio_file_id}`}
+              key={candidate.audio_file_id}
+              row={row}
+              onMapCandidate={onMapCandidate}
+              onPreviewAudio={onPreviewAudio}
+            />
+          ))}
+        </div>
+
+        <footer>
+          <Button onClick={onClose}>Close</Button>
+        </footer>
+      </div>
     </div>
   );
 }

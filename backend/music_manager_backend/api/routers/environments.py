@@ -30,6 +30,7 @@ from music_manager_backend.application.dtos import (
     ExportPlanCreate,
     ExportPlanRead,
     ManualMappingCreate,
+    MatchCandidateRead,
     MatchingRunSummary,
     MatchReviewRow,
     PlaylistDetailRead,
@@ -69,6 +70,9 @@ from music_manager_backend.application.use_cases.list_environment_playlists impo
     ListEnvironmentPlaylists,
 )
 from music_manager_backend.application.use_cases.list_export_plan import ListExportPlan
+from music_manager_backend.application.use_cases.list_manual_audio_file_candidates import (
+    ListManualAudioFileCandidates,
+)
 from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
 from music_manager_backend.application.use_cases.list_unmanaged_files import ListUnmanagedFiles
 from music_manager_backend.application.use_cases.match_downloads import MatchDownloads
@@ -403,6 +407,30 @@ def list_match_review(
         match_links=match_links,
         source_discoveries=source_discoveries,
     ).execute(environment_id)
+
+
+@router.get(
+    "/{environment_id}/matching/manual-file-candidates",
+    response_model=list[MatchCandidateRead],
+    responses=ERROR_RESPONSES,
+)
+def list_manual_audio_file_candidates(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+    song_id: str = Query(...),
+    q: str = Query(default=""),
+) -> list[MatchCandidateRead]:
+    return ListManualAudioFileCandidates(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+    ).execute(environment_id, song_id=song_id, query=q)
 
 
 @router.post(
