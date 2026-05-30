@@ -18,6 +18,8 @@ from music_manager_backend.application.dtos.export import (
     export_plan_read,
 )
 from music_manager_backend.application.dtos.matching import (
+    DownloadMatchRunResultRead,
+    DownloadMatchSummaryRead,
     ManualMappingCreate,
     MatchCandidateRead,
     MatchingRunSummary,
@@ -61,6 +63,8 @@ __all__ = [
     "ExportPlanCreate",
     "ExportPlanItemRead",
     "ExportPlanRead",
+    "DownloadMatchRunResultRead",
+    "DownloadMatchSummaryRead",
     "ManualMappingCreate",
     "MatchCandidateRead",
     "MatchingRunSummary",

@@ -51,6 +51,23 @@ class SqliteMatchLinkRepository:
         )
         self.connection.commit()
 
+    def delete_automatic_by_song_audio_files(
+        self, song_id: str, audio_file_ids: set[str]
+    ) -> None:
+        if not audio_file_ids:
+            return
+        placeholders = ", ".join("?" for _ in audio_file_ids)
+        self.connection.execute(
+            f"""
+            DELETE FROM match_links
+            WHERE song_id = ?
+                AND reviewed = 0
+                AND audio_file_id IN ({placeholders})
+            """,
+            (song_id, *sorted(audio_file_ids)),
+        )
+        self.connection.commit()
+
     def delete_by_audio_file(self, audio_file_id: str) -> None:
         self.connection.execute(
             "DELETE FROM match_links WHERE audio_file_id = ?",

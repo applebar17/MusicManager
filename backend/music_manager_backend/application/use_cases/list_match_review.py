@@ -1,4 +1,5 @@
 from music_manager_backend.application.dtos import MatchCandidateRead, MatchReviewRow
+from music_manager_backend.application.use_cases.audio_file_area import audio_file_source_area
 from music_manager_backend.application.use_cases.discover_soundcloud_track import (
     stored_discovery_read,
 )
@@ -8,7 +9,13 @@ from music_manager_backend.application.use_cases.matching_common import (
     candidate_audio_file,
     load_environment_songs,
 )
-from music_manager_backend.domain.entities import AudioFile, MatchCandidate, MatchLink, MatchStatus
+from music_manager_backend.domain.entities import (
+    AudioFile,
+    MatchCandidate,
+    MatchLink,
+    MatchStatus,
+    MusicEnvironment,
+)
 from music_manager_backend.domain.services.audio_quality import audio_warnings
 from music_manager_backend.domain.services.match_scoring import score_song_files
 from music_manager_backend.ports.repositories import (
@@ -19,6 +26,7 @@ from music_manager_backend.ports.repositories import (
     SongRepository,
     SourceDiscoveryRepository,
 )
+from music_manager_backend.shared.errors import NotFoundError
 
 
 class ListMatchReview:
@@ -40,6 +48,9 @@ class ListMatchReview:
         self.source_discoveries = source_discoveries
 
     def execute(self, environment_id: str) -> list[MatchReviewRow]:
+        environment = self.environments.get(environment_id)
+        if environment is None:
+            raise NotFoundError(f"Environment not found: {environment_id}")
         environment_songs = load_environment_songs(
             environment_id=environment_id,
             environments=self.environments,
@@ -68,7 +79,7 @@ class ListMatchReview:
                         artist=song.display_artist,
                         duration_seconds=song.duration_seconds,
                         status=status.value,
-                        match=_candidate_from_link(accepted, active_files),
+                        match=_candidate_from_link(accepted, active_files, environment),
                         candidates=[],
                         source_discovery=(
                             stored_discovery_read(
@@ -100,7 +111,7 @@ class ListMatchReview:
                         else MatchStatus.MISSING_AUDIO.value
                     ),
                     candidates=[
-                        _candidate_from_candidate(candidate, active_files)
+                        _candidate_from_candidate(candidate, active_files, environment)
                         for candidate in candidates
                         if candidate_audio_file(candidate, active_files) is not None
                     ],
@@ -117,13 +128,15 @@ class ListMatchReview:
             )
         return rows
 
+
 def _candidate_from_link(
-    link: MatchLink, active_files: dict[str, AudioFile]
+    link: MatchLink, active_files: dict[str, AudioFile], environment: MusicEnvironment
 ) -> MatchCandidateRead:
     audio_file = active_files[link.audio_file_id]
     return MatchCandidateRead(
         audio_file_id=audio_file.id,
         path=str(audio_file.path),
+        source_area=audio_file_source_area(environment, audio_file),
         title=audio_file.title,
         artist=audio_file.artist,
         duration_seconds=audio_file.duration_seconds,
@@ -134,12 +147,13 @@ def _candidate_from_link(
 
 
 def _candidate_from_candidate(
-    candidate: MatchCandidate, active_files: dict[str, AudioFile]
+    candidate: MatchCandidate, active_files: dict[str, AudioFile], environment: MusicEnvironment
 ) -> MatchCandidateRead:
     audio_file = active_files[candidate.audio_file_id]
     return MatchCandidateRead(
         audio_file_id=audio_file.id,
         path=str(audio_file.path),
+        source_area=audio_file_source_area(environment, audio_file),
         title=audio_file.title,
         artist=audio_file.artist,
         duration_seconds=audio_file.duration_seconds,

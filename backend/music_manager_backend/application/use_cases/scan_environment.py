@@ -10,6 +10,7 @@ from music_manager_backend.domain.entities import (
     ScanSummary,
 )
 from music_manager_backend.domain.entities.audio_file import AudioFileStatus
+from music_manager_backend.infrastructure.filesystem import validate_readable_directory
 from music_manager_backend.ports.audio_metadata import AudioMetadataReader
 from music_manager_backend.ports.filesystem import AudioFileScanner
 from music_manager_backend.ports.repositories import (
@@ -43,14 +44,24 @@ class ScanEnvironment:
         environment = self.environments.get(environment_id)
         if environment is None:
             raise NotFoundError(f"Environment not found: {environment_id}")
+        roots = _dedupe_scan_roots(
+            [
+                environment.root_path,
+                *([environment.download_path] if environment.download_path is not None else []),
+            ]
+        )
+        return self.execute_roots(environment_id, roots)
 
+    def execute_roots(self, environment_id: str, roots: list[Path]) -> ScanSummary:
+        environment = self.environments.get(environment_id)
+        if environment is None:
+            raise NotFoundError(f"Environment not found: {environment_id}")
+        scan_roots = _dedupe_scan_roots(roots)
+        for root in scan_roots:
+            validate_readable_directory(root)
         scan_id = new_id("scan")
         started_at = utc_now_iso()
-        scanner = self.scanner_factory(environment.root_path)
-        discovered = [
-            _with_metadata(item, self.metadata_reader.read(item.path))
-            for item in scanner.scan()
-        ]
+        discovered = self._discover(scan_roots)
         active_files = self.audio_files.list_by_environment(
             environment_id,
             status=AudioFileStatus.ACTIVE,
@@ -59,7 +70,11 @@ class ScanEnvironment:
         counts = _ScanCounts()
         discovered_by_path = {item.path: item for item in discovered}
         active_by_path = {item.path: item for item in active_files}
-        missing_active = [item for item in active_files if item.path not in discovered_by_path]
+        missing_active = [
+            item
+            for item in active_files
+            if item.path not in discovered_by_path and _path_in_roots(item.path, scan_roots)
+        ]
         moved_old_ids: set[str] = set()
         moved_new_paths: set[Path] = set()
 
@@ -124,6 +139,19 @@ class ScanEnvironment:
             unchanged=counts.unchanged,
             total_active=total_active,
         )
+
+    def _discover(self, roots: list[Path]) -> list[DiscoveredAudioFile]:
+        discovered_by_resolved_path: dict[Path, DiscoveredAudioFile] = {}
+        for root in roots:
+            scanner = self.scanner_factory(root)
+            for item in scanner.scan():
+                resolved = item.path.resolve(strict=False)
+                if resolved not in discovered_by_resolved_path:
+                    discovered_by_resolved_path[resolved] = item
+        return [
+            _with_metadata(item, self.metadata_reader.read(item.path))
+            for item in discovered_by_resolved_path.values()
+        ]
 
 
 class _ScanCounts:
@@ -232,6 +260,26 @@ def _pop_moved_candidate(
         ):
             return existing
     return None
+
+
+def _dedupe_scan_roots(roots: list[Path]) -> list[Path]:
+    deduped: list[Path] = []
+    deduped_resolved: list[Path] = []
+    for root in roots:
+        resolved = root.resolve(strict=False)
+        if any(
+            resolved == existing or resolved.is_relative_to(existing)
+            for existing in deduped_resolved
+        ):
+            continue
+        deduped.append(root)
+        deduped_resolved.append(resolved)
+    return deduped
+
+
+def _path_in_roots(path: Path, roots: list[Path]) -> bool:
+    resolved = path.resolve(strict=False)
+    return any(resolved.is_relative_to(root.resolve(strict=False)) for root in roots)
 
 
 def _with_metadata(
