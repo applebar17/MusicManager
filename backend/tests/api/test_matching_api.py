@@ -34,6 +34,7 @@ def test_matching_run_review_and_manual_mapping_api(
     review = sorted(review_response.json(), key=lambda row: row["song_id"])
     assert review[0]["status"] == "matched"
     assert review[0]["match"]["audio_file_id"] == "file_1"
+    assert review[0]["match"]["source_area"] == "usb"
     assert review[1]["status"] == "ambiguous"
     assert len(review[1]["candidates"]) == 2
     assert manual_response.status_code == 200
@@ -57,6 +58,19 @@ def test_manual_mapping_invalid_audio_file_returns_400(api_client: TestClient) -
     )
 
     assert response.status_code == 400
+
+
+def test_match_downloads_requires_download_path(api_client: TestClient) -> None:
+    container = _container(api_client)
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
+        )
+
+    response = api_client.post("/environments/env_1/matching/downloads/run")
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "download_path_required"
 
 
 def _container(api_client: TestClient) -> AppContainer:

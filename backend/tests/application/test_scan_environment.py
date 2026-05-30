@@ -79,9 +79,74 @@ def test_rescan_detects_conservative_move(
     assert after.path == moved
 
 
-def _save_environment(sqlite_connection: sqlite3.Connection, root: Path) -> None:
+def test_full_scan_includes_download_folder(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "usb"
+    downloads = tmp_path / "downloads"
+    root.mkdir()
+    downloads.mkdir()
+    (root / "usb-track.mp3").write_bytes(b"usb")
+    (downloads / "download-track.mp3").write_bytes(b"download")
+    _save_environment(sqlite_connection, root, download_path=downloads)
+
+    summary = _scan_use_case(sqlite_connection).execute("env_1")
+
+    assert summary.added == 2
+    paths = {
+        item.path
+        for item in SqliteAudioFileRepository(sqlite_connection).list_by_environment("env_1")
+    }
+    assert paths == {root / "usb-track.mp3", downloads / "download-track.mp3"}
+
+
+def test_scoped_download_scan_does_not_mark_usb_files_removed(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "usb"
+    downloads = tmp_path / "downloads"
+    root.mkdir()
+    downloads.mkdir()
+    usb_track = root / "usb-track.mp3"
+    download_track = downloads / "download-track.mp3"
+    usb_track.write_bytes(b"usb")
+    download_track.write_bytes(b"download")
+    _save_environment(sqlite_connection, root, download_path=downloads)
+    use_case = _scan_use_case(sqlite_connection)
+    use_case.execute("env_1")
+
+    download_track.unlink()
+    summary = use_case.execute_roots("env_1", [downloads])
+
+    assert summary.removed == 1
+    active_paths = {
+        item.path
+        for item in SqliteAudioFileRepository(sqlite_connection).list_by_environment(
+            "env_1",
+            status=AudioFileStatus.ACTIVE,
+        )
+    }
+    removed_paths = {
+        item.path
+        for item in SqliteAudioFileRepository(sqlite_connection).list_by_environment(
+            "env_1",
+            status=AudioFileStatus.REMOVED,
+        )
+    }
+    assert active_paths == {usb_track}
+    assert removed_paths == {download_track}
+
+
+def _save_environment(
+    sqlite_connection: sqlite3.Connection,
+    root: Path,
+    *,
+    download_path: Path | None = None,
+) -> None:
     SqliteEnvironmentRepository(sqlite_connection).save(
-        MusicEnvironment(id="env_1", name="Gig USB", root_path=root)
+        MusicEnvironment(id="env_1", name="Gig USB", root_path=root, download_path=download_path)
     )
 
 

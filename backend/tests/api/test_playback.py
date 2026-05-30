@@ -104,6 +104,43 @@ def test_matching_candidate_audio_file_can_be_streamed(
     assert response.content == b"candidate"
 
 
+def test_download_audio_file_can_be_streamed(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "usb"
+    downloads = tmp_path / "downloads"
+    root.mkdir()
+    downloads.mkdir()
+    track = downloads / "track.mp3"
+    track.write_bytes(b"download")
+    environment_id = api_client.post(
+        "/environments",
+        json={
+            "name": "USB",
+            "root_path": str(root),
+            "download_path": str(downloads),
+        },
+    ).json()["id"]
+    with _container(api_client).repository_bundle() as repositories:
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id="download_file",
+                environment_id=environment_id,
+                path=track,
+                size_bytes=8,
+                modified_at=1.0,
+            )
+        )
+
+    response = api_client.get(
+        f"/environments/{environment_id}/playback/audio-files/download_file"
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"download"
+
+
 def _create_environment_and_audio_file(
     api_client: TestClient,
     tmp_path: Path,

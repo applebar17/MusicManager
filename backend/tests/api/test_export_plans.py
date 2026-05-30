@@ -111,6 +111,30 @@ def test_apply_export_plan_streams_results_and_persists_run(
         assert repositories.export_apply_run_repository.get(body["apply_run_id"]) is not None
 
 
+def test_apply_export_plan_can_copy_matched_download_source_outside_usb_root(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    container = _container(api_client)
+    root = tmp_path / "usb"
+    downloads = tmp_path / "downloads"
+    root.mkdir()
+    downloads.mkdir()
+    source = downloads / "track.mp3"
+    source.write_bytes(b"audio")
+    _seed_export_data(container, root=root, source=source, download_path=downloads)
+    create_response = api_client.post("/environments/env_1/export-plans")
+
+    response = api_client.post(
+        f"/environments/env_1/export-plans/"
+        f"{create_response.json()['export_plan_id']}/apply"
+    )
+
+    assert response.status_code == 200
+    assert (root / "Set" / "track.mp3").read_bytes() == b"audio"
+    assert source.exists()
+
+
 def test_apply_export_plan_rejects_missing_plan(api_client: TestClient, tmp_path: Path) -> None:
     container = _container(api_client)
     root = tmp_path / "usb"
@@ -151,10 +175,21 @@ def test_apply_export_plan_rejects_unsafe_plan(api_client: TestClient, tmp_path:
     assert response.status_code == 400
 
 
-def _seed_export_data(container: AppContainer, *, root: Path, source: Path) -> None:
+def _seed_export_data(
+    container: AppContainer,
+    *,
+    root: Path,
+    source: Path,
+    download_path: Path | None = None,
+) -> None:
     with container.repository_bundle() as repositories:
         repositories.environment_repository.save(
-            MusicEnvironment(id="env_1", name="USB", root_path=root)
+            MusicEnvironment(
+                id="env_1",
+                name="USB",
+                root_path=root,
+                download_path=download_path,
+            )
         )
         repositories.song_repository.save(
             SongMaster(id="song_1", title="Track", artist="Artist")

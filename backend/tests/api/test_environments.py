@@ -10,16 +10,23 @@ from music_manager_backend.shared.settings import Settings
 
 def test_create_environment_persists_to_sqlite(api_client: TestClient, tmp_path: Path) -> None:
     root_path = tmp_path / "usb"
+    download_path = tmp_path / "downloads"
     root_path.mkdir()
+    download_path.mkdir()
     response = api_client.post(
         "/environments",
-        json={"name": "Gig USB", "root_path": str(root_path)},
+        json={
+            "name": "Gig USB",
+            "root_path": str(root_path),
+            "download_path": str(download_path),
+        },
     )
 
     assert response.status_code == 200
     created = response.json()
     assert created["name"] == "Gig USB"
     assert created["root_path"] == str(root_path)
+    assert created["download_path"] == str(download_path)
 
     list_response = api_client.get("/environments")
     assert list_response.status_code == 200
@@ -62,11 +69,32 @@ def test_create_environment_rejects_invalid_roots(api_client: TestClient, tmp_pa
     assert file_response.status_code == 400
 
 
+def test_create_environment_rejects_invalid_download_path(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    root_path = tmp_path / "usb"
+    root_path.mkdir()
+
+    response = api_client.post(
+        "/environments",
+        json={
+            "name": "Bad Downloads",
+            "root_path": str(root_path),
+            "download_path": str(tmp_path / "missing-downloads"),
+        },
+    )
+
+    assert response.status_code == 400
+
+
 def test_update_and_archive_environment(api_client: TestClient, tmp_path: Path) -> None:
     first_root = tmp_path / "usb-1"
     second_root = tmp_path / "usb-2"
+    downloads = tmp_path / "downloads"
     first_root.mkdir()
     second_root.mkdir()
+    downloads.mkdir()
     create_response = api_client.post(
         "/environments",
         json={"name": "Gig USB", "root_path": str(first_root)},
@@ -75,13 +103,18 @@ def test_update_and_archive_environment(api_client: TestClient, tmp_path: Path) 
 
     update_response = api_client.patch(
         f"/environments/{environment_id}",
-        json={"name": "Backup USB", "root_path": str(second_root)},
+        json={
+            "name": "Backup USB",
+            "root_path": str(second_root),
+            "download_path": str(downloads),
+        },
     )
     archive_response = api_client.post(f"/environments/{environment_id}/archive")
 
     assert update_response.status_code == 200
     assert update_response.json()["name"] == "Backup USB"
     assert update_response.json()["root_path"] == str(second_root)
+    assert update_response.json()["download_path"] == str(downloads)
     assert archive_response.status_code == 200
     assert archive_response.json()["archived_at"] is not None
     assert api_client.get("/environments").json() == []

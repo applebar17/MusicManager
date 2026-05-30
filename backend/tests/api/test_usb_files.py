@@ -35,6 +35,41 @@ def test_usb_files_lists_matches_warnings_and_folder_parts(
     assert (root / "01_TECH" / "Track One.mp3").exists()
 
 
+def test_usb_files_excludes_download_folder_files(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    container = _container(api_client)
+    root = _seed_usb_data(container, tmp_path)
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    downloaded = downloads / "Downloaded Track.mp3"
+    downloaded.write_bytes(b"download")
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(
+                id="env_1",
+                name="TORDIS",
+                root_path=root,
+                download_path=downloads,
+            )
+        )
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id="file_download",
+                environment_id="env_1",
+                path=downloaded,
+                size_bytes=8,
+                modified_at=5.0,
+            )
+        )
+
+    response = api_client.get("/environments/env_1/usb/files")
+
+    assert response.status_code == 200
+    assert "file_download" not in {row["audio_file_id"] for row in response.json()}
+
+
 def test_usb_candidate_search_scores_missing_imported_songs(
     api_client: TestClient,
     tmp_path: Path,
