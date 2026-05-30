@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from music_manager_backend.domain.entities import AudioFileStatus
+from music_manager_backend.application.use_cases.audio_file_area import audio_file_source_area
 from music_manager_backend.infrastructure.filesystem import validate_readable_file_inside_root
 from music_manager_backend.ports.repositories import AudioFileRepository, EnvironmentRepository
 from music_manager_backend.shared.errors import NotFoundError, ValidationError
@@ -36,5 +37,11 @@ class GetPlaybackFile:
         if not audio_file.path.exists():
             raise NotFoundError(f"Playback file not found: {audio_file.path}")
 
-        path = validate_readable_file_inside_root(audio_file.path, environment.root_path)
+        source_area = audio_file_source_area(environment, audio_file)
+        if source_area == "download" and environment.download_path is not None:
+            path = validate_readable_file_inside_root(audio_file.path, environment.download_path)
+        elif source_area == "usb":
+            path = validate_readable_file_inside_root(audio_file.path, environment.root_path)
+        else:
+            raise ValidationError(f"Playback file is outside configured audio folders: {audio_file_id}")
         return PlaybackFile(path=path, filename=path.name)

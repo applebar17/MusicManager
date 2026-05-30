@@ -224,9 +224,6 @@ def _validate_source_file(
     if not source_path.exists():
         raise ValidationError(f"Export source path does not exist: {source_path}")
     source = source_path.resolve(strict=True)
-    environment_root = environment.root_path.resolve(strict=True)
-    if not source.is_relative_to(environment_root):
-        raise ValidationError(f"Export source path is outside environment root: {source_path}")
     if not source.is_file():
         raise ValidationError(f"Export source path is not a file: {source_path}")
     if not os.access(source, os.R_OK):

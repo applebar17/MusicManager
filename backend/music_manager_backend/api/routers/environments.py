@@ -21,6 +21,7 @@ from music_manager_backend.api.dependencies import (
 from music_manager_backend.application.dtos import (
     ApiErrorRead,
     AudioFileRead,
+    DownloadMatchRunResultRead,
     EnvironmentCreate,
     EnvironmentOverviewRead,
     EnvironmentRead,
@@ -70,6 +71,7 @@ from music_manager_backend.application.use_cases.list_environment_playlists impo
 from music_manager_backend.application.use_cases.list_export_plan import ListExportPlan
 from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
 from music_manager_backend.application.use_cases.list_unmanaged_files import ListUnmanagedFiles
+from music_manager_backend.application.use_cases.match_downloads import MatchDownloads
 from music_manager_backend.application.use_cases.plan_export import PlanExport
 from music_manager_backend.application.use_cases.run_matching import RunMatching
 from music_manager_backend.application.use_cases.scan_environment import ScanEnvironment
@@ -349,6 +351,33 @@ def run_matching(
         songs=songs,
         audio_files=audio_files,
         match_links=match_links,
+    ).execute(environment_id)
+
+
+@router.post(
+    "/{environment_id}/matching/downloads/run",
+    response_model=DownloadMatchRunResultRead,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("match_downloads"))],
+)
+def match_downloads(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+    scan_runs: ScanRunRepositoryDependency,
+) -> DownloadMatchRunResultRead:
+    return MatchDownloads(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+        scan_runs=scan_runs,
+        scanner_factory=LocalAudioScanner,
+        metadata_reader=MetadataReader(),
     ).execute(environment_id)
 
 

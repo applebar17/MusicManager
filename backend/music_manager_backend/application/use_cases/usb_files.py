@@ -12,6 +12,7 @@ from music_manager_backend.application.dtos import (
     UsbMatchedSongRead,
     UsbSongCandidateRead,
 )
+from music_manager_backend.application.use_cases.audio_file_area import audio_file_source_area
 from music_manager_backend.application.use_cases.local_duplicate_linker import (
     link_local_duplicate_files,
 )
@@ -76,10 +77,15 @@ class ListUsbFiles:
             environment_id=environment_id,
             audio_files=self.audio_files,
         )
+        usb_files = {
+            audio_file_id: audio_file
+            for audio_file_id, audio_file in active_files.items()
+            if audio_file_source_area(environment, audio_file) == "usb"
+        }
         matched_by_audio_file_id = _matched_songs_by_audio_file_id(
             songs=environment_songs.songs,
             playlist_names_by_song_id=environment_songs.playlist_names_by_song_id,
-            active_files=active_files,
+            active_files=usb_files,
             match_links=self.match_links,
         )
         return [
@@ -88,7 +94,7 @@ class ListUsbFiles:
                 audio_file=audio_file,
                 matched_song=matched_by_audio_file_id.get(audio_file.id),
             )
-            for audio_file in active_files.values()
+            for audio_file in usb_files.values()
         ]
 
 
@@ -115,12 +121,14 @@ class ListUsbMatchCandidates:
         audio_file_id: str,
         query: str = "",
     ) -> list[UsbSongCandidateRead]:
-        _environment_or_raise(self.environments, environment_id)
+        environment = _environment_or_raise(self.environments, environment_id)
         audio_file = self.audio_files.get(audio_file_id)
         if audio_file is None or audio_file.environment_id != environment_id:
             raise NotFoundError(f"Audio file not found: {audio_file_id}")
         if audio_file.status != AudioFileStatus.ACTIVE:
             raise ValidationError(f"Audio file is not active: {audio_file_id}")
+        if audio_file_source_area(environment, audio_file) != "usb":
+            raise ValidationError(f"Audio file is not inside the USB root: {audio_file_id}")
 
         environment_songs = load_environment_songs(
             environment_id=environment_id,
@@ -208,6 +216,8 @@ class CreateUsbAudioFileMapping:
             raise NotFoundError(f"Audio file not found: {audio_file_id}")
         if audio_file.status != AudioFileStatus.ACTIVE:
             raise ValidationError(f"Audio file is not active: {audio_file_id}")
+        if audio_file_source_area(environment, audio_file) != "usb":
+            raise ValidationError(f"Audio file is not inside the USB root: {audio_file_id}")
         song = self.songs.get(data.song_id)
         if song is None:
             raise NotFoundError(f"Song not found in environment: {data.song_id}")
