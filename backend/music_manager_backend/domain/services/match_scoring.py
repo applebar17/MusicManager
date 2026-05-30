@@ -1,14 +1,21 @@
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
 from music_manager_backend.domain.entities import AudioFile, MatchCandidate, SongMaster
 from music_manager_backend.domain.services.audio_quality import is_likely_preview_duration
-from music_manager_backend.domain.services.title_normalizer import normalize_title
+from music_manager_backend.domain.services.title_normalizer import (
+    normalize_match_title,
+    normalize_title,
+    normalize_versionless_match_title,
+)
 
 STRICT_DURATION_TOLERANCE_SECONDS = 3
 LOOSE_DURATION_TOLERANCE_SECONDS = 5
 HIGH_CONFIDENCE_THRESHOLD = 0.95
 PLAYLIST_PATH_CONFIDENCE = 0.96
+VERSION_RELAXED_CONFIDENCE = 0.68
+VERSION_RELAXED_CONTEXT_CONFIDENCE = 0.78
 
 
 def score_song_file(song: SongMaster, audio_file: AudioFile) -> MatchCandidate | None:
@@ -23,15 +30,29 @@ def score_song_file(song: SongMaster, audio_file: AudioFile) -> MatchCandidate |
 
 
 def _score_song_file(song: SongMaster, audio_file: AudioFile) -> MatchCandidate | None:
-    song_title = normalize_title(song.display_title)
-    song_artist = normalize_title(song.display_artist or "")
-    audio_title = normalize_title(audio_file.title or "")
-    audio_artist = normalize_title(audio_file.artist or "")
-    filename = normalize_title(Path(audio_file.path).stem)
+    song_artist = normalize_match_title(song.display_artist or "")
+    audio_artist = normalize_match_title(audio_file.artist or "")
+    song_titles = _title_variants(
+        song.display_title,
+        song.display_artist,
+        normalizer=normalize_match_title,
+    )
+    audio_titles = _title_variants(
+        audio_file.title or "",
+        audio_file.artist,
+        song.display_artist,
+        normalizer=normalize_match_title,
+    )
+    filename_titles = _title_variants(
+        Path(audio_file.path).stem,
+        audio_file.artist,
+        song.display_artist,
+        normalizer=normalize_match_title,
+    )
 
     if (
-        song_title
-        and audio_title == song_title
+        song_titles
+        and _titles_overlap(song_titles, audio_titles)
         and song_artist
         and audio_artist == song_artist
         and _duration_compatible(song.duration_seconds, audio_file.duration_seconds)
@@ -43,8 +64,8 @@ def _score_song_file(song: SongMaster, audio_file: AudioFile) -> MatchCandidate 
         )
 
     if (
-        song_title
-        and audio_title == song_title
+        song_titles
+        and _titles_overlap(song_titles, audio_titles)
         and _duration_within_strict_tolerance(song.duration_seconds, audio_file.duration_seconds)
     ):
         return MatchCandidate(
@@ -54,8 +75,8 @@ def _score_song_file(song: SongMaster, audio_file: AudioFile) -> MatchCandidate 
         )
 
     if (
-        song_title
-        and audio_title == song_title
+        song_titles
+        and _titles_overlap(song_titles, audio_titles)
         and _duration_within_loose_tolerance(song.duration_seconds, audio_file.duration_seconds)
     ):
         return MatchCandidate(
@@ -65,21 +86,99 @@ def _score_song_file(song: SongMaster, audio_file: AudioFile) -> MatchCandidate 
         )
 
     if (
-        song_title
-        and audio_title == song_title
+        song_titles
+        and _titles_overlap(song_titles, audio_titles)
         and song.duration_seconds is not None
         and audio_file.duration_seconds is not None
     ):
         return None
 
-    if song_title and song_title in filename:
+    if _song_title_in_filename(song_titles, filename_titles):
         return MatchCandidate(
             audio_file_id=audio_file.id,
             method="filename_title",
             confidence=0.70,
         )
 
+    version_candidate = _score_version_relaxed(song, audio_file, song_artist, audio_artist)
+    if version_candidate is not None:
+        return version_candidate
+
     return None
+
+
+def _score_version_relaxed(
+    song: SongMaster,
+    audio_file: AudioFile,
+    song_artist: str,
+    audio_artist: str,
+) -> MatchCandidate | None:
+    if (
+        song.duration_seconds is not None
+        and audio_file.duration_seconds is not None
+        and not _duration_within_loose_tolerance(song.duration_seconds, audio_file.duration_seconds)
+    ):
+        return None
+
+    song_titles = _title_variants(
+        song.display_title,
+        song.display_artist,
+        normalizer=normalize_versionless_match_title,
+    )
+    audio_titles = _title_variants(
+        audio_file.title or "",
+        audio_file.artist,
+        song.display_artist,
+        normalizer=normalize_versionless_match_title,
+    )
+    filename_titles = _title_variants(
+        Path(audio_file.path).stem,
+        audio_file.artist,
+        song.display_artist,
+        normalizer=normalize_versionless_match_title,
+    )
+    titles_match = _titles_overlap(song_titles, audio_titles)
+    filename_matches = _song_title_in_filename(song_titles, filename_titles)
+    if not titles_match and not filename_matches:
+        return None
+
+    has_context = (
+        bool(song_artist and audio_artist == song_artist)
+        or _duration_within_strict_tolerance(song.duration_seconds, audio_file.duration_seconds)
+    )
+    return MatchCandidate(
+        audio_file_id=audio_file.id,
+        method="version_relaxed_title" if titles_match else "version_relaxed_filename_title",
+        confidence=(
+            VERSION_RELAXED_CONTEXT_CONFIDENCE if has_context else VERSION_RELAXED_CONFIDENCE
+        ),
+    )
+
+
+def _title_variants(
+    value: str,
+    *artists: str | None,
+    normalizer: Callable[[str], str],
+) -> set[str]:
+    title = normalizer(value)
+    variants = {title} if title else set()
+    for raw_artist in artists:
+        artist = normalizer(raw_artist or "")
+        if artist and title.startswith(f"{artist} "):
+            variants.add(title.removeprefix(artist).strip())
+    return {variant for variant in variants if variant}
+
+
+def _titles_overlap(song_titles: set[str], candidate_titles: set[str]) -> bool:
+    return bool(song_titles & candidate_titles)
+
+
+def _song_title_in_filename(song_titles: set[str], filename_titles: set[str]) -> bool:
+    return any(
+        song_title in filename_title
+        for song_title in song_titles
+        for filename_title in filename_titles
+    )
 
 
 def score_song_files(

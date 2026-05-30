@@ -23,6 +23,25 @@ def test_metadata_exact_match_scores_high_confidence() -> None:
     assert candidate.confidence == 0.95
 
 
+def test_free_download_title_text_is_ignored_for_matching() -> None:
+    song = SongMaster(id="song_1", title="Track Free Download", artist="Artist")
+    audio_file = AudioFile(
+        id="file_1",
+        environment_id="env_1",
+        path=Path("/music/artist-track.mp3"),
+        size_bytes=1,
+        modified_at=1.0,
+        title="Track",
+        artist="Artist",
+    )
+
+    candidate = score_song_file(song, audio_file)
+
+    assert candidate is not None
+    assert candidate.method == "metadata_exact"
+    assert candidate.confidence == 0.95
+
+
 def test_duration_tolerance_accepts_small_difference_and_rejects_large_one() -> None:
     song = SongMaster(id="song_1", title="Track", duration_seconds=120)
     strict_file = AudioFile(
@@ -102,7 +121,7 @@ def test_filename_title_match_is_lower_confidence() -> None:
     assert candidate.confidence == 0.70
 
 
-def test_different_mix_title_does_not_auto_match() -> None:
+def test_different_mix_title_is_only_a_low_confidence_candidate() -> None:
     song = SongMaster(id="song_1", title="Track Original Mix", artist="Artist")
     audio_file = AudioFile(
         id="file_1",
@@ -114,7 +133,34 @@ def test_different_mix_title_does_not_auto_match() -> None:
         artist="Artist",
     )
 
-    assert score_song_file(song, audio_file) is None
+    candidate = score_song_file(song, audio_file)
+
+    assert candidate is not None
+    assert candidate.method == "version_relaxed_title"
+    assert candidate.confidence < 0.95
+
+
+def test_edit_free_download_suffix_matches_filename_at_low_confidence() -> None:
+    song = SongMaster(
+        id="song_1",
+        title="Samuele Mogavero - Cross The Tracks (Edit) [FREE DL]",
+        artist="Samuele Mogavero",
+        duration_seconds=300,
+    )
+    audio_file = AudioFile(
+        id="file_1",
+        environment_id="env_1",
+        path=Path("/downloads/Samuele Mogavero - Cross The Tracks.mp3"),
+        size_bytes=1,
+        modified_at=1.0,
+        duration_seconds=301,
+    )
+
+    candidate = score_song_file(song, audio_file)
+
+    assert candidate is not None
+    assert candidate.method == "version_relaxed_filename_title"
+    assert candidate.confidence == 0.78
 
 
 def test_playlist_path_context_promotes_one_duplicate_review_candidate() -> None:

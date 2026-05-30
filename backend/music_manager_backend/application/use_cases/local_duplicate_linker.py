@@ -2,7 +2,7 @@ from pathlib import Path
 
 from music_manager_backend.domain.entities import AudioFile, MatchLink, SongMaster
 from music_manager_backend.domain.services.audio_quality import is_likely_preview_duration
-from music_manager_backend.domain.services.title_normalizer import normalize_title
+from music_manager_backend.domain.services.title_normalizer import normalize_match_title
 from music_manager_backend.ports.repositories import MatchLinkRepository
 
 LOCAL_DUPLICATE_METHOD = "local_duplicate"
@@ -46,10 +46,10 @@ def link_local_duplicate_files(
 def _is_duplicate_audio_file(anchor: AudioFile, candidate: AudioFile) -> bool:
     if is_likely_preview_duration(candidate.duration_seconds):
         return False
-    anchor_title = normalize_title(anchor.title or Path(anchor.path).stem)
-    candidate_title = normalize_title(candidate.title or Path(candidate.path).stem)
-    anchor_artist = normalize_title(anchor.artist or "")
-    candidate_artist = normalize_title(candidate.artist or "")
+    anchor_title = normalize_match_title(anchor.title or Path(anchor.path).stem)
+    candidate_title = normalize_match_title(candidate.title or Path(candidate.path).stem)
+    anchor_artist = normalize_match_title(anchor.artist or "")
+    candidate_artist = normalize_match_title(candidate.artist or "")
     if not anchor_title or anchor_title != candidate_title:
         return False
     if anchor.duration_seconds is None or candidate.duration_seconds is None:
@@ -63,6 +63,6 @@ def _is_duplicate_audio_file(anchor: AudioFile, candidate: AudioFile) -> bool:
     if anchor_artist and candidate_artist:
         return anchor_artist == candidate_artist
 
-    anchor_stem = normalize_title(Path(anchor.path).stem)
-    candidate_stem = normalize_title(Path(candidate.path).stem)
+    anchor_stem = normalize_match_title(Path(anchor.path).stem)
+    candidate_stem = normalize_match_title(Path(candidate.path).stem)
     return bool(anchor_stem and anchor_stem == candidate_stem)
