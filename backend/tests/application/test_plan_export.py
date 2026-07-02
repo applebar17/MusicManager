@@ -4,6 +4,7 @@ from pathlib import Path
 from music_manager_backend.application.use_cases.plan_export import PlanExport
 from music_manager_backend.domain.entities import (
     AudioFile,
+    AudioMetadata,
     MatchLink,
     MusicEnvironment,
     Playlist,
@@ -667,6 +668,90 @@ def test_export_plan_keeps_existing_deprecated_backup(
     ]
 
 
+def test_export_plan_skips_deprecated_preserve_when_equivalent_backup_exists(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = _source_file(root, "old-source.mp3")
+    backup = root / "_music_manager" / "_deprecated" / "already-backed-up.mp3"
+    backup.parent.mkdir(parents=True)
+    backup.write_bytes(b"backup")
+    repositories.songs.save(
+        SongMaster(id="song_1", title="Old Track", artist="Artist", duration_seconds=180)
+    )
+    repositories.audio_files.save(_audio_file("file_1", source, duration_seconds=180))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1, remote_membership_active=False),),
+        ),
+    )
+    metadata_reader = FakeMetadataReader(
+        {backup: AudioMetadata(title="old track", duration_seconds=185)}
+    )
+
+    plan = _plan_export(repositories, metadata_reader).execute("env_1")
+
+    assert not [item for item in plan.items if item.action == ExportAction.PRESERVE_DEPRECATED]
+
+
+def test_export_plan_preserves_deprecated_when_backup_duration_is_outside_tolerance(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = _source_file(root, "old-source.mp3")
+    backup = root / "_music_manager" / "_deprecated" / "already-backed-up.mp3"
+    backup.parent.mkdir(parents=True)
+    backup.write_bytes(b"backup")
+    repositories.songs.save(
+        SongMaster(id="song_1", title="Old Track", artist="Artist", duration_seconds=180)
+    )
+    repositories.audio_files.save(_audio_file("file_1", source, duration_seconds=180))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1, remote_membership_active=False),),
+        ),
+    )
+    metadata_reader = FakeMetadataReader(
+        {backup: AudioMetadata(title="Old Track", duration_seconds=190)}
+    )
+
+    plan = _plan_export(repositories, metadata_reader).execute("env_1")
+
+    preserve = [item for item in plan.items if item.action == ExportAction.PRESERVE_DEPRECATED]
+    assert len(preserve) == 1
+    assert preserve[0].source_path == source
+
+
 class _Repositories:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.environments = SqliteEnvironmentRepository(connection)
@@ -675,6 +760,14 @@ class _Repositories:
         self.audio_files = SqliteAudioFileRepository(connection)
         self.match_links = SqliteMatchLinkRepository(connection)
         self.export_plans = SqliteExportPlanRepository(connection)
+
+
+class FakeMetadataReader:
+    def __init__(self, metadata_by_path: dict[Path, AudioMetadata] | None = None) -> None:
+        self.metadata_by_path = metadata_by_path or {}
+
+    def read(self, path: Path) -> AudioMetadata:
+        return self.metadata_by_path.get(path, AudioMetadata())
 
 
 def _repositories(connection: sqlite3.Connection) -> _Repositories:
@@ -717,7 +810,10 @@ def _audio_file(
     )
 
 
-def _plan_export(repositories: _Repositories) -> PlanExport:
+def _plan_export(
+    repositories: _Repositories,
+    metadata_reader: FakeMetadataReader | None = None,
+) -> PlanExport:
     return PlanExport(
         environments=repositories.environments,
         playlists=repositories.playlists,
@@ -725,4 +821,5 @@ def _plan_export(repositories: _Repositories) -> PlanExport:
         audio_files=repositories.audio_files,
         match_links=repositories.match_links,
         export_plans=repositories.export_plans,
+        metadata_reader=metadata_reader or FakeMetadataReader(),
     )

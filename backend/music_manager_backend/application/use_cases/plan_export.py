@@ -18,7 +18,9 @@ from music_manager_backend.domain.entities import (
 from music_manager_backend.domain.entities.export_plan import ExportAction
 from music_manager_backend.domain.services.audio_quality import is_likely_preview_duration
 from music_manager_backend.domain.services.export_layout import ExportLayout
+from music_manager_backend.domain.services.title_normalizer import normalize_match_title
 from music_manager_backend.infrastructure.filesystem import read_export_manifest
+from music_manager_backend.ports.audio_metadata import AudioMetadataReader
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
@@ -29,6 +31,9 @@ from music_manager_backend.ports.repositories import (
 )
 from music_manager_backend.shared.errors import NotFoundError
 from music_manager_backend.shared.ids import new_id
+
+_AUDIO_EXTENSIONS = {".aiff", ".flac", ".m4a", ".mp3", ".wav"}
+_DEPRECATED_DURATION_TOLERANCE_RATIO = 0.03
 
 
 class PlanExport:
@@ -41,6 +46,7 @@ class PlanExport:
         audio_files: AudioFileRepository,
         match_links: MatchLinkRepository,
         export_plans: ExportPlanRepository,
+        metadata_reader: AudioMetadataReader,
     ) -> None:
         self.environments = environments
         self.playlists = playlists
@@ -48,6 +54,7 @@ class PlanExport:
         self.audio_files = audio_files
         self.match_links = match_links
         self.export_plans = export_plans
+        self.metadata_reader = metadata_reader
 
     def execute(self, environment_id: str, playlist_ids: list[str] | None = None) -> ExportPlan:
         environment = self.environments.get(environment_id)
@@ -141,6 +148,7 @@ class PlanExport:
                 songs=self.songs,
                 match_links=self.match_links,
                 layout=layout,
+                metadata_reader=self.metadata_reader,
             )
         )
         items.extend(
@@ -279,12 +287,13 @@ def _deprecated_items(
     songs: SongRepository,
     match_links: MatchLinkRepository,
     layout: ExportLayout,
+    metadata_reader: AudioMetadataReader,
 ) -> list[ExportPlanItem]:
     deprecated_song_ids = {
-            item.song_id
-            for playlist in all_playlists
-            for item in playlist.items
-            if item.is_removed_history and item.song_id not in active_song_ids
+        item.song_id
+        for playlist in all_playlists
+        for item in playlist.items
+        if item.is_removed_history and item.song_id not in active_song_ids
     }
     items: list[ExportPlanItem] = []
     for song_id in sorted(deprecated_song_ids):
@@ -303,6 +312,7 @@ def _deprecated_items(
             song=song,
             audio_file=accepted_file,
             layout=layout,
+            metadata_reader=metadata_reader,
         )
         if item is not None:
             items.append(item)
@@ -411,6 +421,7 @@ def _deprecated_copy_item_if_missing(
     song: SongMaster,
     audio_file: AudioFile,
     layout: ExportLayout,
+    metadata_reader: AudioMetadataReader,
 ) -> ExportPlanItem | None:
     source = audio_file.path
     target = layout.deprecated_target(song=song, audio_file=audio_file)
@@ -419,9 +430,63 @@ def _deprecated_copy_item_if_missing(
         return None
     if target.exists() and target.is_file():
         return None
+    if _deprecated_equivalent_exists(
+        song=song,
+        audio_file=audio_file,
+        deprecated_folder=layout.deprecated_folder,
+        metadata_reader=metadata_reader,
+    ):
+        return None
     return ExportPlanItem(
         action=ExportAction.PRESERVE_DEPRECATED,
         source_path=source,
         target_path=target,
         reason=reason,
     )
+
+
+def _deprecated_equivalent_exists(
+    *,
+    song: SongMaster,
+    audio_file: AudioFile,
+    deprecated_folder: Path,
+    metadata_reader: AudioMetadataReader,
+) -> bool:
+    reference_title = normalize_match_title(song.display_title)
+    reference_duration = song.duration_seconds or audio_file.duration_seconds
+    if not reference_title or reference_duration is None:
+        return False
+    for candidate in _deprecated_audio_files(deprecated_folder):
+        metadata = metadata_reader.read(candidate)
+        candidate_title = normalize_match_title(metadata.title or candidate.stem)
+        if candidate_title != reference_title:
+            continue
+        if _duration_within_deprecated_tolerance(
+            reference_duration,
+            metadata.duration_seconds,
+        ):
+            return True
+    return False
+
+
+def _deprecated_audio_files(deprecated_folder: Path) -> list[Path]:
+    if not deprecated_folder.exists() or not deprecated_folder.is_dir():
+        return []
+    return sorted(
+        (
+            path
+            for path in deprecated_folder.rglob("*")
+            if path.is_file() and path.suffix.casefold() in _AUDIO_EXTENSIONS
+        ),
+        key=lambda path: path.as_posix().casefold(),
+    )
+
+
+def _duration_within_deprecated_tolerance(
+    reference_duration: int,
+    candidate_duration: int | None,
+) -> bool:
+    if candidate_duration is None:
+        return False
+    tolerance = reference_duration * _DEPRECATED_DURATION_TOLERANCE_RATIO
+    return abs(reference_duration - candidate_duration) <= tolerance

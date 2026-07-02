@@ -785,6 +785,7 @@ def create_export_plan(
         audio_files=audio_files,
         match_links=match_links,
         export_plans=export_plans,
+        metadata_reader=MetadataReader(),
     ).execute(environment_id, data.playlist_ids if data is not None else None)
     return export_plan_read(plan)
 
