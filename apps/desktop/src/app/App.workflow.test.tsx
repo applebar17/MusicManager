@@ -53,7 +53,7 @@ describe("desktop v1 workflow", () => {
     );
     await user.click(screen.getByRole("button", { name: /import \/ sync/i }));
 
-    expect(await screen.findByText("Wave 6 Smoke")).toBeInTheDocument();
+    expect((await screen.findAllByText("Wave 6 Smoke")).length).toBeGreaterThan(0);
     expect(await screen.findByText("Smoke Track")).toBeInTheDocument();
     expect(screen.getByLabelText("SoundCloud playlist URL")).toHaveValue("");
     expect(screen.queryByText("soundcloud_api_enrichment_used")).not.toBeInTheDocument();
@@ -74,10 +74,16 @@ describe("desktop v1 workflow", () => {
     expect(await screen.findByText("Downloads Matched")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /run matching/i }));
-    expect(await screen.findByText("smoke-track-candidate.mp3")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: /map file/i })).toBeEnabled());
 
     await user.click(screen.getByRole("button", { name: /map file/i }));
-    await waitFor(() => expect(screen.getByText("Manual")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url]) =>
+          String(url).endsWith("/environments/env_1/matching/manual-mappings"),
+        ),
+      ).toBe(true),
+    );
 
     await user.click(screen.getByRole("button", { name: /^export$/i }));
     await user.click(await screen.findByRole("button", { name: /preview export plan/i }));
@@ -87,21 +93,12 @@ describe("desktop v1 workflow", () => {
     const dialog = screen.getByRole("dialog", { name: /apply this export plan/i });
     await user.click(within(dialog).getByRole("button", { name: /^apply export plan$/i }));
 
-    expect(await screen.findByText("Export completed")).toBeInTheDocument();
-    expect(screen.getByText("apply_1")).toBeInTheDocument();
+    expect(await screen.findByText("This plan is locked after apply.")).toBeInTheDocument();
+    expect(screen.getAllByText("Succeeded").length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("button", { name: /dashboard/i }));
     await user.click(screen.getByRole("button", { name: /^export$/i }));
-    expect(await screen.findByText("Export completed")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /refresh results/i }));
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.some(([url]) =>
-          String(url).endsWith("/environments/env_1/export-apply-runs/apply_1"),
-        ),
-      ).toBe(true),
-    );
+    expect(await screen.findByText("This plan is locked after apply.")).toBeInTheDocument();
   });
 });
 
@@ -321,6 +318,10 @@ function mockFetch() {
       return jsonResponse(exportPlan());
     }
 
+    if (path === "/environments/env_1/export-plans/plan_1" && method === "PATCH") {
+      return jsonResponse(exportPlan());
+    }
+
     if (path === "/environments/env_1/export-plans/plan_1/apply" && method === "POST") {
       return jsonResponse(applyRun());
     }
@@ -369,24 +370,44 @@ function exportPlan() {
     },
     environment_id: "env_1",
     export_plan_id: "plan_1",
+    is_valid: true,
+    locked_at: null,
+    validation_error_code: null,
+    validation_error_message: null,
+    validation_errors: [],
     items: [
       {
         action: "create_folder",
+        export_plan_item_id: "item_1",
+        included: true,
+        position: 0,
         reason: null,
         source_path: null,
         target_path: "/Volumes/USB/.music_manager",
+        validation_error_code: null,
+        validation_error_message: null,
       },
       {
         action: "create_folder",
+        export_plan_item_id: "item_2",
+        included: true,
+        position: 1,
         reason: null,
         source_path: null,
         target_path: "/Volumes/USB/Wave 6 Smoke",
+        validation_error_code: null,
+        validation_error_message: null,
       },
       {
         action: "copy_file",
+        export_plan_item_id: "item_3",
+        included: true,
+        position: 2,
         reason: null,
         source_path: "/Volumes/USB/smoke-track-candidate.mp3",
         target_path: "/Volumes/USB/Wave 6 Smoke/smoke-track-candidate.mp3",
+        validation_error_code: null,
+        validation_error_message: null,
       },
     ],
   };
@@ -406,6 +427,7 @@ function applyRun() {
         created_at: "2026-05-24T10:00:00+00:00",
         error_code: null,
         error_message: null,
+        export_plan_item_id: "item_2",
         source_path: null,
         status: "succeeded",
         target_path: "/Volumes/USB/Wave 6 Smoke",
@@ -415,6 +437,7 @@ function applyRun() {
         created_at: "2026-05-24T10:00:01+00:00",
         error_code: null,
         error_message: null,
+        export_plan_item_id: "item_3",
         source_path: "/Volumes/USB/smoke-track-candidate.mp3",
         status: "succeeded",
         target_path: "/Volumes/USB/Wave 6 Smoke/smoke-track-candidate.mp3",

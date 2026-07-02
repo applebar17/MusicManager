@@ -1,5 +1,6 @@
 from dataclasses import replace
 from pathlib import Path
+from time import sleep
 from typing import cast
 
 from fastapi import FastAPI
@@ -204,16 +205,14 @@ def test_full_synchronous_desktop_api_flow(
     apply_run = client.post(
         f"/environments/{environment_id}/export-plans/{plan['export_plan_id']}/apply"
     ).json()
-    fetched_apply_run = client.get(
-        f"/environments/{environment_id}/export-apply-runs/{apply_run['apply_run_id']}"
-    )
+    fetched_apply_run = _wait_apply_run(client, environment_id, apply_run["apply_run_id"])
 
     assert scan.status_code == 200
     assert overview.json()["manually_mapped_count"] == 1
     assert detail.json()["items"][0]["playback_url"].endswith(audio_file_id)
     assert plan["counts"]["copy_file"] == 1
-    assert apply_run["status"] == "completed"
-    assert fetched_apply_run.status_code == 200
+    assert apply_run["status"] in {"queued", "running", "completed"}
+    assert fetched_apply_run["status"] == "completed"
     copy_targets = [
         Path(item["target_path"])
         for item in plan["items"]
@@ -228,6 +227,20 @@ def test_full_synchronous_desktop_api_flow(
 def _container(api_client: TestClient) -> AppContainer:
     app = cast(FastAPI, api_client.app)
     return cast(AppContainer, app.state.container)
+
+
+def _wait_apply_run(
+    client: TestClient,
+    environment_id: str,
+    apply_run_id: str,
+) -> dict[str, object]:
+    for _ in range(40):
+        response = client.get(f"/environments/{environment_id}/export-apply-runs/{apply_run_id}")
+        body = response.json()
+        if body["status"] not in {"queued", "running"}:
+            return cast(dict[str, object], body)
+        sleep(0.05)
+    raise AssertionError(f"Apply run did not finish: {apply_run_id}")
 
 
 def _seed_desktop_view_data(container: AppContainer) -> None:

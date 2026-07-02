@@ -309,6 +309,11 @@ export type ExportPlanCreate = {
   playlist_ids?: string[] | null;
 };
 
+export type ExportPlanUpdate = {
+  included_item_ids: string[];
+  excluded_item_ids: string[];
+};
+
 export type ExportAction =
   | "create_folder"
   | "copy_file"
@@ -319,23 +324,50 @@ export type ExportAction =
   | "skip";
 
 export type ExportPlanItemRead = {
+  export_plan_item_id: string;
+  position: number;
   action: ExportAction;
   target_path: string;
   source_path: string | null;
   reason: string | null;
+  included: boolean;
+  validation_error_code: string | null;
+  validation_error_message: string | null;
+};
+
+export type ExportPlanValidationErrorRead = {
+  export_plan_item_id: string | null;
+  code: string;
+  message: string;
 };
 
 export type ExportPlanRead = {
   export_plan_id: string;
   environment_id: string;
+  locked_at: string | null;
+  is_valid: boolean;
+  validation_error_code: string | null;
+  validation_error_message: string | null;
+  validation_errors: ExportPlanValidationErrorRead[];
   counts: Record<string, number>;
   items: ExportPlanItemRead[];
 };
 
-export type ExportApplyRunStatus = "completed" | "completed_with_failures" | "failed";
-export type ExportApplyItemStatus = "succeeded" | "failed" | "skipped";
+export type ExportApplyRunStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "completed_with_failures"
+  | "failed";
+export type ExportApplyItemStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "skipped";
 
 export type ExportApplyItemResultRead = {
+  export_plan_item_id: string | null;
   action: ExportAction;
   target_path: string;
   status: ExportApplyItemStatus;

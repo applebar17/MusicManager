@@ -2829,6 +2829,138 @@ button.playlist-chip.is-active {
   text-decoration: underline;
 }
 
+.export-plan-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.export-plan-toolbar > span {
+  color: var(--color-on-surface-variant);
+  font-size: 13px;
+}
+
+.export-plan-validation {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  border-bottom: 1px solid rgba(255, 185, 95, 0.24);
+  background: rgba(255, 185, 95, 0.08);
+  color: var(--color-tertiary);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.export-action-list {
+  display: grid;
+  min-height: 0;
+  overflow: auto;
+}
+
+.export-action-list-row {
+  display: grid;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--color-surface-container-low);
+}
+
+.export-action-list-row--alt {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.export-action-list-row.is-selected {
+  background: rgba(172, 199, 255, 0.08);
+}
+
+.export-action-list-row.has-validation-error,
+.export-action-list-row.has-apply-error {
+  box-shadow: inset 3px 0 0 var(--color-error);
+}
+
+.export-action-list-row__main {
+  display: grid;
+  grid-template-columns: 32px 24px 44px minmax(116px, 150px) minmax(180px, 1fr) 32px minmax(180px, 1fr) minmax(108px, auto) 32px;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 960px;
+  padding: var(--space-sm) var(--space-md);
+}
+
+.export-row-icon-button {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+}
+
+.export-row-icon-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.export-row-icon-button:not(:disabled):hover {
+  background: var(--color-surface-container-high);
+  color: var(--color-on-surface);
+}
+
+.export-action-position {
+  color: var(--color-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.export-action-list-row__path {
+  overflow: hidden;
+  color: var(--color-on-surface);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-action-list-row__flow {
+  color: var(--color-on-surface-variant);
+}
+
+.export-action-list-row__details {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 960px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  padding: var(--space-sm) var(--space-md) var(--space-md) 132px;
+}
+
+.export-action-list-row__details p {
+  margin: 0;
+  color: var(--color-error);
+}
+
+.export-action-list-row__details dl {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0;
+}
+
+.export-action-list-row__details div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: var(--space-sm);
+}
+
+.export-action-list-row__details dt {
+  color: var(--color-on-surface-variant);
+}
+
+.export-action-list-row__details dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
 .export-apply-bar {
   display: flex;
   align-items: center;

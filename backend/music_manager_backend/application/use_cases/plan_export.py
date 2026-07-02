@@ -4,6 +4,9 @@ from music_manager_backend.application.use_cases.match_link_selection import (
     active_match_links,
     preferred_match_link,
 )
+from music_manager_backend.application.use_cases.export_plan_validation import (
+    validate_export_plan,
+)
 from music_manager_backend.domain.entities import (
     AudioFile,
     AudioFileStatus,
@@ -153,6 +156,7 @@ class PlanExport:
             environment_id=environment_id,
             items=tuple(items),
         )
+        plan = validate_export_plan(environment, plan)
         self.export_plans.save(plan)
         return plan
 

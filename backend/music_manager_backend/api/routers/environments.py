@@ -1,6 +1,11 @@
+import logging
+import sys
+from contextlib import AbstractContextManager
+from dataclasses import replace
+from threading import Thread
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from music_manager_backend.api.dependencies import (
     get_audio_file_repository,
@@ -16,6 +21,7 @@ from music_manager_backend.api.dependencies import (
     get_soundcloud_track_discovery_provider,
     get_source_discovery_repository,
     get_sync_snapshot_repository,
+    get_container,
     guard_environment_operation,
 )
 from music_manager_backend.application.dtos import (
@@ -29,6 +35,7 @@ from music_manager_backend.application.dtos import (
     ExportApplyRunRead,
     ExportPlanCreate,
     ExportPlanRead,
+    ExportPlanUpdate,
     ManualMappingCreate,
     MatchCandidateRead,
     MatchingRunSummary,
@@ -89,6 +96,7 @@ from music_manager_backend.application.use_cases.sync_soundcloud_sources import 
     SyncMissingSoundCloudSources,
 )
 from music_manager_backend.application.use_cases.update_environment import UpdateEnvironment
+from music_manager_backend.application.use_cases.update_export_plan import UpdateExportPlan
 from music_manager_backend.application.use_cases.usb_files import (
     CreateUsbAudioFileMapping,
     ListUsbFiles,
@@ -96,7 +104,8 @@ from music_manager_backend.application.use_cases.usb_files import (
     QuarantineUsbAudioFile,
     QuarantineUsbAudioFiles,
 )
-from music_manager_backend.domain.entities import AudioFile
+from music_manager_backend.api.container import AppContainer
+from music_manager_backend.domain.entities import AudioFile, ExportApplyRunStatus
 from music_manager_backend.infrastructure.audio import MetadataReader
 from music_manager_backend.infrastructure.filesystem import LocalAudioScanner
 from music_manager_backend.ports.repositories import (
@@ -114,6 +123,9 @@ from music_manager_backend.ports.repositories import (
 )
 from music_manager_backend.ports.soundcloud import SoundCloudPlaylistImporter
 from music_manager_backend.ports.soundcloud_discovery import SoundCloudTrackDiscoveryProvider
+from music_manager_backend.shared.time import utc_now_iso
+
+logger = logging.getLogger(__name__)
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ApiErrorRead},
@@ -736,26 +748,61 @@ def get_export_plan(
     return export_plan_read(plan)
 
 
+@router.patch(
+    "/{environment_id}/export-plans/{export_plan_id}",
+    response_model=ExportPlanRead,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("update_export_plan"))],
+)
+def update_export_plan(
+    environment_id: str,
+    export_plan_id: str,
+    data: ExportPlanUpdate,
+    environments: EnvironmentRepositoryDependency,
+    export_plans: ExportPlanRepositoryDependency,
+) -> ExportPlanRead:
+    plan = UpdateExportPlan(
+        environments=environments,
+        export_plans=export_plans,
+    ).execute(environment_id, export_plan_id, data)
+    return export_plan_read(plan)
+
+
 @router.post(
     "/{environment_id}/export-plans/{export_plan_id}/apply",
     response_model=ExportApplyRunRead,
     responses=ERROR_RESPONSES,
-    dependencies=[Depends(guard_environment_operation("apply_export_plan"))],
 )
 def apply_export_plan(
     environment_id: str,
     export_plan_id: str,
+    request: Request,
     environments: EnvironmentRepositoryDependency,
     audio_files: AudioFileRepositoryDependency,
     export_plans: ExportPlanRepositoryDependency,
     apply_runs: ExportApplyRunRepositoryDependency,
 ) -> ExportApplyRunRead:
-    apply_run = ApplyExportPlan(
-        environments=environments,
-        audio_files=audio_files,
-        export_plans=export_plans,
-        apply_runs=apply_runs,
-    ).execute(environment_id, export_plan_id)
+    container = get_container(request)
+    operation_guard = container.operation_coordinator.guard(
+        environment_id=environment_id,
+        operation_name="apply_export_plan",
+    )
+    operation_guard.__enter__()
+    try:
+        apply_run = ApplyExportPlan(
+            environments=environments,
+            audio_files=audio_files,
+            export_plans=export_plans,
+            apply_runs=apply_runs,
+        ).start(environment_id, export_plan_id)
+        Thread(
+            target=_run_export_apply_worker,
+            args=(container, apply_run.id, operation_guard),
+            daemon=True,
+        ).start()
+    except BaseException:
+        operation_guard.__exit__(*sys.exc_info())
+        raise
     return export_apply_run_read(apply_run)
 
 
@@ -822,3 +869,44 @@ def _audio_file_response(audio_file: AudioFile) -> AudioFileRead:
         key=audio_file.key,
         comment=audio_file.comment,
     )
+
+
+def _run_export_apply_worker(
+    container: AppContainer,
+    apply_run_id: str,
+    operation_guard: AbstractContextManager[None],
+) -> None:
+    try:
+        with container.repository_bundle() as repositories:
+            ApplyExportPlan(
+                environments=repositories.environment_repository,
+                audio_files=repositories.audio_file_repository,
+                export_plans=repositories.export_plan_repository,
+                apply_runs=repositories.export_apply_run_repository,
+            ).run(apply_run_id)
+    except Exception as exc:
+        logger.exception("Export apply worker failed apply_run_id=%s", apply_run_id)
+        _mark_apply_run_failed(container, apply_run_id, exc)
+    finally:
+        operation_guard.__exit__(None, None, None)
+
+
+def _mark_apply_run_failed(
+    container: AppContainer,
+    apply_run_id: str,
+    exc: Exception,
+) -> None:
+    try:
+        with container.repository_bundle() as repositories:
+            apply_run = repositories.export_apply_run_repository.get(apply_run_id)
+            if apply_run is None:
+                return
+            repositories.export_apply_run_repository.save(
+                replace(
+                    apply_run,
+                    status=ExportApplyRunStatus.FAILED,
+                    finished_at=utc_now_iso(),
+                )
+            )
+    except Exception:
+        logger.exception("Failed to mark export apply run failed apply_run_id=%s", apply_run_id)

@@ -11,7 +11,10 @@ SOURCE_URL = "https://soundcloud.com/riccardo-tordini/sets/21_futurfunk_nudisco"
 
 
 def test_parser_extracts_rendered_playlist_fixture() -> None:
-    playlist = PublicPlaylistHtmlParser().parse(FIXTURE_PATH.read_text(), source_url=SOURCE_URL)
+    playlist = PublicPlaylistHtmlParser().parse(
+        FIXTURE_PATH.read_text(encoding="utf-8"),
+        source_url=SOURCE_URL,
+    )
 
     assert playlist.source_url == SOURCE_URL
     assert playlist.title == "21_futurfunk_nudisco"
@@ -37,7 +40,10 @@ def test_parser_extracts_rendered_playlist_fixture() -> None:
 
 
 def test_parser_preserves_non_ascii_titles_and_metric_play_counts() -> None:
-    playlist = PublicPlaylistHtmlParser().parse(FIXTURE_PATH.read_text(), source_url=SOURCE_URL)
+    playlist = PublicPlaylistHtmlParser().parse(
+        FIXTURE_PATH.read_text(encoding="utf-8"),
+        source_url=SOURCE_URL,
+    )
 
     second = playlist.tracks[1]
     third = playlist.tracks[2]

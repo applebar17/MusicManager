@@ -14,6 +14,8 @@ from music_manager_backend.application.dtos.export import (
     ExportPlanCreate,
     ExportPlanItemRead,
     ExportPlanRead,
+    ExportPlanUpdate,
+    ExportPlanValidationErrorRead,
     export_apply_run_read,
     export_plan_read,
 )
@@ -63,6 +65,8 @@ __all__ = [
     "ExportPlanCreate",
     "ExportPlanItemRead",
     "ExportPlanRead",
+    "ExportPlanUpdate",
+    "ExportPlanValidationErrorRead",
     "DownloadMatchRunResultRead",
     "DownloadMatchSummaryRead",
     "ManualMappingCreate",

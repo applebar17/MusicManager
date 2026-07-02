@@ -6,12 +6,16 @@ from music_manager_backend.domain.entities.export_plan import ExportAction
 
 
 class ExportApplyRunStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
     COMPLETED = "completed"
     COMPLETED_WITH_FAILURES = "completed_with_failures"
     FAILED = "failed"
 
 
 class ExportApplyItemStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     SKIPPED = "skipped"
@@ -22,6 +26,7 @@ class ExportApplyItemResult:
     action: ExportAction
     target_path: Path
     status: ExportApplyItemStatus
+    export_plan_item_id: str | None = None
     source_path: Path | None = None
     error_code: str | None = None
     error_message: str | None = None

@@ -1,5 +1,10 @@
-import { apiGet, apiPost } from "../../shared/api/http";
-import type { ExportApplyRunRead, ExportPlanCreate, ExportPlanRead } from "../../shared/api/types";
+import { apiGet, apiPatch, apiPost } from "../../shared/api/http";
+import type {
+  ExportApplyRunRead,
+  ExportPlanCreate,
+  ExportPlanRead,
+  ExportPlanUpdate,
+} from "../../shared/api/types";
 
 export function createExportPlan(environmentId: string, data: ExportPlanCreate) {
   return apiPost<ExportPlanRead, ExportPlanCreate>(
@@ -11,6 +16,17 @@ export function createExportPlan(environmentId: string, data: ExportPlanCreate) 
 export function getExportPlan(environmentId: string, exportPlanId: string) {
   return apiGet<ExportPlanRead>(
     `/environments/${environmentId}/export-plans/${exportPlanId}`,
+  );
+}
+
+export function updateExportPlan(
+  environmentId: string,
+  exportPlanId: string,
+  data: ExportPlanUpdate,
+) {
+  return apiPatch<ExportPlanRead, ExportPlanUpdate>(
+    `/environments/${environmentId}/export-plans/${exportPlanId}`,
+    data,
   );
 }
 

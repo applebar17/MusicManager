@@ -53,6 +53,7 @@ class SqliteExportApplyRunRepository:
                 INSERT INTO export_apply_item_results (
                     apply_run_id,
                     position,
+                    export_plan_item_id,
                     action,
                     source_path,
                     target_path,
@@ -61,11 +62,12 @@ class SqliteExportApplyRunRepository:
                     error_message,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     apply_run.id,
                     position,
+                    result.export_plan_item_id,
                     result.action.value,
                     str(result.source_path) if result.source_path is not None else None,
                     str(result.target_path),
@@ -108,6 +110,7 @@ def _apply_item_result_from_row(row: sqlite3.Row) -> ExportApplyItemResult:
     source_path = cast(str | None, row["source_path"])
     return ExportApplyItemResult(
         action=ExportAction(cast(str, row["action"])),
+        export_plan_item_id=cast(str | None, row["export_plan_item_id"]),
         source_path=Path(source_path) if source_path is not None else None,
         target_path=Path(cast(str, row["target_path"])),
         status=ExportApplyItemStatus(cast(str, row["status"])),

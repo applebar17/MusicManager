@@ -3,10 +3,13 @@ import {
   Archive,
   ArrowRight,
   Ban,
+  ChevronDown,
+  ChevronRight,
   CheckCircle2,
   Copy,
   Filter,
   FolderPlus,
+  GripVertical,
   ListChecks,
   Loader2,
   RefreshCw,
@@ -14,8 +17,22 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 import { ApiError } from "../../shared/api/http";
 import type {
@@ -31,7 +48,13 @@ import type {
 import { useAppState } from "../../shared/state";
 import { Button, ConfirmDialog, EmptyState, ErrorBanner, LoadingState, Panel } from "../../shared/ui";
 import { listPlaylists } from "../playlists/api";
-import { applyExportPlan, createExportPlan, getExportApplyRun, getExportPlan } from "./api";
+import {
+  applyExportPlan,
+  createExportPlan,
+  getExportApplyRun,
+  getExportPlan,
+  updateExportPlan,
+} from "./api";
 
 const EXPORT_ACTIONS: ExportAction[] = [
   "copy_file",
@@ -57,9 +80,14 @@ export function ExportPanel() {
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
   const [isRefreshingPlan, setIsRefreshingPlan] = useState(false);
   const [isApplyingPlan, setIsApplyingPlan] = useState(false);
+  const [isUpdatingPlan, setIsUpdatingPlan] = useState(false);
   const [isRefreshingApplyRun, setIsRefreshingApplyRun] = useState(false);
   const [isConfirmingApply, setIsConfirmingApply] = useState(false);
+  const [selectedActionIds, setSelectedActionIds] = useState<Set<string>>(() => new Set());
+  const [expandedActionIds, setExpandedActionIds] = useState<Set<string>>(() => new Set());
+  const [lastSelectedActionId, setLastSelectedActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const refreshPlaylists = useCallback(
     async (environmentId: string) => {
@@ -83,9 +111,11 @@ export function ExportPanel() {
       setSelectedPlaylistIds([]);
       setPlan(null);
       setApplyRun(null);
+      clearActionSelection();
       return;
     }
     setSelectedPlaylistIds([]);
+    clearActionSelection();
     void refreshPlaylists(selectedEnvironmentId);
   }, [refreshPlaylists, selectedEnvironmentId]);
 
@@ -137,14 +167,43 @@ export function ExportPanel() {
       });
   }, [applyRun?.apply_run_id, selectedEnvironmentId, selectedExportApplyRunId]);
 
+  useEffect(() => {
+    if (
+      !selectedEnvironmentId ||
+      !applyRun ||
+      (applyRun.status !== "queued" && applyRun.status !== "running")
+    ) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      void getExportApplyRun(selectedEnvironmentId, applyRun.apply_run_id)
+        .then((nextRun) => {
+          setApplyRun(nextRun);
+        })
+        .catch((pollError: unknown) => {
+          setError(errorMessage(pollError));
+        });
+    }, 750);
+    return () => window.clearInterval(intervalId);
+  }, [applyRun, selectedEnvironmentId]);
+
   const selectedPlaylistCount =
     selectedPlaylistIds.length > 0 ? selectedPlaylistIds.length : playlists.length;
 
   const targetRoot = useMemo(() => planTargetRoot(plan), [plan]);
-  const changeItems = useMemo(
-    () => plan?.items.filter((item) => isChangeAction(item.action)) ?? [],
+  const includedItems = useMemo(
+    () => plan?.items.filter((item) => item.included) ?? [],
     [plan],
   );
+  const applyResultsByPlanItemId = useMemo(() => {
+    const byId = new Map<string, ExportApplyItemResultRead>();
+    for (const item of applyRun?.item_results ?? []) {
+      if (item.export_plan_item_id) {
+        byId.set(item.export_plan_item_id, item);
+      }
+    }
+    return byId;
+  }, [applyRun?.item_results]);
 
   async function handleCreatePlan() {
     if (!selectedEnvironmentId) {
@@ -159,6 +218,7 @@ export function ExportPanel() {
       });
       setPlan(nextPlan);
       setApplyRun(null);
+      clearActionSelection();
       selectExportApplyRun(null);
       selectExportPlan(nextPlan.export_plan_id);
     } catch (createError) {
@@ -176,6 +236,7 @@ export function ExportPanel() {
     setError(null);
     try {
       setPlan(await getExportPlan(selectedEnvironmentId, plan.export_plan_id));
+      clearActionSelection();
     } catch (refreshError) {
       setError(errorMessage(refreshError));
     } finally {
@@ -193,6 +254,8 @@ export function ExportPanel() {
     try {
       const nextApplyRun = await applyExportPlan(selectedEnvironmentId, plan.export_plan_id);
       setApplyRun(nextApplyRun);
+      setPlan(await getExportPlan(selectedEnvironmentId, plan.export_plan_id));
+      clearActionSelection();
       selectExportPlan(nextApplyRun.export_plan_id);
       selectExportApplyRun(nextApplyRun.apply_run_id);
     } catch (applyError) {
@@ -227,6 +290,121 @@ export function ExportPanel() {
     setApplyRun(null);
     selectExportApplyRun(null);
     selectExportPlan(null);
+  }
+
+  async function persistPlanItems(includedItemIds: string[]) {
+    if (!selectedEnvironmentId || !plan) {
+      return;
+    }
+    setIsUpdatingPlan(true);
+    setError(null);
+    try {
+      const included = new Set(includedItemIds);
+      const nextPlan = await updateExportPlan(selectedEnvironmentId, plan.export_plan_id, {
+        included_item_ids: includedItemIds,
+        excluded_item_ids: plan.items
+          .map((item) => item.export_plan_item_id)
+          .filter((itemId) => !included.has(itemId)),
+      });
+      setPlan(nextPlan);
+      setApplyRun(null);
+      selectExportApplyRun(null);
+      setSelectedActionIds(
+        (current) =>
+          new Set([...current].filter((itemId) => included.has(itemId))),
+      );
+    } catch (updateError) {
+      setError(errorMessage(updateError));
+    } finally {
+      setIsUpdatingPlan(false);
+    }
+  }
+
+  function handleActionSelection(
+    itemId: string,
+    checked: boolean,
+    event: MouseEvent<HTMLInputElement>,
+  ) {
+    setSelectedActionIds((current) => {
+      const next = new Set(current);
+      if (event.shiftKey && lastSelectedActionId) {
+        const ids = includedItems.map((item) => item.export_plan_item_id);
+        const start = ids.indexOf(lastSelectedActionId);
+        const end = ids.indexOf(itemId);
+        if (start >= 0 && end >= 0) {
+          const [from, to] = start < end ? [start, end] : [end, start];
+          for (const rangeId of ids.slice(from, to + 1)) {
+            if (checked) {
+              next.add(rangeId);
+            } else {
+              next.delete(rangeId);
+            }
+          }
+        }
+      } else if (checked) {
+        next.add(itemId);
+      } else {
+        next.delete(itemId);
+      }
+      return next;
+    });
+    setLastSelectedActionId(itemId);
+  }
+
+  function handleToggleExpanded(itemId: string) {
+    setExpandedActionIds((current) => {
+      const next = new Set(current);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !plan || plan.locked_at) {
+      return;
+    }
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    const currentIds = includedItems.map((item) => item.export_plan_item_id);
+    const movingIds = selectedActionIds.has(activeId)
+      ? new Set([...selectedActionIds].filter((itemId) => currentIds.includes(itemId)))
+      : new Set([activeId]);
+    if (movingIds.has(overId)) {
+      return;
+    }
+    const movingBlock = currentIds.filter((itemId) => movingIds.has(itemId));
+    const remaining = currentIds.filter((itemId) => !movingIds.has(itemId));
+    const insertAt = remaining.indexOf(overId);
+    if (insertAt < 0) {
+      return;
+    }
+    const nextIds = [
+      ...remaining.slice(0, insertAt),
+      ...movingBlock,
+      ...remaining.slice(insertAt),
+    ];
+    void persistPlanItems(nextIds);
+  }
+
+  function handleDeleteSelectedActions() {
+    if (selectedActionIds.size === 0 || !plan || plan.locked_at) {
+      return;
+    }
+    const nextIncludedIds = includedItems
+      .map((item) => item.export_plan_item_id)
+      .filter((itemId) => !selectedActionIds.has(itemId));
+    void persistPlanItems(nextIncludedIds);
+  }
+
+  function clearActionSelection() {
+    setSelectedActionIds(new Set());
+    setExpandedActionIds(new Set());
+    setLastSelectedActionId(null);
   }
 
   return (
@@ -346,17 +524,20 @@ export function ExportPanel() {
                 ))}
               </section>
 
-              <ExportActionLog items={changeItems} />
-
-              {applyRun ? (
-                <ExportApplyResults
-                  applyRun={applyRun}
-                  isRefreshing={isRefreshingApplyRun}
-                  onRefresh={() => {
-                    void handleRefreshApplyRun();
-                  }}
-                />
-              ) : null}
+              <ExportActionLog
+                applyResultsByPlanItemId={applyResultsByPlanItemId}
+                expandedActionIds={expandedActionIds}
+                isLocked={Boolean(plan.locked_at)}
+                isUpdating={isUpdatingPlan}
+                items={includedItems}
+                selectedActionIds={selectedActionIds}
+                sensors={sensors}
+                validationMessage={plan.validation_error_message}
+                onDeleteSelected={handleDeleteSelectedActions}
+                onDragEnd={handleDragEnd}
+                onSelectAction={handleActionSelection}
+                onToggleExpanded={handleToggleExpanded}
+              />
             </>
           ) : (
             <Panel className="export-empty-panel">
@@ -369,21 +550,25 @@ export function ExportPanel() {
 
           <ExportApplyBar
             applyRun={applyRun}
-            disabled={!plan || isApplyingPlan}
+            disabled={
+              !plan ||
+              isApplyingPlan ||
+              !plan.is_valid ||
+              Boolean(plan.locked_at) ||
+              Boolean(applyRun)
+            }
             isApplying={isApplyingPlan}
             onApply={() => setIsConfirmingApply(true)}
           />
         </main>
       )}
       <ConfirmDialog
-        confirmLabel={applyRun ? "Reapply Plan" : "Apply Export Plan"}
+        confirmLabel="Apply Export Plan"
         message={
-          applyRun
-            ? "This will re-run the same persisted plan and may replace managed export copies again. Create a fresh preview first if the library, matches, or export folder changed."
-            : "This will write files inside the managed export folder using the currently previewed plan. Review planned copy, stale removal, and deprecated preservation actions before applying."
+          "This will lock the current plan and write files inside the managed export folder using the row order shown above. Create a fresh preview after meaningful library or match changes."
         }
         open={isConfirmingApply}
-        title={applyRun ? "Reapply this export plan?" : "Apply this export plan?"}
+        title="Apply this export plan?"
         onCancel={() => setIsConfirmingApply(false)}
         onConfirm={() => {
           void handleApplyPlan();
@@ -479,46 +664,237 @@ function ExportActionCard({ action, count }: { action: ExportAction; count: numb
 
 type ExportActionLogProps = {
   items: ExportPlanItemRead[];
+  selectedActionIds: Set<string>;
+  expandedActionIds: Set<string>;
+  applyResultsByPlanItemId: Map<string, ExportApplyItemResultRead>;
+  isLocked: boolean;
+  isUpdating: boolean;
+  sensors: ReturnType<typeof useSensors>;
+  validationMessage: string | null;
+  onDeleteSelected: () => void;
+  onDragEnd: (event: DragEndEvent) => void;
+  onSelectAction: (
+    itemId: string,
+    checked: boolean,
+    event: MouseEvent<HTMLInputElement>,
+  ) => void;
+  onToggleExpanded: (itemId: string) => void;
 };
 
-function ExportActionLog({ items }: ExportActionLogProps) {
+function ExportActionLog({
+  items,
+  selectedActionIds,
+  expandedActionIds,
+  applyResultsByPlanItemId,
+  isLocked,
+  isUpdating,
+  sensors,
+  validationMessage,
+  onDeleteSelected,
+  onDragEnd,
+  onSelectAction,
+  onToggleExpanded,
+}: ExportActionLogProps) {
+  const selectedCount = selectedActionIds.size;
   return (
     <section className="export-plan-panel">
       <header>
         <h3>Filesystem Changes</h3>
         <span>
-          <Filter size={14} /> Planned Changes
+          <Filter size={14} /> {isLocked ? "Locked Plan" : "Editable Plan"}
         </span>
       </header>
+      <div className="export-plan-toolbar">
+        <span>
+          {formatNumber(items.length)} actions / {formatNumber(selectedCount)} selected
+        </span>
+        <Button
+          disabled={selectedCount === 0 || isLocked || isUpdating}
+          icon={isUpdating ? <Loader2 className="spin-icon" size={16} /> : <Trash2 size={16} />}
+          onClick={onDeleteSelected}
+        >
+          Delete Selected
+        </Button>
+      </div>
+      {validationMessage ? (
+        <div className="export-plan-validation">
+          <AlertTriangle size={16} />
+          <span>{validationMessage}</span>
+        </div>
+      ) : null}
       {items.length === 0 ? (
         <EmptyState
           title="No filesystem changes required"
           description="The selected playlists already match the current managed export state."
         />
       ) : (
-        <div className="export-action-table-wrap">
-          <table className="export-action-table">
-            <thead>
-              <tr>
-                <th>Action</th>
-                <th>Source / Reason</th>
-                <th aria-label="Flow" />
-                <th>Target</th>
-              </tr>
-            </thead>
-            <tbody>
+        <DndContext collisionDetection={closestCenter} sensors={sensors} onDragEnd={onDragEnd}>
+          <SortableContext
+            items={items.map((item) => item.export_plan_item_id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="export-action-list">
               {items.map((item, index) => (
-                <ExportActionRow
+                <SortableExportActionRow
+                  applyResult={applyResultsByPlanItemId.get(item.export_plan_item_id) ?? null}
+                  expanded={expandedActionIds.has(item.export_plan_item_id)}
                   index={index}
+                  isLocked={isLocked}
+                  isSelected={selectedActionIds.has(item.export_plan_item_id)}
+                  isUpdating={isUpdating}
                   item={item}
-                  key={`${item.action}-${item.target_path}-${index}`}
+                  key={item.export_plan_item_id}
+                  onSelectAction={onSelectAction}
+                  onToggleExpanded={onToggleExpanded}
                 />
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
     </section>
+  );
+}
+
+type SortableExportActionRowProps = {
+  item: ExportPlanItemRead;
+  applyResult: ExportApplyItemResultRead | null;
+  index: number;
+  isSelected: boolean;
+  isLocked: boolean;
+  isUpdating: boolean;
+  expanded: boolean;
+  onSelectAction: (
+    itemId: string,
+    checked: boolean,
+    event: MouseEvent<HTMLInputElement>,
+  ) => void;
+  onToggleExpanded: (itemId: string) => void;
+};
+
+function SortableExportActionRow({
+  item,
+  applyResult,
+  index,
+  isSelected,
+  isLocked,
+  isUpdating,
+  expanded,
+  onSelectAction,
+  onToggleExpanded,
+}: SortableExportActionRowProps) {
+  const sortable = useSortable({ id: item.export_plan_item_id, disabled: isLocked || isUpdating });
+  const action = actionMeta(item.action);
+  const status = applyResult ? applyItemStatusMeta(applyResult.status) : null;
+  const sourceText = item.source_path ?? item.reason ?? "No source path";
+  const hasDetails =
+    Boolean(item.validation_error_message) ||
+    Boolean(applyResult?.error_message) ||
+    Boolean(applyResult?.error_code);
+  const style = {
+    transform: CSS.Transform.toString(sortable.transform),
+    transition: sortable.transition,
+  };
+
+  return (
+    <article
+      className={[
+        "export-action-list-row",
+        index % 2 === 0 ? undefined : "export-action-list-row--alt",
+        isSelected ? "is-selected" : undefined,
+        item.validation_error_code ? "has-validation-error" : undefined,
+        applyResult?.status === "failed" ? "has-apply-error" : undefined,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      ref={sortable.setNodeRef}
+      style={style}
+    >
+      <div className="export-action-list-row__main">
+        <button
+          className="export-row-icon-button"
+          disabled={isLocked || isUpdating}
+          type="button"
+          title="Drag action"
+          {...sortable.attributes}
+          {...sortable.listeners}
+        >
+          <GripVertical size={16} />
+        </button>
+        <input
+          checked={isSelected}
+          disabled={isLocked || isUpdating}
+          readOnly
+          type="checkbox"
+          aria-label={`Select ${action.shortLabel} action`}
+          onClick={(event) => {
+            onSelectAction(item.export_plan_item_id, event.currentTarget.checked, event);
+          }}
+        />
+        <span className="export-action-position">{item.position + 1}</span>
+        <span className={["export-action-badge", `export-action-badge--${action.tone}`].join(" ")}>
+          {action.icon}
+          {action.shortLabel}
+        </span>
+        <span className="export-action-list-row__path" title={sourceText}>
+          {sourceText}
+        </span>
+        <ArrowRight className="export-action-list-row__flow" size={15} />
+        <span
+          className={[
+            "export-action-list-row__path",
+            item.action === "remove_duplicate_copy" || item.action === "remove_stale_copy"
+              ? "export-action-remove-target"
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          title={item.target_path}
+        >
+          {item.target_path}
+        </span>
+        {status ? (
+          <span className={["export-result-status", `export-result-status--${status.tone}`].join(" ")}>
+            {status.icon}
+            {status.shortLabel}
+          </span>
+        ) : null}
+        <button
+          className="export-row-icon-button"
+          disabled={!hasDetails}
+          type="button"
+          title="Action details"
+          onClick={() => onToggleExpanded(item.export_plan_item_id)}
+        >
+          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </button>
+      </div>
+      {expanded && hasDetails ? (
+        <div className="export-action-list-row__details">
+          {item.validation_error_message ? (
+            <p>
+              <strong>{item.validation_error_code}</strong> {item.validation_error_message}
+            </p>
+          ) : null}
+          {applyResult?.error_message || applyResult?.error_code ? (
+            <p>
+              <strong>{applyResult.error_code ?? "apply_error"}</strong>{" "}
+              {applyResult.error_message ?? "The action failed while applying."}
+            </p>
+          ) : null}
+          <dl>
+            <div>
+              <dt>Source</dt>
+              <dd>{sourceText}</dd>
+            </div>
+            <div>
+              <dt>Target</dt>
+              <dd>{item.target_path}</dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
+    </article>
   );
 }
 
@@ -530,14 +906,21 @@ type ExportApplyBarProps = {
 };
 
 function ExportApplyBar({ applyRun, disabled, isApplying, onApply }: ExportApplyBarProps) {
+  const isRunning = applyRun?.status === "queued" || applyRun?.status === "running";
   return (
     <section className="export-apply-bar" aria-label="Apply export plan">
       <div>
-        <strong>{applyRun ? "This persisted plan has been applied." : "Ready to commit the previewed plan."}</strong>
+        <strong>
+          {applyRun
+            ? isRunning
+              ? "Export apply is running."
+              : "This plan is locked after apply."
+            : "Ready to commit the previewed plan."}
+        </strong>
         <span>
           {applyRun
-            ? "Reapply only if you intentionally want to run this same plan again. Create a fresh preview after meaningful library or match changes."
-            : "Applying writes only through the backend using the saved plan above. No fresh plan is generated implicitly."}
+            ? "Create a fresh preview for any further order or removal changes."
+            : "Applying writes only through the backend using the saved action order above. No fresh plan is generated implicitly."}
         </span>
       </div>
       <Button
@@ -546,7 +929,7 @@ function ExportApplyBar({ applyRun, disabled, isApplying, onApply }: ExportApply
         variant="primary"
         onClick={onApply}
       >
-        {isApplying ? "Applying" : applyRun ? "Reapply Plan" : "Apply Export Plan"}
+        {isApplying ? "Starting" : "Apply Export Plan"}
       </Button>
     </section>
   );
@@ -731,6 +1114,12 @@ function applyRunStatusMeta(status: ExportApplyRunStatus): {
   label: string;
   tone: "success" | "warning" | "danger";
 } {
+  if (status === "queued") {
+    return { label: "Export queued", tone: "warning" };
+  }
+  if (status === "running") {
+    return { label: "Export running", tone: "warning" };
+  }
   if (status === "completed") {
     return { label: "Export completed", tone: "success" };
   }
@@ -746,6 +1135,22 @@ function applyItemStatusMeta(status: ExportApplyItemStatus): {
   tone: "success" | "warning" | "danger";
   icon: ReactNode;
 } {
+  if (status === "pending") {
+    return {
+      countLabel: "Pending",
+      shortLabel: "Pending",
+      tone: "warning",
+      icon: <Loader2 size={16} />,
+    };
+  }
+  if (status === "running") {
+    return {
+      countLabel: "Running",
+      shortLabel: "Running",
+      tone: "warning",
+      icon: <Loader2 className="spin-icon" size={16} />,
+    };
+  }
   if (status === "succeeded") {
     return {
       countLabel: "Succeeded",
@@ -848,7 +1253,7 @@ function countApplyStatuses(items: ExportApplyItemResultRead[]) {
       counts[item.status] += 1;
       return counts;
     },
-    { succeeded: 0, failed: 0, skipped: 0 },
+    { pending: 0, running: 0, succeeded: 0, failed: 0, skipped: 0 },
   );
 }
 

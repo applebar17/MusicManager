@@ -139,7 +139,7 @@ def test_apply_export_plan_records_partial_failures_and_continues(
     assert good_target.read_bytes() == b"audio"
 
 
-def test_apply_export_plan_is_idempotent_for_existing_outputs(
+def test_apply_export_plan_locks_plan_after_apply(
     sqlite_connection: sqlite3.Connection,
     tmp_path: Path,
 ) -> None:
@@ -174,10 +174,12 @@ def test_apply_export_plan_is_idempotent_for_existing_outputs(
 
     _apply_export_plan(repositories).execute("env_1", "plan_1")
     target.write_bytes(b"older managed copy")
-    second = _apply_export_plan(repositories).execute("env_1", "plan_1")
 
-    assert target.read_bytes() == b"fresh audio"
-    assert second.status == ExportApplyRunStatus.COMPLETED
+    with pytest.raises(ValidationError) as exc_info:
+        _apply_export_plan(repositories).execute("env_1", "plan_1")
+
+    assert exc_info.value.code == "export_plan_locked"
+    assert target.read_bytes() == b"older managed copy"
 
 
 def test_apply_export_plan_preserves_deprecated_before_removing_stale_source(
