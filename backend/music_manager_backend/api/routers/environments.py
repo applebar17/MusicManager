@@ -41,6 +41,7 @@ from music_manager_backend.application.dtos import (
     MatchingRunSummary,
     MatchReviewRow,
     PlaylistDetailRead,
+    PlaylistLocalItemCreate,
     PlaylistSummaryRead,
     ScanSummaryRead,
     SoundCloudPlaylistImportRequest,
@@ -83,6 +84,10 @@ from music_manager_backend.application.use_cases.list_manual_audio_file_candidat
 from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
 from music_manager_backend.application.use_cases.list_unmanaged_files import ListUnmanagedFiles
 from music_manager_backend.application.use_cases.match_downloads import MatchDownloads
+from music_manager_backend.application.use_cases.manage_playlist_local_items import (
+    AddPlaylistLocalItem,
+    RemovePlaylistLocalItem,
+)
 from music_manager_backend.application.use_cases.plan_export import PlanExport
 from music_manager_backend.application.use_cases.run_matching import RunMatching
 from music_manager_backend.application.use_cases.scan_environment import ScanEnvironment
@@ -701,6 +706,60 @@ def get_playlist_detail(
         match_links=match_links,
         source_discoveries=source_discoveries,
     ).execute(environment_id, playlist_id)
+
+
+@router.post(
+    "/{environment_id}/playlists/{playlist_id}/local-items",
+    response_model=PlaylistDetailRead,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("add_playlist_local_item"))],
+)
+def add_playlist_local_item(
+    environment_id: str,
+    playlist_id: str,
+    data: PlaylistLocalItemCreate,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+    source_discoveries: SourceDiscoveryRepositoryDependency,
+) -> PlaylistDetailRead:
+    return AddPlaylistLocalItem(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+        source_discoveries=source_discoveries,
+    ).execute(environment_id, playlist_id, data.audio_file_id)
+
+
+@router.delete(
+    "/{environment_id}/playlists/{playlist_id}/local-items/{song_id}",
+    response_model=PlaylistDetailRead,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("remove_playlist_local_item"))],
+)
+def remove_playlist_local_item(
+    environment_id: str,
+    playlist_id: str,
+    song_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    audio_files: AudioFileRepositoryDependency,
+    match_links: MatchLinkRepositoryDependency,
+    source_discoveries: SourceDiscoveryRepositoryDependency,
+) -> PlaylistDetailRead:
+    return RemovePlaylistLocalItem(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        audio_files=audio_files,
+        match_links=match_links,
+        source_discoveries=source_discoveries,
+    ).execute(environment_id, playlist_id, song_id)
 
 
 @router.post(

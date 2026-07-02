@@ -93,6 +93,9 @@ export type PlaylistItemRead = {
   artist: string | null;
   duration_seconds: number | null;
   remote_membership_active: boolean;
+  local_membership_active: boolean;
+  added_by_local_audio_file_id: string | null;
+  remote_removed_at: string | null;
   match_status: MatchStatus;
   accepted_audio_file_id: string | null;
   accepted_audio_filename?: string | null;
@@ -110,6 +113,11 @@ export type PlaylistDetailRead = {
   active_item_count: number;
   inactive_item_count: number;
   items: PlaylistItemRead[];
+  removed_items: PlaylistItemRead[];
+};
+
+export type PlaylistLocalItemCreate = {
+  audio_file_id: string;
 };
 
 export type MatchCandidateRead = {

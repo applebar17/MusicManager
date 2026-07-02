@@ -22,6 +22,7 @@ from music_manager_backend.ports.soundcloud_models import (
 )
 from music_manager_backend.shared.errors import NotFoundError, ValidationError
 from music_manager_backend.shared.ids import new_id
+from music_manager_backend.shared.time import utc_now_iso
 
 SOUNDCLOUD_SOURCE = "soundcloud"
 
@@ -163,15 +164,21 @@ class ImportSoundCloudPlaylist:
                 song_id=item.song.id,
                 position=item.track.position,
                 remote_membership_active=True,
+                local_membership_active=existing_items.get(
+                    item.song.id,
+                    PlaylistItem(song_id=item.song.id, position=item.track.position),
+                ).local_membership_active,
+                added_by_local_audio_file_id=existing_items.get(
+                    item.song.id,
+                    PlaylistItem(song_id=item.song.id, position=item.track.position),
+                ).added_by_local_audio_file_id,
+                remote_removed_at=None,
             )
             for item in imported_tracks
         ]
+        removed_at = utc_now_iso()
         items.extend(
-            PlaylistItem(
-                song_id=item.song_id,
-                position=item.position,
-                remote_membership_active=False,
-            )
+            _remote_removed_item(item, removed_at=removed_at)
             for item in existing_items.values()
             if item.song_id not in imported_song_ids
         )
@@ -288,3 +295,15 @@ def _snapshot_payload(parsed: ParsedSoundCloudPlaylist) -> dict[str, object]:
             for track in parsed.tracks
         ],
     }
+
+
+def _remote_removed_item(item: PlaylistItem, *, removed_at: str) -> PlaylistItem:
+    was_remote_active = item.remote_membership_active
+    return PlaylistItem(
+        song_id=item.song_id,
+        position=item.position,
+        remote_membership_active=False,
+        local_membership_active=item.local_membership_active,
+        added_by_local_audio_file_id=item.added_by_local_audio_file_id,
+        remote_removed_at=item.remote_removed_at or (removed_at if was_remote_active else None),
+    )

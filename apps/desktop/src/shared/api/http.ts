@@ -46,6 +46,10 @@ export async function apiPatch<TResponse, TBody = unknown>(
   });
 }
 
+export async function apiDelete<TResponse>(path: string, init?: RequestInit): Promise<TResponse> {
+  return apiRequest<TResponse>(path, { ...init, method: "DELETE" });
+}
+
 export async function apiRequest<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,

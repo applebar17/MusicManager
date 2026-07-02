@@ -13,7 +13,7 @@ from music_manager_backend.application.use_cases.sync_all_soundcloud_playlists i
 from music_manager_backend.application.use_cases.sync_soundcloud_playlist import (
     SyncSoundCloudPlaylist,
 )
-from music_manager_backend.domain.entities import MusicEnvironment, Playlist, SongMaster
+from music_manager_backend.domain.entities import MusicEnvironment, Playlist, PlaylistItem, SongMaster
 from music_manager_backend.infrastructure.persistence import (
     SqliteEnvironmentRepository,
     SqlitePlaylistRepository,
@@ -160,6 +160,67 @@ def test_import_detects_added_removed_reactivated_reordered_and_metadata_changes
     assert third.reactivated == 1
     assert third.reordered == 2
     assert third.unchanged == 0
+
+
+def test_sync_moves_removed_remote_tracks_to_history_without_losing_local_items(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    repositories.environments.save(
+        MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
+    )
+    importer = FakeSoundCloudImporter(
+        [
+            _playlist(
+                (
+                    _track(1, "One", "artist/one"),
+                    _track(2, "Two", "artist/two"),
+                )
+            ),
+            _playlist((_track(1, "Two", "artist/two"),)),
+        ]
+    )
+    use_case = _use_case(repositories, importer)
+
+    first = use_case.execute("env_1", SOURCE_URL)
+    playlist = repositories.playlists.get(first.playlist_id)
+    assert playlist is not None
+    local_song = SongMaster(id="song_local", title="Local Only")
+    repositories.songs.save(local_song)
+    repositories.playlists.save(
+        Playlist(
+            id=playlist.id,
+            environment_id=playlist.environment_id,
+            name=playlist.name,
+            remote_playlist_id=playlist.remote_playlist_id,
+            items=(
+                *playlist.items,
+                PlaylistItem(
+                    song_id=local_song.id,
+                    position=3,
+                    remote_membership_active=False,
+                    local_membership_active=True,
+                    added_by_local_audio_file_id="audio_local",
+                ),
+            ),
+        )
+    )
+
+    result = use_case.execute("env_1", SOURCE_URL)
+
+    assert result.removed == 1
+    updated = repositories.playlists.get(first.playlist_id)
+    assert updated is not None
+    active = [item for item in updated.items if item.is_active]
+    removed = [item for item in updated.items if item.is_removed_history]
+    assert [item.position for item in active] == [1, 3]
+    assert [repositories.songs.get(item.song_id).title for item in active] == [
+        "Two",
+        "Local Only",
+    ]
+    assert len(removed) == 1
+    assert repositories.songs.get(removed[0].song_id).title == "One"
+    assert removed[0].remote_removed_at is not None
 
 
 def test_import_preserves_local_overrides(sqlite_connection: sqlite3.Connection) -> None:

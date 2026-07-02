@@ -14,6 +14,17 @@ class PlaylistItem:
     song_id: str
     position: int
     remote_membership_active: bool = True
+    local_membership_active: bool = False
+    added_by_local_audio_file_id: str | None = None
+    remote_removed_at: str | None = None
+
+    @property
+    def is_active(self) -> bool:
+        return self.remote_membership_active or self.local_membership_active
+
+    @property
+    def is_removed_history(self) -> bool:
+        return not self.remote_membership_active and not self.local_membership_active
 
 
 @dataclass(frozen=True)

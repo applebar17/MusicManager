@@ -34,15 +34,20 @@ class SqliteMatchLinkRepository:
             (song_id,),
         ).fetchall()
         return [
-            MatchLink(
-                song_id=cast(str, row["song_id"]),
-                audio_file_id=cast(str, row["audio_file_id"]),
-                method=cast(str, row["method"]),
-                confidence=cast(float, row["confidence"]),
-                reviewed=bool(cast(int, row["reviewed"])),
-            )
+            _match_link_from_row(row)
             for row in rows
         ]
+
+    def list_by_audio_file(self, audio_file_id: str) -> list[MatchLink]:
+        rows = self.connection.execute(
+            """
+            SELECT * FROM match_links
+            WHERE audio_file_id = ?
+            ORDER BY reviewed DESC, confidence DESC, song_id
+            """,
+            (audio_file_id,),
+        ).fetchall()
+        return [_match_link_from_row(row) for row in rows]
 
     def delete_automatic_by_song(self, song_id: str) -> None:
         self.connection.execute(
@@ -91,3 +96,13 @@ class SqliteMatchLinkRepository:
             ),
         )
         self.connection.commit()
+
+
+def _match_link_from_row(row: sqlite3.Row) -> MatchLink:
+    return MatchLink(
+        song_id=cast(str, row["song_id"]),
+        audio_file_id=cast(str, row["audio_file_id"]),
+        method=cast(str, row["method"]),
+        confidence=cast(float, row["confidence"]),
+        reviewed=bool(cast(int, row["reviewed"])),
+    )

@@ -30,6 +30,7 @@ from music_manager_backend.application.dtos.matching import (
 from music_manager_backend.application.dtos.playlist import (
     PlaylistDetailRead,
     PlaylistItemRead,
+    PlaylistLocalItemCreate,
     PlaylistSummaryRead,
 )
 from music_manager_backend.application.dtos.soundcloud import (
@@ -75,6 +76,7 @@ __all__ = [
     "MatchReviewRow",
     "PlaylistDetailRead",
     "PlaylistItemRead",
+    "PlaylistLocalItemCreate",
     "PlaylistSummaryRead",
     "ScanSummaryRead",
     "SoundCloudPlaylistImportRequest",

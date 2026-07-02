@@ -2,19 +2,24 @@ import {
   AlertTriangle,
   CheckCircle2,
   ExternalLink,
+  FileAudio,
   Link2,
   ListMusic,
+  Plus,
   PlayCircle,
   RefreshCw,
   Search,
   ShoppingCart,
   TriangleAlert,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
 import { ApiError, getApiBaseUrl } from "../../shared/api/http";
 import type {
+  AudioFileRead,
   MatchStatus,
   PlaylistDetailRead,
   PlaylistItemRead,
@@ -26,9 +31,12 @@ import type {
 import { useAppState } from "../../shared/state";
 import { Button, EmptyState, ErrorBanner, LoadingState, Panel, StatusBadge } from "../../shared/ui";
 import {
+  addPlaylistLocalItem,
   getPlaylistDetail,
   importSoundCloudPlaylist,
+  listPlaylistLocalFileCandidates,
   listPlaylists,
+  removePlaylistLocalItem,
   syncAllSoundCloudPlaylists,
   syncSoundCloudPlaylist,
 } from "./api";
@@ -45,11 +53,17 @@ export function PlaylistPanel() {
   const [playlistSearch, setPlaylistSearch] = useState("");
   const [trackSearch, setTrackSearch] = useState("");
   const [trackStatusFilter, setTrackStatusFilter] = useState<TrackStatusFilter>("all");
+  const [isLocalDialogOpen, setIsLocalDialogOpen] = useState(false);
+  const [localFileCandidates, setLocalFileCandidates] = useState<AudioFileRead[]>([]);
+  const [localFileSearch, setLocalFileSearch] = useState("");
   const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isLoadingLocalFiles, setIsLoadingLocalFiles] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isSyncingPlaylist, setIsSyncingPlaylist] = useState(false);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [isAddingLocalItem, setIsAddingLocalItem] = useState(false);
+  const [removingLocalSongId, setRemovingLocalSongId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const selectedPlaylist = useMemo(
@@ -114,9 +128,12 @@ export function PlaylistPanel() {
     setSyncAllResult(null);
     setImportUrl("");
     setPlaylistSearch("");
-    setTrackSearch("");
-    setTrackStatusFilter("all");
-  }, [selectedEnvironmentId]);
+      setTrackSearch("");
+      setTrackStatusFilter("all");
+      setIsLocalDialogOpen(false);
+      setLocalFileCandidates([]);
+      setLocalFileSearch("");
+    }, [selectedEnvironmentId]);
 
   useEffect(() => {
     if (!selectedEnvironmentId || !selectedPlaylistId) {
@@ -225,6 +242,63 @@ export function PlaylistPanel() {
     }
   }
 
+  async function handleOpenLocalFileDialog() {
+    if (!selectedEnvironmentId) {
+      setError("Select an environment before adding a local file.");
+      return;
+    }
+    setIsLocalDialogOpen(true);
+    setIsLoadingLocalFiles(true);
+    setError(null);
+    try {
+      setLocalFileCandidates(await listPlaylistLocalFileCandidates(selectedEnvironmentId));
+    } catch (loadError) {
+      setError(errorMessage(loadError));
+    } finally {
+      setIsLoadingLocalFiles(false);
+    }
+  }
+
+  async function handleAddLocalFile(audioFileId: string) {
+    if (!selectedEnvironmentId || !selectedPlaylistId) {
+      setError("Select a playlist before adding a local file.");
+      return;
+    }
+    setIsAddingLocalItem(true);
+    setError(null);
+    try {
+      const detail = await addPlaylistLocalItem(selectedEnvironmentId, selectedPlaylistId, {
+        audio_file_id: audioFileId,
+      });
+      setPlaylistDetail(detail);
+      setPlaylists(await listPlaylists(selectedEnvironmentId));
+      setIsLocalDialogOpen(false);
+      setLocalFileSearch("");
+    } catch (addError) {
+      setError(errorMessage(addError));
+    } finally {
+      setIsAddingLocalItem(false);
+    }
+  }
+
+  async function handleRemoveLocalItem(songId: string) {
+    if (!selectedEnvironmentId || !selectedPlaylistId) {
+      setError("Select a playlist before removing a local file.");
+      return;
+    }
+    setRemovingLocalSongId(songId);
+    setError(null);
+    try {
+      const detail = await removePlaylistLocalItem(selectedEnvironmentId, selectedPlaylistId, songId);
+      setPlaylistDetail(detail);
+      setPlaylists(await listPlaylists(selectedEnvironmentId));
+    } catch (removeError) {
+      setError(errorMessage(removeError));
+    } finally {
+      setRemovingLocalSongId(null);
+    }
+  }
+
   return (
     <div className="playlist-workspace">
       <PlaylistTopBar />
@@ -314,9 +388,12 @@ export function PlaylistPanel() {
               <PlaylistDetailView
                 detail={playlistDetail}
                 isSyncingPlaylist={isSyncingPlaylist}
+                removingLocalSongId={removingLocalSongId}
                 statusFilter={trackStatusFilter}
                 summary={selectedPlaylist}
                 onSyncPlaylist={handleSyncSelectedPlaylist}
+                onOpenAddLocalFile={handleOpenLocalFileDialog}
+                onRemoveLocalItem={handleRemoveLocalItem}
                 trackSearch={trackSearch}
                 onStatusFilterChange={setTrackStatusFilter}
                 onTrackSearchChange={setTrackSearch}
@@ -325,6 +402,17 @@ export function PlaylistPanel() {
           </main>
         </div>
       )}
+      {isLocalDialogOpen ? (
+        <LocalFileDialog
+          candidates={localFileCandidates}
+          isAdding={isAddingLocalItem}
+          isLoading={isLoadingLocalFiles}
+          query={localFileSearch}
+          onAdd={handleAddLocalFile}
+          onClose={() => setIsLocalDialogOpen(false)}
+          onQueryChange={setLocalFileSearch}
+        />
+      ) : null}
     </div>
   );
 }
@@ -540,22 +628,28 @@ function importWarningMessages(warnings: readonly string[]) {
 type PlaylistDetailViewProps = {
   detail: PlaylistDetailRead;
   isSyncingPlaylist: boolean;
+  removingLocalSongId: string | null;
   statusFilter: TrackStatusFilter;
   summary: PlaylistSummaryRead;
   trackSearch: string;
+  onOpenAddLocalFile: () => void;
+  onRemoveLocalItem: (songId: string) => void;
   onSyncPlaylist: () => void;
   onStatusFilterChange: (filter: TrackStatusFilter) => void;
   onTrackSearchChange: (query: string) => void;
 };
 
-type TrackStatusFilter = "all" | MatchStatus | "inactive";
+type TrackStatusFilter = "all" | MatchStatus;
 
 function PlaylistDetailView({
   detail,
   isSyncingPlaylist,
+  removingLocalSongId,
   statusFilter,
   summary,
   trackSearch,
+  onOpenAddLocalFile,
+  onRemoveLocalItem,
   onSyncPlaylist,
   onStatusFilterChange,
   onTrackSearchChange,
@@ -570,10 +664,7 @@ function PlaylistDetailView({
           (item.artist ?? "").toLowerCase().includes(query) ||
           item.song_id.toLowerCase().includes(query);
         const matchesStatus =
-          statusFilter === "all" ||
-          (statusFilter === "inactive"
-            ? !item.remote_membership_active
-            : item.match_status === statusFilter);
+          statusFilter === "all" || item.match_status === statusFilter;
         return matchesText && matchesStatus;
       }),
     [detail.items, statusFilter, trackSearch],
@@ -587,7 +678,7 @@ function PlaylistDetailView({
           <h2>{detail.name}</h2>
           <div className="playlist-chip-row">
             <span className="playlist-chip playlist-chip--neutral">
-              {formatNumber(detail.active_item_count + detail.inactive_item_count)} Tracks
+              {formatNumber(detail.active_item_count)} Tracks
             </span>
             <span className="playlist-chip playlist-chip--success">
               {formatNumber(summary.matched_count)} Matched
@@ -603,13 +694,16 @@ function PlaylistDetailView({
             </span>
             {detail.inactive_item_count > 0 ? (
               <span className="playlist-chip playlist-chip--neutral">
-                {formatNumber(detail.inactive_item_count)} Inactive
+                {formatNumber(detail.inactive_item_count)} Removed
               </span>
             ) : null}
           </div>
         </div>
-        {summary.remote_playlist_id ? (
-          <div className="playlist-detail-header__actions">
+        <div className="playlist-detail-header__actions">
+          <Button icon={<Plus size={16} />} type="button" onClick={onOpenAddLocalFile}>
+            Add Local File
+          </Button>
+          {summary.remote_playlist_id ? (
             <Button
               disabled={isSyncingPlaylist}
               icon={<RefreshCw size={16} />}
@@ -618,8 +712,8 @@ function PlaylistDetailView({
             >
               {isSyncingPlaylist ? "Syncing" : "Sync Playlist"}
             </Button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </header>
 
       <div className="playlist-detail-tools">
@@ -642,7 +736,6 @@ function PlaylistDetailView({
           <option value="manually_mapped">Manual</option>
           <option value="missing_audio">Missing</option>
           <option value="ambiguous">Ambiguous</option>
-          <option value="inactive">Inactive membership</option>
         </select>
         <span>{formatNumber(filteredItems.length)} visible</span>
       </div>
@@ -657,11 +750,17 @@ function PlaylistDetailView({
               <th>Dur</th>
               <th>Status</th>
               <th>Accepted Audio</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredItems.map((item) => (
-              <PlaylistTrackRow item={item} key={`${item.song_id}-${item.position}`} />
+              <PlaylistTrackRow
+                item={item}
+                key={`${item.song_id}-${item.position}`}
+                isRemovingLocal={removingLocalSongId === item.song_id}
+                onRemoveLocalItem={onRemoveLocalItem}
+              />
             ))}
           </tbody>
         </table>
@@ -671,15 +770,24 @@ function PlaylistDetailView({
           </div>
         ) : null}
       </div>
+
+      <RemovedFromSoundCloudPanel items={detail.removed_items} />
     </section>
   );
 }
 
-function PlaylistTrackRow({ item }: { item: PlaylistItemRead }) {
+function PlaylistTrackRow({
+  item,
+  isRemovingLocal,
+  onRemoveLocalItem,
+}: {
+  item: PlaylistItemRead;
+  isRemovingLocal?: boolean;
+  onRemoveLocalItem?: (songId: string) => void;
+}) {
   const rowClassName = [
     "playlist-track-row",
     item.match_status === "ambiguous" ? "is-ambiguous" : "",
-    !item.remote_membership_active ? "is-inactive" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -690,7 +798,7 @@ function PlaylistTrackRow({ item }: { item: PlaylistItemRead }) {
       <td className="track-title-cell">
         <strong>{item.title}</strong>
         <span>{item.artist ?? "Unknown artist"}</span>
-        {!item.remote_membership_active ? <em>Inactive remote membership</em> : null}
+        <em>{playlistItemSourceLabel(item)}</em>
       </td>
       <td>
         <SourceInfoCell discovery={item.source_discovery} />
@@ -702,8 +810,152 @@ function PlaylistTrackRow({ item }: { item: PlaylistItemRead }) {
       <td>
         <AcceptedAudioCell item={item} />
       </td>
+      <td>
+        {item.local_membership_active && onRemoveLocalItem ? (
+          <button
+            className="icon-button"
+            disabled={isRemovingLocal}
+            type="button"
+            title="Remove local membership"
+            onClick={() => onRemoveLocalItem(item.song_id)}
+          >
+            <Trash2 size={15} />
+          </button>
+        ) : null}
+      </td>
     </tr>
   );
+}
+
+function RemovedFromSoundCloudPanel({ items }: { items: PlaylistItemRead[] }) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <details className="playlist-removed-panel">
+      <summary>
+        <span>Removed from SoundCloud</span>
+        <strong>{formatNumber(items.length)}</strong>
+      </summary>
+      <div className="playlist-removed-list">
+        {items.map((item) => (
+          <div className="playlist-removed-row" key={`${item.song_id}-${item.position}`}>
+            <span className="track-position">{item.position}</span>
+            <span>
+              <strong>{item.title}</strong>
+              <em>
+                {item.artist ?? "Unknown artist"}
+                {item.remote_removed_at ? ` · ${formatDateTime(item.remote_removed_at)}` : ""}
+              </em>
+            </span>
+            <MatchStatusPill status={item.match_status} />
+            <AcceptedAudioCell item={item} />
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+type LocalFileDialogProps = {
+  candidates: AudioFileRead[];
+  isAdding: boolean;
+  isLoading: boolean;
+  query: string;
+  onAdd: (audioFileId: string) => void;
+  onClose: () => void;
+  onQueryChange: (query: string) => void;
+};
+
+function LocalFileDialog({
+  candidates,
+  isAdding,
+  isLoading,
+  query,
+  onAdd,
+  onClose,
+  onQueryChange,
+}: LocalFileDialogProps) {
+  const filteredCandidates = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return candidates;
+    }
+    return candidates.filter((file) => {
+      const haystack = [
+        file.path,
+        file.title ?? "",
+        file.artist ?? "",
+        file.album ?? "",
+        audioFileName(file),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [candidates, query]);
+
+  return (
+    <div className="playlist-dialog-backdrop">
+      <section
+        aria-labelledby="playlist-local-file-title"
+        aria-modal="true"
+        className="playlist-local-dialog"
+        role="dialog"
+      >
+        <header>
+          <div>
+            <span className="soundcloud-badge">Local File</span>
+            <h2 id="playlist-local-file-title">Add Local File</h2>
+          </div>
+          <button className="icon-button" type="button" title="Close" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <label className="playlist-search-field playlist-search-field--wide">
+          <Search size={14} />
+          <input
+            aria-label="Search local files"
+            placeholder="Search filename, title, artist, or path..."
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+          />
+        </label>
+        {isLoading ? <LoadingState label="Loading local files" /> : null}
+        {!isLoading && filteredCandidates.length === 0 ? (
+          <div className="playlist-filter-empty">No scanned active files match this search.</div>
+        ) : null}
+        <div className="playlist-local-file-list">
+          {filteredCandidates.map((file) => (
+            <div className="playlist-local-file-row" key={file.id}>
+              <FileAudio size={17} />
+              <span>
+                <strong>{audioFileName(file)}</strong>
+                <em>
+                  {[file.title, file.artist].filter(Boolean).join(" · ") || file.path}
+                </em>
+              </span>
+              <span>{formatDuration(file.duration_seconds)}</span>
+              <Button disabled={isAdding} type="button" onClick={() => onAdd(file.id)}>
+                Add
+              </Button>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function playlistItemSourceLabel(item: PlaylistItemRead) {
+  if (item.remote_membership_active && item.local_membership_active) {
+    return "Remote + local";
+  }
+  if (item.local_membership_active) {
+    return "Local";
+  }
+  return "SoundCloud";
 }
 
 function SourceInfoCell({ discovery }: { discovery: SoundCloudTrackDiscoveryRead | null }) {
@@ -865,6 +1117,21 @@ function formatDuration(seconds: number | null) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
+function audioFileName(file: AudioFileRead) {
+  return file.path.split(/[\\/]/).pop() || file.path;
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function errorMessage(error: unknown) {

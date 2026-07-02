@@ -24,6 +24,9 @@ class PlaylistItemRead(BaseModel):
     artist: str | None = None
     duration_seconds: int | None = None
     remote_membership_active: bool
+    local_membership_active: bool
+    added_by_local_audio_file_id: str | None = None
+    remote_removed_at: str | None = None
     match_status: str
     accepted_audio_file_id: str | None = None
     accepted_audio_filename: str | None = None
@@ -41,3 +44,8 @@ class PlaylistDetailRead(BaseModel):
     active_item_count: int
     inactive_item_count: int
     items: list[PlaylistItemRead]
+    removed_items: list[PlaylistItemRead] = Field(default_factory=list)
+
+
+class PlaylistLocalItemCreate(BaseModel):
+    audio_file_id: str

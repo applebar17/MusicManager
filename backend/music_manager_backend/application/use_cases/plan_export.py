@@ -78,7 +78,7 @@ class PlanExport:
             if folder_item is not None:
                 items.append(folder_item)
             for playlist_item in playlist.items:
-                if not playlist_item.remote_membership_active:
+                if not playlist_item.is_active:
                     continue
                 song = self.songs.get(playlist_item.song_id)
                 if song is None:
@@ -230,7 +230,7 @@ def _active_song_ids(playlists: list[Playlist]) -> set[str]:
         item.song_id
         for playlist in playlists
         for item in playlist.items
-        if item.remote_membership_active
+        if item.is_active
     }
 
 
@@ -281,10 +281,10 @@ def _deprecated_items(
     layout: ExportLayout,
 ) -> list[ExportPlanItem]:
     deprecated_song_ids = {
-        item.song_id
-        for playlist in all_playlists
-        for item in playlist.items
-        if not item.remote_membership_active and item.song_id not in active_song_ids
+            item.song_id
+            for playlist in all_playlists
+            for item in playlist.items
+            if item.is_removed_history and item.song_id not in active_song_ids
     }
     items: list[ExportPlanItem] = []
     for song_id in sorted(deprecated_song_ids):

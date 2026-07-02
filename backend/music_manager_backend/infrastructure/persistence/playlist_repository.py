@@ -41,11 +41,22 @@ class SqlitePlaylistRepository:
                     playlist_id,
                     song_id,
                     position,
-                    remote_membership_active
+                    remote_membership_active,
+                    local_membership_active,
+                    added_by_local_audio_file_id,
+                    remote_removed_at
                 )
-                VALUES (?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (playlist.id, item.song_id, item.position, int(item.remote_membership_active)),
+                (
+                    playlist.id,
+                    item.song_id,
+                    item.position,
+                    int(item.remote_membership_active),
+                    int(item.local_membership_active),
+                    item.added_by_local_audio_file_id,
+                    item.remote_removed_at,
+                ),
             )
         self.connection.commit()
 
@@ -98,6 +109,9 @@ class SqlitePlaylistRepository:
                 song_id=cast(str, row["song_id"]),
                 position=cast(int, row["position"]),
                 remote_membership_active=bool(cast(int, row["remote_membership_active"])),
+                local_membership_active=bool(cast(int, row["local_membership_active"])),
+                added_by_local_audio_file_id=cast(str | None, row["added_by_local_audio_file_id"]),
+                remote_removed_at=cast(str | None, row["remote_removed_at"]),
             )
             for row in rows
         )

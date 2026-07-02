@@ -59,6 +59,49 @@ def test_export_plan_creates_folders_and_copy_items(
     assert not (root / "Set").exists()
 
 
+def test_export_plan_includes_local_playlist_items(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    source = _source_file(root, "local.mp3")
+    repositories.songs.save(SongMaster(id="song_local", title="Local", artist="Artist"))
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(
+                PlaylistItem(
+                    song_id="song_local",
+                    position=1,
+                    remote_membership_active=False,
+                    local_membership_active=True,
+                    added_by_local_audio_file_id="file_local",
+                ),
+            ),
+        ),
+    )
+    repositories.audio_files.save(_audio_file("file_local", source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_local",
+            audio_file_id="file_local",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    copy_items = [item for item in plan.items if item.action == ExportAction.COPY_FILE]
+    assert copy_items[0].source_path == source
+    assert copy_items[0].target_path == root / "Set" / "local.mp3"
+
+
 def test_export_plan_duplicates_shared_songs_per_playlist(
     sqlite_connection: sqlite3.Connection,
     tmp_path: Path,

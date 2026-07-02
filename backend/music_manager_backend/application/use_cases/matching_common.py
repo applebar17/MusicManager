@@ -38,6 +38,8 @@ def load_environment_songs(
     playlist_names_by_song_id: dict[str, set[str]] = {}
     for playlist in playlists.list_by_environment(environment_id):
         for item in playlist.items:
+            if not item.is_active:
+                continue
             playlist_names_by_song_id.setdefault(item.song_id, set()).add(playlist.display_name)
             if item.song_id in seen_song_ids:
                 continue

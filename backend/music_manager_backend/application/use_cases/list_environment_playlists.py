@@ -43,8 +43,8 @@ class ListEnvironmentPlaylists:
         }
         summaries: list[PlaylistSummaryRead] = []
         for playlist in self.playlists.list_by_environment(environment_id):
-            active_items = [item for item in playlist.items if item.remote_membership_active]
-            inactive_items = [item for item in playlist.items if not item.remote_membership_active]
+            active_items = [item for item in playlist.items if item.is_active]
+            inactive_items = [item for item in playlist.items if item.is_removed_history]
             statuses = Counter(
                 status_by_song.get(item.song_id, "missing_audio") for item in active_items
             )

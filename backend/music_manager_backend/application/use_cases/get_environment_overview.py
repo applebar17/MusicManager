@@ -35,15 +35,17 @@ class GetEnvironmentOverview:
 
         playlists = self.playlists.list_by_environment(environment_id)
         active_item_count = sum(
-            1 for playlist in playlists for item in playlist.items if item.remote_membership_active
+            1 for playlist in playlists for item in playlist.items if item.is_active
         )
         inactive_item_count = sum(
             1
             for playlist in playlists
             for item in playlist.items
-            if not item.remote_membership_active
+            if item.is_removed_history
         )
-        unique_song_ids = {item.song_id for playlist in playlists for item in playlist.items}
+        unique_song_ids = {
+            item.song_id for playlist in playlists for item in playlist.items if item.is_active
+        }
         active_audio_files = self.audio_files.list_by_environment(
             environment_id, status=AudioFileStatus.ACTIVE
         )

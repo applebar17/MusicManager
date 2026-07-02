@@ -1,6 +1,8 @@
-import { apiGet, apiPost } from "../../shared/api/http";
+import { apiDelete, apiGet, apiPost } from "../../shared/api/http";
 import type {
+  AudioFileRead,
   PlaylistDetailRead,
+  PlaylistLocalItemCreate,
   PlaylistSummaryRead,
   SoundCloudPlaylistSyncAllResult,
   SoundCloudPlaylistImportRequest,
@@ -13,6 +15,31 @@ export function listPlaylists(environmentId: string) {
 
 export function getPlaylistDetail(environmentId: string, playlistId: string) {
   return apiGet<PlaylistDetailRead>(`/environments/${environmentId}/playlists/${playlistId}`);
+}
+
+export function listPlaylistLocalFileCandidates(environmentId: string) {
+  return apiGet<AudioFileRead[]>(`/environments/${environmentId}/audio-files?status=active`);
+}
+
+export function addPlaylistLocalItem(
+  environmentId: string,
+  playlistId: string,
+  data: PlaylistLocalItemCreate,
+) {
+  return apiPost<PlaylistDetailRead, PlaylistLocalItemCreate>(
+    `/environments/${environmentId}/playlists/${playlistId}/local-items`,
+    data,
+  );
+}
+
+export function removePlaylistLocalItem(
+  environmentId: string,
+  playlistId: string,
+  songId: string,
+) {
+  return apiDelete<PlaylistDetailRead>(
+    `/environments/${environmentId}/playlists/${playlistId}/local-items/${songId}`,
+  );
 }
 
 export function importSoundCloudPlaylist(environmentId: string, url: string) {

@@ -1,10 +1,24 @@
 from pathlib import Path
 
-from music_manager_backend.application.dtos import PlaylistDetailRead, PlaylistItemRead
+from music_manager_backend.application.dtos import (
+    MatchReviewRow,
+    PlaylistDetailRead,
+    PlaylistItemRead,
+)
 from music_manager_backend.application.use_cases.discover_soundcloud_track import (
     stored_discovery_read,
 )
 from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
+from music_manager_backend.application.use_cases.match_link_selection import preferred_match_link
+from music_manager_backend.application.use_cases.matching_common import active_audio_files_by_id
+from music_manager_backend.domain.entities import (
+    AudioFile,
+    MatchStatus,
+    MusicEnvironment,
+    PlaylistItem,
+    SongMaster,
+)
+from music_manager_backend.domain.services.audio_quality import audio_warnings
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
@@ -54,61 +68,39 @@ class GetPlaylistDetail:
             ).execute(environment_id)
         }
         items: list[PlaylistItemRead] = []
+        removed_items: list[PlaylistItemRead] = []
+        active_files = active_audio_files_by_id(
+            environment_id=environment_id,
+            audio_files=self.audio_files,
+        )
         for item in sorted(playlist.items, key=lambda value: (value.position, value.song_id)):
             song = self.songs.get(item.song_id)
             if song is None:
                 continue
             review = review_by_song.get(item.song_id)
-            accepted_audio_file_id = review.match.audio_file_id if review and review.match else None
-            accepted_audio_filename = (
-                _accepted_audio_filename(review.match.path) if review and review.match else None
+            read = _playlist_item_read(
+                environment=environment,
+                environment_id=environment_id,
+                item=item,
+                song=song,
+                review=review,
+                active_files=active_files,
+                match_links=self.match_links,
+                source_discoveries=self.source_discoveries,
             )
-            accepted_audio_relative_path = (
-                _accepted_audio_relative_path(review.match.path, environment.root_path)
-                if review and review.match
-                else None
-            )
-            accepted_audio_warnings = review.match.warnings if review and review.match else []
-            items.append(
-                PlaylistItemRead(
-                    song_id=song.id,
-                    position=item.position,
-                    title=song.display_title,
-                    artist=song.display_artist,
-                    duration_seconds=song.duration_seconds,
-                    remote_membership_active=item.remote_membership_active,
-                    match_status=review.status if review is not None else "missing_audio",
-                    accepted_audio_file_id=accepted_audio_file_id,
-                    accepted_audio_filename=accepted_audio_filename,
-                    accepted_audio_relative_path=accepted_audio_relative_path,
-                    accepted_audio_warnings=accepted_audio_warnings,
-                    playback_url=(
-                        f"/environments/{environment_id}/playback/audio-files/"
-                        f"{accepted_audio_file_id}"
-                        if accepted_audio_file_id is not None
-                        else None
-                    ),
-                    source_discovery=(
-                        stored_discovery_read(
-                            environment_id=environment_id,
-                            song=song,
-                            source_discoveries=self.source_discoveries,
-                        )
-                        if self.source_discoveries is not None
-                        else None
-                    ),
-                )
-            )
+            if item.is_active:
+                items.append(read)
+            elif item.is_removed_history:
+                removed_items.append(read)
         return PlaylistDetailRead(
             id=playlist.id,
             environment_id=environment_id,
             name=playlist.display_name,
             remote_playlist_id=playlist.remote_playlist_id,
-            active_item_count=sum(1 for item in playlist.items if item.remote_membership_active),
-            inactive_item_count=sum(
-                1 for item in playlist.items if not item.remote_membership_active
-            ),
+            active_item_count=sum(1 for item in playlist.items if item.is_active),
+            inactive_item_count=sum(1 for item in playlist.items if item.is_removed_history),
             items=items,
+            removed_items=removed_items,
         )
 
 
@@ -122,3 +114,79 @@ def _accepted_audio_relative_path(path: str, root_path: Path) -> str:
         return audio_path.relative_to(root_path).as_posix()
     except ValueError:
         return audio_path.name
+
+
+def _playlist_item_read(
+    *,
+    environment: MusicEnvironment,
+    environment_id: str,
+    item: PlaylistItem,
+    song: SongMaster,
+    review: MatchReviewRow | None,
+    active_files: dict[str, AudioFile],
+    match_links: MatchLinkRepository,
+    source_discoveries: SourceDiscoveryRepository | None,
+) -> PlaylistItemRead:
+    match_status = "missing_audio"
+    accepted_audio_file_id = None
+    accepted_audio_filename = None
+    accepted_audio_relative_path = None
+    accepted_audio_warnings: list[str] = []
+
+    if review is not None:
+        match_status = review.status
+        if review.match is not None:
+            accepted_audio_file_id = review.match.audio_file_id
+            accepted_audio_filename = _accepted_audio_filename(review.match.path)
+            accepted_audio_relative_path = _accepted_audio_relative_path(
+                review.match.path,
+                environment.root_path,
+            )
+            accepted_audio_warnings = review.match.warnings
+    else:
+        accepted = preferred_match_link(match_links.list_by_song(song.id), active_files)
+        if accepted is not None:
+            audio_file = active_files[accepted.audio_file_id]
+            match_status = (
+                MatchStatus.MANUALLY_MAPPED.value
+                if accepted.reviewed and accepted.method == "manual"
+                else MatchStatus.MATCHED.value
+            )
+            accepted_audio_file_id = audio_file.id
+            accepted_audio_filename = _accepted_audio_filename(str(audio_file.path))
+            accepted_audio_relative_path = _accepted_audio_relative_path(
+                str(audio_file.path),
+                environment.root_path,
+            )
+            accepted_audio_warnings = audio_warnings(audio_file.duration_seconds)
+
+    return PlaylistItemRead(
+        song_id=song.id,
+        position=item.position,
+        title=song.display_title,
+        artist=song.display_artist,
+        duration_seconds=song.duration_seconds,
+        remote_membership_active=item.remote_membership_active,
+        local_membership_active=item.local_membership_active,
+        added_by_local_audio_file_id=item.added_by_local_audio_file_id,
+        remote_removed_at=item.remote_removed_at,
+        match_status=match_status,
+        accepted_audio_file_id=accepted_audio_file_id,
+        accepted_audio_filename=accepted_audio_filename,
+        accepted_audio_relative_path=accepted_audio_relative_path,
+        accepted_audio_warnings=accepted_audio_warnings,
+        playback_url=(
+            f"/environments/{environment_id}/playback/audio-files/{accepted_audio_file_id}"
+            if accepted_audio_file_id is not None
+            else None
+        ),
+        source_discovery=(
+            stored_discovery_read(
+                environment_id=environment_id,
+                song=song,
+                source_discoveries=source_discoveries,
+            )
+            if source_discoveries is not None
+            else None
+        ),
+    )

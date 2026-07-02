@@ -52,12 +52,12 @@ def test_environment_overview_and_playlist_views(api_client: TestClient) -> None
     assert overview["playlist_count"] == 1
     assert overview["active_playlist_item_count"] == 3
     assert overview["inactive_playlist_item_count"] == 1
-    assert overview["unique_song_count"] == 4
+    assert overview["unique_song_count"] == 3
     assert overview["active_audio_file_count"] == 2
     assert overview["removed_audio_file_count"] == 1
     assert overview["unmanaged_audio_file_count"] == 1
     assert overview["matched_count"] == 1
-    assert overview["missing_audio_count"] == 2
+    assert overview["missing_audio_count"] == 1
     assert overview["ambiguous_count"] == 1
 
     assert playlists_response.status_code == 200
@@ -75,8 +75,8 @@ def test_environment_overview_and_playlist_views(api_client: TestClient) -> None
         "song_1",
         "song_2",
         "song_3",
-        "song_4",
     ]
+    assert [item["song_id"] for item in detail["removed_items"]] == ["song_4"]
     assert detail["items"][0]["match_status"] == "matched"
     assert detail["items"][0]["accepted_audio_file_id"] == "file_1"
     assert detail["items"][0]["accepted_audio_filename"] == "matched.mp3"
@@ -85,7 +85,7 @@ def test_environment_overview_and_playlist_views(api_client: TestClient) -> None
         "/environments/env_1/playback/audio-files/file_1"
     )
     assert detail["items"][1]["match_status"] == "ambiguous"
-    assert detail["items"][3]["remote_membership_active"] is False
+    assert detail["removed_items"][0]["remote_membership_active"] is False
 
 
 def test_playlist_detail_rejects_wrong_environment(api_client: TestClient) -> None:
@@ -99,6 +99,83 @@ def test_playlist_detail_rejects_wrong_environment(api_client: TestClient) -> No
     response = api_client.get("/environments/env_2/playlists/playlist_1")
 
     assert response.status_code == 404
+
+
+def test_playlist_local_items_can_be_added_and_removed(api_client: TestClient) -> None:
+    container = _container(api_client)
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
+        )
+        repositories.playlist_repository.save(
+            Playlist(id="playlist_1", environment_id="env_1", name="Set")
+        )
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id="file_local",
+                environment_id="env_1",
+                path=Path("/Volumes/USB/Loose Track.mp3"),
+                size_bytes=12,
+                modified_at=1.0,
+                title="Loose Track",
+                artist="Local Artist",
+                duration_seconds=180,
+            )
+        )
+
+    added = api_client.post(
+        "/environments/env_1/playlists/playlist_1/local-items",
+        json={"audio_file_id": "file_local"},
+    )
+
+    assert added.status_code == 200
+    body = added.json()
+    assert body["active_item_count"] == 1
+    assert body["inactive_item_count"] == 0
+    assert body["items"][0]["title"] == "Loose Track"
+    assert body["items"][0]["local_membership_active"] is True
+    assert body["items"][0]["remote_membership_active"] is False
+    assert body["items"][0]["added_by_local_audio_file_id"] == "file_local"
+    assert body["items"][0]["match_status"] == "manually_mapped"
+    assert body["items"][0]["accepted_audio_file_id"] == "file_local"
+
+    song_id = body["items"][0]["song_id"]
+    removed = api_client.delete(
+        f"/environments/env_1/playlists/playlist_1/local-items/{song_id}"
+    )
+
+    assert removed.status_code == 200
+    assert removed.json()["items"] == []
+    assert removed.json()["removed_items"] == []
+
+
+def test_playlist_local_item_rejects_inactive_audio_file(api_client: TestClient) -> None:
+    container = _container(api_client)
+    with container.repository_bundle() as repositories:
+        repositories.environment_repository.save(
+            MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
+        )
+        repositories.playlist_repository.save(
+            Playlist(id="playlist_1", environment_id="env_1", name="Set")
+        )
+        repositories.audio_file_repository.save(
+            AudioFile(
+                id="file_removed",
+                environment_id="env_1",
+                path=Path("/Volumes/USB/Removed.mp3"),
+                size_bytes=12,
+                modified_at=1.0,
+                status=AudioFileStatus.REMOVED,
+            )
+        )
+
+    response = api_client.post(
+        "/environments/env_1/playlists/playlist_1/local-items",
+        json={"audio_file_id": "file_removed"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "audio_file_not_active"
 
 
 def test_export_apply_run_lookup(api_client: TestClient) -> None:
