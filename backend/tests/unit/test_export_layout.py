@@ -46,12 +46,12 @@ def test_export_layout_generates_stable_managed_paths_with_collisions() -> None:
     )
 
     assert layout.managed_root == Path("/Volumes/USB")
-    assert layout.metadata_root == Path("/Volumes/USB/.music_manager")
+    assert layout.metadata_root == Path("/Volumes/USB/_music_manager")
     assert first_folder == Path("/Volumes/USB/A B")
     assert second_folder == Path("/Volumes/USB/A B (2)")
     assert layout.playlist_folder(first_playlist) == first_folder
     assert first_track == first_folder / "source.mp3"
     assert second_track == first_folder / "source (2).mp3"
     assert layout.deprecated_target(song=song, audio_file=audio_file).as_posix().startswith(
-        "/Volumes/USB/.music_manager/_deprecated/"
+        "/Volumes/USB/_music_manager/_deprecated/"
     )

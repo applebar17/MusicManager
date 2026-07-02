@@ -4,7 +4,7 @@ from music_manager_backend.domain.entities import AudioFile, MusicEnvironment, P
 from music_manager_backend.domain.services.filename_sanitizer import sanitize_path_part, unique_path
 from music_manager_backend.shared.errors import ValidationError
 
-EXPORT_METADATA_FOLDER_NAME = ".music_manager"
+EXPORT_METADATA_FOLDER_NAME = "_music_manager"
 EXPORT_MANIFEST_NAME = "export_manifest.json"
 
 

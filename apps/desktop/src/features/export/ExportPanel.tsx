@@ -1263,9 +1263,9 @@ function planTargetRoot(plan: ExportPlanRead | null) {
   }
   const metadataPath = plan.items
     .map((item) => item.target_path)
-    .find((targetPath) => targetPath.includes(".music_manager"));
+    .find((targetPath) => targetPath.includes("_music_manager"));
   if (metadataPath) {
-    const marker = ".music_manager";
+    const marker = "_music_manager";
     const markerIndex = metadataPath.indexOf(marker);
     return metadataPath.slice(0, markerIndex).replace(/[\\/]+$/, "") || "/";
   }

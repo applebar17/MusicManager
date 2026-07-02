@@ -21,7 +21,7 @@ def test_scanner_finds_supported_files_recursively(
 def test_scanner_skips_app_and_system_directories(
     music_environment_root: Path,
 ) -> None:
-    app_copy = music_environment_root / ".music_manager" / "_deprecated" / "old.mp3"
+    app_copy = music_environment_root / "_music_manager" / "_deprecated" / "old.mp3"
     system_copy = music_environment_root / "System Volume Information" / "system.mp3"
     real_track = music_environment_root / "01_TECH" / "track.mp3"
     for path in (app_copy, system_copy, real_track):

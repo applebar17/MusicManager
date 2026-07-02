@@ -383,7 +383,7 @@ function exportPlan() {
         position: 0,
         reason: null,
         source_path: null,
-        target_path: "/Volumes/USB/.music_manager",
+        target_path: "/Volumes/USB/_music_manager",
         validation_error_code: null,
         validation_error_message: null,
       },

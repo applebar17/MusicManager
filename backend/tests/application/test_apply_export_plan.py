@@ -48,7 +48,7 @@ def test_apply_export_plan_writes_expected_files_and_results(
         items=(
             ExportPlanItem(
                 action=ExportAction.CREATE_FOLDER,
-                target_path=root / ".music_manager",
+                target_path=root / "_music_manager",
             ),
             ExportPlanItem(
                 action=ExportAction.CREATE_FOLDER,
@@ -191,7 +191,7 @@ def test_apply_export_plan_preserves_deprecated_before_removing_stale_source(
     source = root / "Old Set" / "old.mp3"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"old audio")
-    deprecated = root / ".music_manager" / "_deprecated" / "old.mp3"
+    deprecated = root / "_music_manager" / "_deprecated" / "old.mp3"
     update_export_manifest(root_path=root, add_targets={source}, remove_targets=set())
     repositories.audio_files.save(_audio_file("file_1", source))
     repositories.export_plans.save(
@@ -232,7 +232,7 @@ def test_apply_export_plan_blocks_stale_removal_when_deprecated_preserve_fails(
     source = root / "Old Set" / "old.mp3"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"old audio")
-    deprecated = root / ".music_manager" / "_deprecated" / "old.mp3"
+    deprecated = root / "_music_manager" / "_deprecated" / "old.mp3"
     update_export_manifest(root_path=root, add_targets={source}, remove_targets=set())
     repositories.export_plans.save(
         ExportPlan(
@@ -321,7 +321,7 @@ def test_apply_export_plan_rejects_wrong_environment(
             items=(
                 ExportPlanItem(
                     action=ExportAction.CREATE_FOLDER,
-                    target_path=root / ".music_manager",
+                    target_path=root / "_music_manager",
                 ),
             ),
         )

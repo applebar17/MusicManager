@@ -174,7 +174,7 @@ def test_usb_quarantine_moves_file_and_removes_matches(
     assert data["audio_status"] == "removed"
     assert data["match_status"] == "unmatched"
     assert not (root / "01_TECH" / "Track One.mp3").exists()
-    assert (root / ".music_manager" / "_deprecated" / "Track One.mp3").read_bytes() == b"audio"
+    assert (root / "_music_manager" / "_deprecated" / "Track One.mp3").read_bytes() == b"audio"
     with container.repository_bundle() as repositories:
         removed_audio_file = repositories.audio_file_repository.get("file_matched")
         assert removed_audio_file is not None
@@ -221,9 +221,9 @@ def test_usb_batch_quarantine_moves_selected_files(
     }
     assert not (root / "01_TECH" / "Track One.mp3").exists()
     assert not (root / "03_HOUSE" / "Missing Song.mp3").exists()
-    assert (root / ".music_manager" / "_deprecated" / "Track One.mp3").read_bytes() == b"audio"
+    assert (root / "_music_manager" / "_deprecated" / "Track One.mp3").read_bytes() == b"audio"
     assert (
-        root / ".music_manager" / "_deprecated" / "Missing Song.mp3"
+        root / "_music_manager" / "_deprecated" / "Missing Song.mp3"
     ).read_bytes() == b"candidate"
     with container.repository_bundle() as repositories:
         matched = repositories.audio_file_repository.get("file_matched")

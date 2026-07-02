@@ -55,7 +55,7 @@ def test_export_plan_creates_folders_and_copy_items(
     copy_items = [item for item in plan.items if item.action == ExportAction.COPY_FILE]
     assert copy_items[0].source_path == source
     assert copy_items[0].target_path == root / "Set" / "source.mp3"
-    assert not (root / ".music_manager").exists()
+    assert not (root / "_music_manager").exists()
     assert not (root / "Set").exists()
 
 
@@ -268,7 +268,7 @@ def test_export_plan_omits_existing_folders(
 ) -> None:
     repositories = _repositories(sqlite_connection)
     root = _seed_environment(repositories, tmp_path)
-    (root / ".music_manager" / "_deprecated").mkdir(parents=True)
+    (root / "_music_manager" / "_deprecated").mkdir(parents=True)
     (root / "Set").mkdir()
     source = _source_file(root, "source.mp3")
     repositories.songs.save(SongMaster(id="song_1", title="Track", artist="Artist"))
@@ -488,7 +488,7 @@ def test_export_plan_preserves_deprecated_matched_songs(
 
     deprecated = [item for item in plan.items if item.action == ExportAction.PRESERVE_DEPRECATED]
     assert deprecated[0].source_path == source
-    assert deprecated[0].target_path == root / ".music_manager" / "_deprecated" / "old.mp3"
+    assert deprecated[0].target_path == root / "_music_manager" / "_deprecated" / "old.mp3"
 
 
 def test_export_plan_preserves_removed_song_before_removing_stale_playlist_copy(
@@ -528,7 +528,7 @@ def test_export_plan_preserves_removed_song_before_removing_stale_playlist_copy(
     remove = next(item for item in plan.items if item.action == ExportAction.REMOVE_STALE_COPY)
     assert plan.items.index(preserve) < plan.items.index(remove)
     assert preserve.source_path == source
-    assert preserve.target_path == root / ".music_manager" / "_deprecated" / "old.mp3"
+    assert preserve.target_path == root / "_music_manager" / "_deprecated" / "old.mp3"
     assert remove.target_path == source
 
 
@@ -590,7 +590,7 @@ def test_export_plan_keeps_existing_deprecated_backup(
     repositories = _repositories(sqlite_connection)
     root = _seed_environment(repositories, tmp_path)
     source = _source_file(root, "old.mp3")
-    backup = root / ".music_manager" / "_deprecated" / "old.mp3"
+    backup = root / "_music_manager" / "_deprecated" / "old.mp3"
     backup.parent.mkdir(parents=True)
     backup.write_bytes(b"backup")
     repositories.songs.save(SongMaster(id="song_1", title="Old", artist="Artist"))

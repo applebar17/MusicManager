@@ -121,7 +121,7 @@ def test_export_apply_run_lookup(api_client: TestClient) -> None:
             item_results=(
                 ExportApplyItemResult(
                     action=ExportAction.CREATE_FOLDER,
-                    target_path=Path("/Volumes/USB/.music_manager"),
+                    target_path=Path("/Volumes/USB/_music_manager"),
                     status=ExportApplyItemStatus.SUCCEEDED,
                     created_at="2026-05-22T10:00:00+00:00",
                 ),
@@ -221,7 +221,7 @@ def test_full_synchronous_desktop_api_flow(
     assert len(copy_targets) == 1
     assert copy_targets[0].read_bytes() == b"fake audio"
     assert copy_targets[0].is_relative_to(root)
-    assert not copy_targets[0].is_relative_to(root / ".music_manager")
+    assert not copy_targets[0].is_relative_to(root / "_music_manager")
 
 
 def _container(api_client: TestClient) -> AppContainer:
