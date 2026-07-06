@@ -177,9 +177,65 @@ def test_alignment_removes_existing_numbered_duplicate_library_files(
     assert base.exists()
     assert not duplicate.exists()
     assert [track.filename for track in active_tracks] == ["Shared Track.mp3"]
-    assert [track.filename for track in missing_tracks] == ["Shared Track (2).mp3"]
+    assert missing_tracks == []
     assert run.items[0].status == "updated"
     assert run.items[0].reason_code == "duplicate_library_track_removed"
+
+
+def test_alignment_prunes_existing_missing_numbered_duplicate_rows(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    library_root, usb_root = _roots(tmp_path)
+    base = library_root / "Shared Track.mp3"
+    duplicate = library_root / "Shared Track (2).mp3"
+    usb_file = usb_root / "Shared Track.mp3"
+    base.write_bytes(b"base")
+    usb_file.write_bytes(b"usb")
+    _save_library(sqlite_connection, library_root)
+    _save_environment(sqlite_connection, usb_root)
+    track_repository = SqliteLibraryTrackRepository(sqlite_connection)
+    track_repository.save(
+        LibraryTrack(
+            id="library_track_base",
+            library_id="default",
+            canonical_path=base,
+            filename=base.name,
+            status=LibraryTrackStatus.ACTIVE,
+            title="Shared Track",
+            duration_seconds=180,
+            normalized_title="shared track",
+            created_at="2026-07-06T10:00:00+00:00",
+            updated_at="2026-07-06T10:00:00+00:00",
+        )
+    )
+    track_repository.save(
+        LibraryTrack(
+            id="library_track_duplicate",
+            library_id="default",
+            canonical_path=duplicate,
+            filename=duplicate.name,
+            status=LibraryTrackStatus.MISSING,
+            title="Shared Track",
+            duration_seconds=180,
+            normalized_title="shared track",
+            created_at="2026-07-06T10:00:00+00:00",
+            updated_at="2026-07-06T10:00:00+00:00",
+            missing_at="2026-07-06T10:00:00+00:00",
+        )
+    )
+
+    run = _align_use_case(
+        sqlite_connection,
+        _MetadataReader({"Shared Track.mp3": 180}, titles={"Shared Track.mp3": "Shared Track"}),
+    ).execute("env_1")
+
+    all_tracks = SqliteLibraryTrackRepository(sqlite_connection).list("default")
+
+    assert run.updated_count == 1
+    assert run.reused_count == 1
+    assert [track.id for track in all_tracks] == ["library_track_base"]
+    assert run.items[0].reason_code == "missing_duplicate_library_track_pruned"
 
 
 def test_alignment_persists_collision_without_overwriting(

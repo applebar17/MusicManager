@@ -95,6 +95,9 @@ class LibraryTrackRepository(Protocol):
     def get(self, track_id: str) -> LibraryTrack | None:
         pass
 
+    def delete(self, track_id: str) -> None:
+        pass
+
     def get_by_canonical_path(self, library_id: str, canonical_path: Path) -> LibraryTrack | None:
         pass
 

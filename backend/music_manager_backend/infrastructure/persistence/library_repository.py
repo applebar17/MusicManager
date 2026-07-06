@@ -130,6 +130,25 @@ class SqliteLibraryTrackRepository:
             return None
         return _track_from_row(row)
 
+    def delete(self, track_id: str) -> None:
+        self.connection.execute(
+            "UPDATE library_metadata_index_entries SET library_track_id = NULL WHERE library_track_id = ?",
+            (track_id,),
+        )
+        self.connection.execute(
+            "UPDATE library_alignment_items SET library_track_id = NULL WHERE library_track_id = ?",
+            (track_id,),
+        )
+        self.connection.execute(
+            "DELETE FROM song_library_links WHERE library_track_id = ?",
+            (track_id,),
+        )
+        self.connection.execute(
+            "DELETE FROM library_tracks WHERE id = ?",
+            (track_id,),
+        )
+        self.connection.commit()
+
     def get_by_canonical_path(self, library_id: str, canonical_path: Path) -> LibraryTrack | None:
         row = self.connection.execute(
             """

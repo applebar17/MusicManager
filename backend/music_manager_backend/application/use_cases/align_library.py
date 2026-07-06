@@ -94,6 +94,14 @@ class AlignLibraryFromEnvironment:
         items: list[LibraryAlignmentItem] = []
         counts = _Counts()
         used_paths = _existing_library_paths(library_root)
+        prune_items = _prune_missing_duplicate_suffix_tracks(
+            run_id=run_id,
+            library_tracks=self.library_tracks,
+            tracks=self.library_tracks.list(library.id),
+        )
+        items.extend(prune_items)
+        for prune_item in prune_items:
+            counts.add(prune_item.status)
         active_tracks = self.library_tracks.list_by_status(library.id, LibraryTrackStatus.ACTIVE)
         cleanup_items, removed_track_ids = _cleanup_duplicate_suffix_tracks(
             run_id=run_id,
@@ -409,7 +417,6 @@ def _cleanup_duplicate_suffix_tracks(
 ) -> tuple[list[LibraryAlignmentItem], set[str]]:
     items: list[LibraryAlignmentItem] = []
     removed_ids: set[str] = set()
-    now = utc_now_iso()
     groups: dict[tuple[str, int], list[LibraryTrack]] = {}
     for track in tracks:
         if track.duration_seconds is None:
@@ -454,7 +461,7 @@ def _cleanup_duplicate_suffix_tracks(
                     )
                 )
                 continue
-            library_tracks.save(_missing_track(duplicate, now))
+            library_tracks.delete(duplicate.id)
             removed_ids.add(duplicate.id)
             items.append(
                 _track_item(
@@ -474,26 +481,53 @@ def _cleanup_duplicate_suffix_tracks(
     return items, removed_ids
 
 
-def _missing_track(track: LibraryTrack, missing_at: str) -> LibraryTrack:
-    return LibraryTrack(
-        id=track.id,
-        library_id=track.library_id,
-        canonical_path=track.canonical_path,
-        filename=track.filename,
-        size_bytes=track.size_bytes,
-        modified_at=track.modified_at,
-        status=LibraryTrackStatus.MISSING,
-        title=track.title,
-        artist=track.artist,
-        duration_seconds=track.duration_seconds,
-        normalized_title=track.normalized_title,
-        file_hash=track.file_hash,
-        created_at=track.created_at,
-        updated_at=missing_at,
-        first_seen_at=track.first_seen_at,
-        last_seen_at=track.last_seen_at,
-        missing_at=missing_at,
-    )
+def _prune_missing_duplicate_suffix_tracks(
+    *,
+    run_id: str,
+    library_tracks: LibraryTrackRepository,
+    tracks: list[LibraryTrack],
+) -> list[LibraryAlignmentItem]:
+    items: list[LibraryAlignmentItem] = []
+    active_by_identity: dict[tuple[str, int], list[LibraryTrack]] = {}
+    for track in tracks:
+        if track.status != LibraryTrackStatus.ACTIVE or track.duration_seconds is None:
+            continue
+        active_by_identity.setdefault(
+            (_normalized_duplicate_base(track.canonical_path.stem), track.duration_seconds),
+            [],
+        ).append(track)
+
+    for track in tracks:
+        if (
+            track.status != LibraryTrackStatus.MISSING
+            or track.duration_seconds is None
+            or _duplicate_number(track.canonical_path.stem) is None
+        ):
+            continue
+        candidates = active_by_identity.get(
+            (_normalized_duplicate_base(track.canonical_path.stem), track.duration_seconds),
+            [],
+        )
+        if not candidates:
+            continue
+        keeper = min(candidates, key=_duplicate_keeper_sort_key)
+        library_tracks.delete(track.id)
+        items.append(
+            _track_item(
+                run_id=run_id,
+                status=LibraryAlignmentItemStatus.UPDATED,
+                source_path=track.canonical_path,
+                target_path=keeper.canonical_path,
+                library_track_id=keeper.id,
+                title=track.title,
+                artist=track.artist,
+                duration_seconds=track.duration_seconds,
+                normalized_title=track.normalized_title,
+                reason_code="missing_duplicate_library_track_pruned",
+                reason_message="Removed stale missing row for a numbered duplicate library file.",
+            )
+        )
+    return items
 
 
 def _duplicate_keeper_sort_key(track: LibraryTrack) -> tuple[int, int, str]:
