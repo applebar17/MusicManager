@@ -676,6 +676,12 @@ def test_export_plan_repository_round_trips_items(sqlite_connection: sqlite3.Con
                 target_path=Path("/target/Playlist/track.mp3"),
             ),
             ExportPlanItem(
+                action=ExportAction.WRITE_TRACKS_JSON,
+                target_path=Path("/target/Playlist/tracks.json"),
+                metadata_payload_json='[{"filename": "track.mp3"}]',
+                reason="1 tracks.json entries; 0 tracks without metadata",
+            ),
+            ExportPlanItem(
                 action=ExportAction.KEEP_EXISTING,
                 source_path=Path("/source/already.mp3"),
                 target_path=Path("/target/Playlist/already.mp3"),

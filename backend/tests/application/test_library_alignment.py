@@ -241,7 +241,11 @@ def test_metadata_import_copies_tracks_json_and_compacts_index(
         / "Playlist"
         / "tracks.json"
     ).exists()
-    assert (library_root / "_music_manager" / "metadata-index" / "tracks.json").exists()
+    master_index = library_root / "_music_manager" / "metadata-index" / "tracks.json"
+    assert master_index.exists()
+    master_payload = json.loads(master_index.read_text(encoding="utf-8"))
+    assert master_payload[0]["library_track_id"] == "library_track_1"
+    assert master_payload[0]["payload"]["title"] == "Track"
 
 
 def test_metadata_import_preserves_serato_and_unknown_metadata_assets(

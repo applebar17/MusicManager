@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from music_manager_backend.application.use_cases.library_matching import (
@@ -16,6 +17,7 @@ from music_manager_backend.domain.entities import (
     AudioFileStatus,
     ExportPlan,
     ExportPlanItem,
+    LibraryMetadataIndexEntry,
     LibraryTrack,
     Playlist,
     SongMaster,
@@ -30,6 +32,7 @@ from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
     ExportPlanRepository,
+    LibraryMetadataRepository,
     LibraryRepository,
     LibraryTrackRepository,
     MatchLinkRepository,
@@ -58,6 +61,7 @@ class PlanExport:
         libraries: LibraryRepository | None = None,
         library_tracks: LibraryTrackRepository | None = None,
         song_library_links: SongLibraryLinkRepository | None = None,
+        library_metadata: LibraryMetadataRepository | None = None,
     ) -> None:
         self.environments = environments
         self.playlists = playlists
@@ -69,6 +73,7 @@ class PlanExport:
         self.libraries = libraries
         self.library_tracks = library_tracks
         self.song_library_links = song_library_links
+        self.library_metadata = library_metadata
 
     def execute(self, environment_id: str, playlist_ids: list[str] | None = None) -> ExportPlan:
         environment = self.environments.get(environment_id)
@@ -94,6 +99,11 @@ class PlanExport:
             and self.library_tracks is not None
             and self.song_library_links is not None
         )
+        metadata_entries_by_track = (
+            _tracks_json_entries_by_track(library.id, self.library_metadata)
+            if library is not None and self.library_metadata is not None
+            else {}
+        )
         layout = ExportLayout(environment)
         items: list[ExportPlanItem] = []
         for folder in (layout.metadata_root, layout.deprecated_folder):
@@ -109,6 +119,8 @@ class PlanExport:
             folder_item = _folder_item_if_missing(folder)
             if folder_item is not None:
                 items.append(folder_item)
+            playlist_metadata_entries: list[tuple[int, dict[object, object]]] = []
+            playlist_metadata_missing_count = 0
             for playlist_item in playlist.items:
                 if not playlist_item.is_active:
                     continue
@@ -157,6 +169,16 @@ class PlanExport:
                     planned_copy_targets.add(target)
                     if item is not None:
                         items.append(item)
+                    metadata_entry = metadata_entries_by_track.get(library_track.id)
+                    if metadata_entry is None:
+                        playlist_metadata_missing_count += 1
+                    else:
+                        playlist_metadata_entries.append(
+                            (
+                                playlist_item.position,
+                                _export_tracks_json_payload(metadata_entry, target.name),
+                            )
+                        )
                     duplicate_items = _duplicate_copy_items(
                         folder=folder,
                         linked_files=linked_files,
@@ -213,6 +235,14 @@ class PlanExport:
                     item.target_path for item in duplicate_items
                 )
                 items.extend(duplicate_items)
+            tracks_json_item = _tracks_json_item_if_needed(
+                folder=folder,
+                entries=playlist_metadata_entries,
+                missing_count=playlist_metadata_missing_count,
+            )
+            if tracks_json_item is not None:
+                planned_copy_targets.add(tracks_json_item.target_path)
+                items.append(tracks_json_item)
 
         items.extend(
             _deprecated_items(
@@ -291,6 +321,75 @@ def _linked_library_track(
     if link is None:
         return None
     return active_tracks.get(link.library_track_id)
+
+
+def _tracks_json_entries_by_track(
+    library_id: str,
+    library_metadata: LibraryMetadataRepository | None,
+) -> dict[str, LibraryMetadataIndexEntry]:
+    if library_metadata is None:
+        return {}
+    entries = [
+        entry
+        for entry in library_metadata.list_index_entries(library_id)
+        if entry.provider == "tracks_json" and entry.library_track_id is not None
+    ]
+    latest_by_track: dict[str, LibraryMetadataIndexEntry] = {}
+    for entry in entries:
+        assert entry.library_track_id is not None
+        current = latest_by_track.get(entry.library_track_id)
+        if current is None or (entry.imported_at, entry.id) > (current.imported_at, current.id):
+            latest_by_track[entry.library_track_id] = entry
+    return latest_by_track
+
+
+def _export_tracks_json_payload(
+    entry: LibraryMetadataIndexEntry,
+    exported_filename: str,
+) -> dict[object, object]:
+    try:
+        payload = json.loads(entry.payload_json)
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {"payload": payload}
+    return _rewrite_tracks_json_paths(payload, exported_filename)
+
+
+def _rewrite_tracks_json_paths(
+    payload: dict[object, object],
+    exported_filename: str,
+) -> dict[object, object]:
+    rewritten: dict[object, object] = {}
+    for key, value in payload.items():
+        if isinstance(key, str) and key in {"filename", "path", "file", "location", "url"}:
+            rewritten[key] = exported_filename
+        elif isinstance(value, dict):
+            rewritten[key] = _rewrite_tracks_json_paths(value, exported_filename)
+        else:
+            rewritten[key] = value
+    return rewritten
+
+
+def _tracks_json_item_if_needed(
+    *,
+    folder: Path,
+    entries: list[tuple[int, dict[object, object]]],
+    missing_count: int,
+) -> ExportPlanItem | None:
+    if not entries:
+        return None
+    payload = [item for _position, item in sorted(entries, key=lambda item: item[0])]
+    included_count = len(payload)
+    return ExportPlanItem(
+        action=ExportAction.WRITE_TRACKS_JSON,
+        target_path=folder / "tracks.json",
+        metadata_payload_json=json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False),
+        reason=(
+            f"{included_count} tracks.json entries; "
+            f"{missing_count} tracks without metadata"
+        ),
+    )
 
 
 def _preferred_audio_file_in_folder(

@@ -58,6 +58,7 @@ import {
 
 const EXPORT_ACTIONS: ExportAction[] = [
   "copy_file",
+  "write_tracks_json",
   "create_folder",
   "remove_duplicate_copy",
   "remove_stale_copy",
@@ -1217,6 +1218,14 @@ function actionMeta(action: ExportAction): {
       icon: <Copy size={16} />,
     };
   }
+  if (action === "write_tracks_json") {
+    return {
+      countLabel: "Metadata Files",
+      shortLabel: "Metadata",
+      tone: "preserve",
+      icon: <ListChecks size={16} />,
+    };
+  }
   if (action === "keep_existing") {
     return {
       countLabel: "Already in Place",
@@ -1268,6 +1277,7 @@ function actionMeta(action: ExportAction): {
 function isChangeAction(action: ExportAction) {
   return (
     action === "copy_file" ||
+    action === "write_tracks_json" ||
     action === "create_folder" ||
     action === "remove_duplicate_copy" ||
     action === "remove_stale_copy" ||

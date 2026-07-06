@@ -50,11 +50,12 @@ class SqliteExportPlanRepository:
                     target_path,
                     source_path,
                     reason,
+                    metadata_payload_json,
                     included,
                     validation_error_code,
                     validation_error_message
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     export_plan.id,
@@ -64,6 +65,7 @@ class SqliteExportPlanRepository:
                     str(item.target_path),
                     str(item.source_path) if item.source_path is not None else None,
                     item.reason,
+                    item.metadata_payload_json,
                     int(item.included),
                     item.validation_error_code,
                     item.validation_error_message,
@@ -104,6 +106,7 @@ def _export_plan_item_from_row(row: sqlite3.Row) -> ExportPlanItem:
         target_path=Path(cast(str, row["target_path"])),
         source_path=Path(source_path) if source_path is not None else None,
         reason=cast(str | None, row["reason"]),
+        metadata_payload_json=cast(str | None, row["metadata_payload_json"]),
         id=cast(str, row["public_id"]),
         included=bool(cast(int, row["included"])),
         validation_error_code=cast(str | None, row["validation_error_code"]),

@@ -110,6 +110,38 @@ class ExportFileWriter:
         if not target.is_file():
             raise ValidationError(f"Existing export target is not a file: {target_path}")
 
+    def write_tracks_json(
+        self,
+        *,
+        environment: MusicEnvironment,
+        target_path: Path,
+        payload_json: str | None,
+    ) -> None:
+        if payload_json is None:
+            raise ValidationError("tracks.json export item is missing metadata payload")
+        target = _validate_target_inside_export_root(
+            environment,
+            target_path,
+            allow_metadata=False,
+        )
+        if target.exists() and target.is_dir():
+            raise ValidationError(f"tracks.json export target is a directory: {target_path}")
+        manifest = read_export_manifest(environment.root_path)
+        if target.exists() and target.resolve(strict=False) not in manifest.targets:
+            raise ValidationError(
+                f"Existing tracks.json target is not app-owned: {target_path}",
+                code="metadata_target_unmanaged",
+            )
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = target.with_name(f".{target.name}.tmp-{uuid4().hex}")
+        try:
+            temporary_path.write_text(payload_json.rstrip() + "\n", encoding="utf-8")
+            os.replace(temporary_path, target)
+        finally:
+            if temporary_path.exists():
+                temporary_path.unlink()
+
     def apply_item(
         self,
         *,
@@ -127,6 +159,13 @@ class ExportFileWriter:
                 target_path=item.target_path,
                 active_source_paths=active_source_paths,
                 allow_metadata=item.action == ExportAction.PRESERVE_DEPRECATED,
+            )
+            return
+        if item.action == ExportAction.WRITE_TRACKS_JSON:
+            self.write_tracks_json(
+                environment=environment,
+                target_path=item.target_path,
+                payload_json=item.metadata_payload_json,
             )
             return
         if item.action == ExportAction.REMOVE_STALE_COPY:

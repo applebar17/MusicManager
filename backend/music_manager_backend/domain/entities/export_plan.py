@@ -8,6 +8,7 @@ from music_manager_backend.shared.ids import new_id
 class ExportAction(StrEnum):
     CREATE_FOLDER = "create_folder"
     COPY_FILE = "copy_file"
+    WRITE_TRACKS_JSON = "write_tracks_json"
     KEEP_EXISTING = "keep_existing"
     REMOVE_DUPLICATE_COPY = "remove_duplicate_copy"
     REMOVE_STALE_COPY = "remove_stale_copy"
@@ -21,6 +22,7 @@ class ExportPlanItem:
     target_path: Path
     source_path: Path | None = None
     reason: str | None = None
+    metadata_payload_json: str | None = None
     id: str = field(default_factory=lambda: new_id("export_plan_item"))
     included: bool = True
     validation_error_code: str | None = None

@@ -65,6 +65,11 @@ def test_apply_export_plan_writes_expected_files_and_results(
                 target_path=root / "Set" / "001 - Track.mp3",
             ),
             ExportPlanItem(
+                action=ExportAction.WRITE_TRACKS_JSON,
+                target_path=root / "Set" / "tracks.json",
+                metadata_payload_json='[{"filename": "001 - Track.mp3"}]',
+            ),
+            ExportPlanItem(
                 action=ExportAction.KEEP_EXISTING,
                 source_path=source,
                 target_path=source,
@@ -91,12 +96,15 @@ def test_apply_export_plan_writes_expected_files_and_results(
     apply_run = _apply_export_plan(repositories).execute("env_1", "plan_1")
 
     copied = root / "Set" / "001 - Track.mp3"
+    tracks_json = root / "Set" / "tracks.json"
     assert copied.read_bytes() == b"playlist audio"
+    assert tracks_json.read_text(encoding="utf-8") == '[{"filename": "001 - Track.mp3"}]\n'
     assert not stale.exists()
     assert not duplicate.exists()
     assert source.exists()
     assert apply_run.status == ExportApplyRunStatus.COMPLETED
     assert [item.status for item in apply_run.item_results] == [
+        ExportApplyItemStatus.SUCCEEDED,
         ExportApplyItemStatus.SUCCEEDED,
         ExportApplyItemStatus.SUCCEEDED,
         ExportApplyItemStatus.SUCCEEDED,

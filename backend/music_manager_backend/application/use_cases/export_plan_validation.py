@@ -3,6 +3,8 @@ from pathlib import Path
 
 from music_manager_backend.domain.entities import ExportPlan, ExportPlanItem, MusicEnvironment
 from music_manager_backend.domain.entities.export_plan import ExportAction
+from music_manager_backend.domain.services.export_layout import ExportLayout
+from music_manager_backend.infrastructure.filesystem import read_export_manifest
 
 
 def validate_export_plan(environment: MusicEnvironment, plan: ExportPlan) -> ExportPlan:
@@ -16,10 +18,30 @@ def validate_export_plan(environment: MusicEnvironment, plan: ExportPlan) -> Exp
         for item in plan.items
         if item.action == ExportAction.CREATE_FOLDER
     }
+    manifest = read_export_manifest(environment.root_path)
+    metadata_root = ExportLayout(environment).metadata_root.resolve(strict=False)
 
     for item in plan.items:
         if not item.included:
             continue
+        if item.action == ExportAction.WRITE_TRACKS_JSON:
+            target = item.target_path.resolve(strict=False)
+            if target.is_relative_to(metadata_root):
+                item_errors.setdefault(
+                    item.id,
+                    (
+                        "metadata_target_inside_app_metadata",
+                        "tracks.json metadata targets cannot be inside _music_manager.",
+                    ),
+                )
+            if target.exists() and target not in manifest.targets:
+                item_errors.setdefault(
+                    item.id,
+                    (
+                        "metadata_target_unmanaged",
+                        "Existing tracks.json is not app-owned. Move or import it before exporting.",
+                    ),
+                )
         if item.action == ExportAction.CREATE_FOLDER:
             parent = item.target_path.parent.resolve(strict=False)
             parent_item = all_folder_items.get(parent)
@@ -89,7 +111,11 @@ def validate_export_plan(environment: MusicEnvironment, plan: ExportPlan) -> Exp
 
 
 def _required_created_folder(item: ExportPlanItem) -> Path | None:
-    if item.action in {ExportAction.COPY_FILE, ExportAction.PRESERVE_DEPRECATED}:
+    if item.action in {
+        ExportAction.COPY_FILE,
+        ExportAction.PRESERVE_DEPRECATED,
+        ExportAction.WRITE_TRACKS_JSON,
+    }:
         return item.target_path.parent
     return None
 

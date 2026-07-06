@@ -487,6 +487,7 @@ export type ExportPlanUpdate = {
 export type ExportAction =
   | "create_folder"
   | "copy_file"
+  | "write_tracks_json"
   | "keep_existing"
   | "remove_duplicate_copy"
   | "remove_stale_copy"

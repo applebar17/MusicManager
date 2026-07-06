@@ -137,7 +137,6 @@ class ImportLibraryMetadataFromEnvironment:
                     )
                 )
 
-        _write_tracks_index(index_root, entries)
         error_count = sum(1 for asset in assets if asset.status == LibraryMetadataAssetStatus.SKIPPED_ERROR)
         status = (
             LibraryMetadataImportRunStatus.COMPLETED_WITH_ISSUES
@@ -159,6 +158,7 @@ class ImportLibraryMetadataFromEnvironment:
         asset_tuple = tuple(assets)
         entry_tuple = tuple(entries)
         self.metadata_repository.save_import_run(run, asset_tuple, entry_tuple)
+        _write_tracks_index(index_root, self.metadata_repository.list_index_entries(library.id))
         return library_metadata_import_run_read(run, asset_tuple, entry_tuple)
 
     def latest(self) -> LibraryMetadataImportRunRead | None:
@@ -436,7 +436,10 @@ def _int_value(payload: dict[object, object], *keys: str) -> int | None:
     return None
 
 
-def _write_tracks_index(index_root: Path, entries: list[LibraryMetadataIndexEntry]) -> None:
+def _write_tracks_index(
+    index_root: Path,
+    entries: list[LibraryMetadataIndexEntry] | tuple[LibraryMetadataIndexEntry, ...],
+) -> None:
     index_root.mkdir(parents=True, exist_ok=True)
     payload = [
         {

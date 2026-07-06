@@ -312,22 +312,45 @@ Exit criteria:
 
 ### Wave 7: Metadata Export And Provider-Specific Enhancements
 
-Goal: move from raw preservation to useful managed metadata restoration.
+Goal: use the library master `tracks.json` index to regenerate playlist-local
+metadata files during USB export.
 
 Deliverables:
 
-- Define provider-specific adapters, starting with `tracks.json` and `_Serato`.
-- Export supported metadata back to USB when generating organized exports.
-- Keep raw backup for unsupported metadata.
-- Add conflict review where latest import wins is not sufficient.
+- Treat `{library_root}/_music_manager/metadata-index/tracks.json` as the master
+  `tracks.json` source of truth.
+- Rewrite the master index after each USB metadata import from persisted latest-win
+  index entries.
+- Add explicit `write_tracks_json` export-plan actions.
+- Generate one `tracks.json` per exported playlist folder, ordered by playlist order.
+- Derive playlist metadata entries from active song-to-library mappings and the master
+  index.
+- Rewrite path-like fields (`filename`, `path`, `file`, `location`, `url`) to the
+  exported playlist filename.
+- Block unmanaged existing playlist `tracks.json` files; overwrite only app-owned
+  metadata targets.
+- Track successful metadata writes in the export manifest for future stale cleanup.
+
+Locked Wave 7 decisions:
+
+- Scope is `tracks.json` only.
+- `_Serato`, unknown raw metadata restore, and cue/grid interpretation are deferred.
+- Exported playlist `tracks.json` files are derived artifacts and can be regenerated.
+- Latest import wins remains the conflict policy.
+- The master index remains app-managed under `_music_manager`, not in the visible
+  flat audio root.
 
 Tests:
 
-- Supported metadata is restored to expected target locations.
-- Unsupported metadata remains preserved.
-- Metadata export does not block audio export unless explicitly required.
+- Metadata import updates the persisted master index and master file.
+- Export preview creates playlist-folder `tracks.json` actions from master entries.
+- Generated metadata follows playlist order and rewrites path-like fields.
+- Tracks without master metadata do not block audio export.
+- Existing unmanaged playlist `tracks.json` marks the plan invalid.
+- Apply writes valid JSON with per-item live progress.
+- Frontend renders `write_tracks_json` actions through the existing export plan UI.
 
 Exit criteria:
 
-- USB exports can carry useful library-managed metadata such as cue points where the
-  format is supported.
+- USB exports carry regenerated playlist-local `tracks.json` metadata derived from the
+  shared library master index.

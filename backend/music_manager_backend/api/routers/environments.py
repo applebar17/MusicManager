@@ -986,6 +986,7 @@ def create_export_plan(
     libraries: LibraryRepositoryDependency,
     library_tracks: LibraryTrackRepositoryDependency,
     song_library_links: SongLibraryLinkRepositoryDependency,
+    metadata_repository: LibraryMetadataRepositoryDependency,
     export_plans: ExportPlanRepositoryDependency,
     data: ExportPlanCreate | None = None,
 ) -> ExportPlanRead:
@@ -998,6 +999,7 @@ def create_export_plan(
         libraries=libraries,
         library_tracks=library_tracks,
         song_library_links=song_library_links,
+        library_metadata=metadata_repository,
         export_plans=export_plans,
         metadata_reader=MetadataReader(),
     ).execute(environment_id, data.playlist_ids if data is not None else None)

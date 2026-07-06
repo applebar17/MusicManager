@@ -198,7 +198,11 @@ class ApplyExportPlan:
                 )
                 _record_failed_source(item, failed_source_paths)
             else:
-                if item.action in {ExportAction.COPY_FILE, ExportAction.PRESERVE_DEPRECATED}:
+                if item.action in {
+                    ExportAction.COPY_FILE,
+                    ExportAction.PRESERVE_DEPRECATED,
+                    ExportAction.WRITE_TRACKS_JSON,
+                }:
                     manifest_add_targets.add(item.target_path)
                 elif item.action in {
                     ExportAction.REMOVE_DUPLICATE_COPY,

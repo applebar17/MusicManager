@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -7,6 +8,11 @@ from music_manager_backend.domain.entities import (
     AudioMetadata,
     LibraryTrack,
     LibraryTrackStatus,
+    LibraryMetadataAsset,
+    LibraryMetadataAssetStatus,
+    LibraryMetadataImportRun,
+    LibraryMetadataImportRunStatus,
+    LibraryMetadataIndexEntry,
     MatchLink,
     MusicEnvironment,
     MusicLibrary,
@@ -22,6 +28,7 @@ from music_manager_backend.infrastructure.persistence import (
     SqliteEnvironmentRepository,
     SqliteExportPlanRepository,
     SqliteLibraryRepository,
+    SqliteLibraryMetadataRepository,
     SqliteLibraryTrackRepository,
     SqliteMatchLinkRepository,
     SqlitePlaylistRepository,
@@ -102,6 +109,87 @@ def test_export_plan_copies_from_library_when_configured(
     copy_items = [item for item in plan.items if item.action == ExportAction.COPY_FILE]
     assert copy_items[0].source_path == library_source
     assert copy_items[0].target_path == root / "Set" / "library-track.mp3"
+
+
+def test_export_plan_writes_playlist_tracks_json_from_master_metadata(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    library_source = _library_file(tmp_path, "library-track.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Track", artist="Artist"))
+    _seed_library_mapping(repositories, library_source=library_source)
+    _seed_tracks_json_metadata(
+        repositories,
+        library_track_id="library_track_1",
+        payload={
+            "title": "Track",
+            "path": "/OldUsb/OldSet/original.mp3",
+            "filename": "original.mp3",
+        },
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    metadata_items = [
+        item for item in plan.items if item.action == ExportAction.WRITE_TRACKS_JSON
+    ]
+    assert metadata_items[0].target_path == root / "Set" / "tracks.json"
+    assert metadata_items[0].reason == "1 tracks.json entries; 0 tracks without metadata"
+    payload = json.loads(metadata_items[0].metadata_payload_json or "")
+    assert payload == [
+        {
+            "filename": "library-track.mp3",
+            "path": "library-track.mp3",
+            "title": "Track",
+        }
+    ]
+
+
+def test_export_plan_blocks_unmanaged_existing_playlist_tracks_json(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    existing_metadata = root / "Set" / "tracks.json"
+    existing_metadata.parent.mkdir()
+    existing_metadata.write_text("[]", encoding="utf-8")
+    library_source = _library_file(tmp_path, "library-track.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Track", artist="Artist"))
+    _seed_library_mapping(repositories, library_source=library_source)
+    _seed_tracks_json_metadata(
+        repositories,
+        library_track_id="library_track_1",
+        payload={"title": "Track"},
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    metadata_items = [
+        item for item in plan.items if item.action == ExportAction.WRITE_TRACKS_JSON
+    ]
+    assert metadata_items[0].validation_error_code == "metadata_target_unmanaged"
+    assert plan.validation_error_code == "invalid_export_plan"
 
 
 def test_export_plan_skips_missing_library_mapping_when_configured(
@@ -925,6 +1013,7 @@ class _Repositories:
         self.audio_files = SqliteAudioFileRepository(connection)
         self.match_links = SqliteMatchLinkRepository(connection)
         self.libraries = SqliteLibraryRepository(connection)
+        self.library_metadata = SqliteLibraryMetadataRepository(connection)
         self.library_tracks = SqliteLibraryTrackRepository(connection)
         self.song_library_links = SqliteSongLibraryLinkRepository(connection)
         self.export_plans = SqliteExportPlanRepository(connection)
@@ -1012,6 +1101,51 @@ def _seed_library_mapping(
     )
 
 
+def _seed_tracks_json_metadata(
+    repositories: _Repositories,
+    *,
+    library_track_id: str,
+    payload: dict[str, object],
+    imported_at: str = "2026-07-06T11:00:00+00:00",
+) -> None:
+    run = LibraryMetadataImportRun(
+        id="metadata_run_1",
+        library_id="default",
+        environment_id="env_1",
+        status=LibraryMetadataImportRunStatus.COMPLETED,
+        started_at=imported_at,
+        finished_at=imported_at,
+        asset_count=1,
+        index_entry_count=1,
+        error_count=0,
+    )
+    asset = LibraryMetadataAsset(
+        id="metadata_asset_1",
+        run_id=run.id,
+        library_id="default",
+        provider="tracks_json",
+        asset_type="tracks_json",
+        source_path=Path("/usb/Set/tracks.json"),
+        stored_path=Path("/library/_music_manager/metadata-assets/run/tracks.json"),
+        size_bytes=10,
+        modified_at=1.0,
+        imported_at=imported_at,
+        status=LibraryMetadataAssetStatus.COPIED,
+    )
+    entry = LibraryMetadataIndexEntry(
+        id="metadata_entry_1",
+        library_id="default",
+        provider="tracks_json",
+        source_asset_id=asset.id,
+        source_path=asset.source_path,
+        library_track_id=library_track_id,
+        entry_key=f"track:{library_track_id}",
+        payload_json=json.dumps(payload),
+        imported_at=imported_at,
+    )
+    repositories.library_metadata.save_import_run(run, (asset,), (entry,))
+
+
 def _audio_file(
     audio_file_id: str,
     path: Path,
@@ -1043,6 +1177,7 @@ def _plan_export(
         libraries=repositories.libraries,
         library_tracks=repositories.library_tracks,
         song_library_links=repositories.song_library_links,
+        library_metadata=repositories.library_metadata,
         export_plans=repositories.export_plans,
         metadata_reader=metadata_reader or FakeMetadataReader(),
     )
