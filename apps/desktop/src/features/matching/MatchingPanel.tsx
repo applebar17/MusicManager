@@ -10,7 +10,7 @@ import {
   ShoppingCart,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, FormEvent } from "react";
+import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent } from "react";
 
 import { ApiError } from "../../shared/api/http";
 import type {
@@ -41,6 +41,23 @@ type ReviewFilter =
   | "manually_mapped_library";
 
 const DEFAULT_TARGET_COLUMN_WIDTH = 180;
+const MATCHING_COLUMNS = [
+  { key: "target", label: "Target Track", minWidth: 140 },
+  { key: "artist", label: "Artist", minWidth: 120 },
+  { key: "library", label: "Library Track", minWidth: 240 },
+  { key: "status", label: "Status", minWidth: 120 },
+  { key: "actions", label: "Actions", minWidth: 170 },
+] as const;
+
+type MatchingColumnKey = (typeof MATCHING_COLUMNS)[number]["key"];
+
+const DEFAULT_MATCHING_COLUMN_WIDTHS: Record<MatchingColumnKey, number> = {
+  target: DEFAULT_TARGET_COLUMN_WIDTH,
+  artist: 150,
+  library: 420,
+  status: 150,
+  actions: 220,
+};
 
 export function MatchingPanel() {
   const { selectedEnvironmentId, openLibraryTrack } = useAppState();
@@ -48,7 +65,7 @@ export function MatchingPanel() {
   const [rows, setRows] = useState<MatchReviewRow[]>([]);
   const [filter, setFilter] = useState<ReviewFilter>("library_needs_review");
   const [reviewSearch, setReviewSearch] = useState("");
-  const [targetColumnWidth, setTargetColumnWidth] = useState(DEFAULT_TARGET_COLUMN_WIDTH);
+  const [columnWidths, setColumnWidths] = useState(DEFAULT_MATCHING_COLUMN_WIDTHS);
   const [libraryRunSummary, setLibraryRunSummary] = useState<LibraryMatchingRunSummary | null>(
     null,
   );
@@ -169,6 +186,10 @@ export function MatchingPanel() {
       }),
     [filter, reviewSearch, rows],
   );
+  const matchingColumnTemplate = useMemo(
+    () => MATCHING_COLUMNS.map((column) => `${columnWidths[column.key]}px`).join(" "),
+    [columnWidths],
+  );
 
   async function handleRunLibraryMatching() {
     if (!selectedEnvironmentId) {
@@ -251,6 +272,33 @@ export function MatchingPanel() {
     if (manualLibraryMatchRow) {
       await loadManualLibraryCandidates(manualLibraryMatchRow, manualLibraryCandidateQuery);
     }
+  }
+
+  function handleColumnResize(
+    column: (typeof MATCHING_COLUMNS)[number],
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = columnWidths[column.key];
+
+    function handleMouseMove(moveEvent: MouseEvent) {
+      const nextWidth = Math.max(column.minWidth, startWidth + moveEvent.clientX - startX);
+      setColumnWidths((current) => ({
+        ...current,
+        [column.key]: nextWidth,
+      }));
+    }
+
+    function handleMouseUp() {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.classList.remove("is-resizing-columns");
+    }
+
+    document.body.classList.add("is-resizing-columns");
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
   }
 
   async function handleDiscoverSource(row: MatchReviewRow) {
@@ -418,30 +466,24 @@ export function MatchingPanel() {
                 onChange={(event) => setReviewSearch(event.target.value)}
               />
             </label>
-            <label className="matching-column-size">
-              <span>Target</span>
-              <input
-                aria-label="Target track column width"
-                max={320}
-                min={140}
-                step={10}
-                type="range"
-                value={targetColumnWidth}
-                onChange={(event) => setTargetColumnWidth(Number(event.target.value))}
-              />
-            </label>
           </section>
 
           <section
             className="matching-table matching-table--library"
-            style={{ "--target-track-column": `${targetColumnWidth}px` } as CSSProperties}
+            style={{ "--matching-columns": matchingColumnTemplate } as CSSProperties}
           >
             <div className="matching-table-header" role="row">
-              <span>Target Track</span>
-              <span>Artist</span>
-              <span>Library Track</span>
-              <span>Status</span>
-              <span>Actions</span>
+              {MATCHING_COLUMNS.map((column) => (
+                <div className="matching-header-cell" key={column.key} role="columnheader">
+                  <span>{column.label}</span>
+                  <button
+                    aria-label={`Resize ${column.label} column`}
+                    className="matching-column-resizer"
+                    type="button"
+                    onMouseDown={(event) => handleColumnResize(column, event)}
+                  />
+                </div>
+              ))}
             </div>
             {isLoading ? <LoadingState label="Loading library review" /> : null}
             {!isLoading && filteredRows.length === 0 ? (
@@ -510,8 +552,9 @@ function FilterButton({
       type="button"
       onClick={onClick}
     >
-      {label}
-      <span>{formatNumber(count)}</span>
+      <span className="matching-filter-dot" aria-hidden="true" />
+      <span className="matching-filter-label">{label}</span>
+      <span className="matching-filter-count">{formatNumber(count)}</span>
     </button>
   );
 }
