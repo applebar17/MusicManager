@@ -237,18 +237,6 @@ export type PlaylistLocalItemCreate = {
   audio_file_id: string;
 };
 
-export type MatchCandidateRead = {
-  audio_file_id: string;
-  path: string;
-  source_area: "download" | "usb" | "other";
-  title: string | null;
-  artist: string | null;
-  duration_seconds: number | null;
-  method: string;
-  confidence: number;
-  warnings: string[];
-};
-
 export type LibraryMatchStatus =
   | "library_matched"
   | "missing_library"
@@ -273,8 +261,6 @@ export type MatchReviewRow = {
   artist: string | null;
   duration_seconds: number | null;
   status: MatchStatus;
-  match: MatchCandidateRead | null;
-  candidates: MatchCandidateRead[];
   library_status: LibraryMatchStatus | null;
   library_match: LibraryTrackCandidateRead | null;
   library_candidates: LibraryTrackCandidateRead[];
@@ -291,15 +277,6 @@ export type LibraryMatchReviewRow = {
   candidates: LibraryTrackCandidateRead[];
 };
 
-export type MatchingRunSummary = {
-  environment_id: string;
-  total: number;
-  matched: number;
-  missing_audio: number;
-  ambiguous: number;
-  manually_mapped: number;
-};
-
 export type LibraryMatchingRunSummary = {
   environment_id: string;
   total: number;
@@ -307,26 +284,6 @@ export type LibraryMatchingRunSummary = {
   missing_library: number;
   ambiguous_library: number;
   manually_mapped_library: number;
-};
-
-export type DownloadMatchSummaryRead = {
-  checked: number;
-  matched: number;
-  missing_audio: number;
-  ambiguous: number;
-  preserved_reviewed: number;
-};
-
-export type DownloadMatchRunResultRead = {
-  environment_id: string;
-  download_path: string;
-  scan: ScanSummaryRead;
-  matching: DownloadMatchSummaryRead;
-};
-
-export type ManualMappingCreate = {
-  song_id: string;
-  audio_file_id: string;
 };
 
 export type ManualLibraryMappingCreate = {

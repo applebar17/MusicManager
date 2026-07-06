@@ -15,10 +15,14 @@ from music_manager_backend.domain.entities import (
     ExportApplyRun,
     ExportApplyRunStatus,
     ExportPlan,
+    LibraryTrack,
+    LibraryTrackStatus,
     MatchLink,
     MusicEnvironment,
+    MusicLibrary,
     Playlist,
     PlaylistItem,
+    SongLibraryLink,
     SongMaster,
 )
 from music_manager_backend.domain.entities.export_plan import ExportAction
@@ -78,12 +82,10 @@ def test_environment_overview_and_playlist_views(api_client: TestClient) -> None
     ]
     assert [item["song_id"] for item in detail["removed_items"]] == ["song_4"]
     assert detail["items"][0]["match_status"] == "matched"
-    assert detail["items"][0]["accepted_audio_file_id"] == "file_1"
-    assert detail["items"][0]["accepted_audio_filename"] == "matched.mp3"
-    assert detail["items"][0]["accepted_audio_relative_path"] == "matched.mp3"
-    assert detail["items"][0]["playback_url"] == (
-        "/environments/env_1/playback/audio-files/file_1"
-    )
+    assert detail["items"][0]["accepted_library_track_id"] == "library_matched"
+    assert detail["items"][0]["accepted_library_filename"] == "matched.mp3"
+    assert detail["items"][0]["accepted_audio_file_id"] is None
+    assert detail["items"][0]["playback_url"] is None
     assert detail["items"][1]["match_status"] == "ambiguous"
     assert detail["removed_items"][0]["remote_membership_active"] is False
 
@@ -101,11 +103,28 @@ def test_playlist_detail_rejects_wrong_environment(api_client: TestClient) -> No
     assert response.status_code == 404
 
 
-def test_playlist_local_items_can_be_added_and_removed(api_client: TestClient) -> None:
+def test_playlist_local_items_can_be_added_and_removed(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
     container = _container(api_client)
+    root = tmp_path / "usb"
+    library_root = tmp_path / "library"
+    root.mkdir()
+    library_root.mkdir()
+    local_file = root / "Loose Track.mp3"
+    local_file.write_bytes(b"fake audio")
     with container.repository_bundle() as repositories:
         repositories.environment_repository.save(
-            MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
+            MusicEnvironment(id="env_1", name="USB", root_path=root)
+        )
+        repositories.library_repository.save_default(
+            MusicLibrary(
+                id="default",
+                root_path=library_root,
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
         )
         repositories.playlist_repository.save(
             Playlist(id="playlist_1", environment_id="env_1", name="Set")
@@ -114,7 +133,7 @@ def test_playlist_local_items_can_be_added_and_removed(api_client: TestClient) -
             AudioFile(
                 id="file_local",
                 environment_id="env_1",
-                path=Path("/Volumes/USB/Loose Track.mp3"),
+                path=local_file,
                 size_bytes=12,
                 modified_at=1.0,
                 title="Loose Track",
@@ -137,7 +156,8 @@ def test_playlist_local_items_can_be_added_and_removed(api_client: TestClient) -
     assert body["items"][0]["remote_membership_active"] is False
     assert body["items"][0]["added_by_local_audio_file_id"] == "file_local"
     assert body["items"][0]["match_status"] == "manually_mapped"
-    assert body["items"][0]["accepted_audio_file_id"] == "file_local"
+    assert body["items"][0]["library_match_status"] == "manually_mapped_library"
+    assert body["items"][0]["accepted_library_filename"] == "Loose Track.mp3"
 
     song_id = body["items"][0]["song_id"]
     removed = api_client.delete(
@@ -252,9 +272,13 @@ def test_full_synchronous_desktop_api_flow(
     )
     client = TestClient(app)
     root = tmp_path / "usb"
+    library_root = tmp_path / "library"
     root.mkdir()
+    library_root.mkdir()
     local_audio = root / "Track One.mp3"
     local_audio.write_bytes(b"fake audio")
+    library_audio = library_root / "Track One.mp3"
+    library_audio.write_bytes(b"library audio")
 
     environment = client.post(
         "/environments",
@@ -266,15 +290,37 @@ def test_full_synchronous_desktop_api_flow(
         f"/environments/{environment_id}/soundcloud/playlists",
         json={"url": SOURCE_URL},
     ).json()
-    client.post(f"/environments/{environment_id}/matching/run")
     detail_before_mapping = client.get(
         f"/environments/{environment_id}/playlists/{imported['playlist_id']}"
     ).json()
-    audio_file_id = client.get(f"/environments/{environment_id}/audio-files").json()[0]["id"]
     song_id = detail_before_mapping["items"][0]["song_id"]
+    with app.state.container.repository_bundle() as repositories:
+        repositories.library_repository.save_default(
+            MusicLibrary(
+                id="default",
+                root_path=library_root,
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+        repositories.library_track_repository.save(
+            LibraryTrack(
+                id="library_track_1",
+                library_id="default",
+                canonical_path=library_audio,
+                filename=library_audio.name,
+                size_bytes=library_audio.stat().st_size,
+                modified_at=library_audio.stat().st_mtime,
+                status=LibraryTrackStatus.ACTIVE,
+                title="Track One",
+                artist="Artist",
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
     client.post(
-        f"/environments/{environment_id}/matching/manual-mappings",
-        json={"song_id": song_id, "audio_file_id": audio_file_id},
+        f"/environments/{environment_id}/library/matching/manual-mappings",
+        json={"song_id": song_id, "library_track_id": "library_track_1"},
     )
     overview = client.get(f"/environments/{environment_id}/overview")
     detail = client.get(f"/environments/{environment_id}/playlists/{imported['playlist_id']}")
@@ -286,7 +332,7 @@ def test_full_synchronous_desktop_api_flow(
 
     assert scan.status_code == 200
     assert overview.json()["manually_mapped_count"] == 1
-    assert detail.json()["items"][0]["playback_url"].endswith(audio_file_id)
+    assert detail.json()["items"][0]["accepted_library_track_id"] == "library_track_1"
     assert plan["counts"]["copy_file"] == 1
     assert apply_run["status"] in {"queued", "running", "completed"}
     assert fetched_apply_run["status"] == "completed"
@@ -296,7 +342,7 @@ def test_full_synchronous_desktop_api_flow(
         if item["action"] == "copy_file"
     ]
     assert len(copy_targets) == 1
-    assert copy_targets[0].read_bytes() == b"fake audio"
+    assert copy_targets[0].read_bytes() == b"library audio"
     assert copy_targets[0].is_relative_to(root)
     assert not copy_targets[0].is_relative_to(root / "_music_manager")
 
@@ -326,9 +372,11 @@ def _seed_desktop_view_data(container: AppContainer) -> None:
             MusicEnvironment(id="env_1", name="USB", root_path=Path("/Volumes/USB"))
         )
         repositories.song_repository.save(
-            SongMaster(id="song_1", title="Matched", artist="Artist")
+            SongMaster(id="song_1", title="Matched", artist="Artist", duration_seconds=180)
         )
-        repositories.song_repository.save(SongMaster(id="song_2", title="Maybe", artist="Artist"))
+        repositories.song_repository.save(
+            SongMaster(id="song_2", title="Maybe", artist="Artist", duration_seconds=181)
+        )
         repositories.song_repository.save(
             SongMaster(id="song_3", title="Missing", artist="Artist")
         )
@@ -376,6 +424,70 @@ def _seed_desktop_view_data(container: AppContainer) -> None:
                 size_bytes=1,
                 modified_at=1.0,
                 status=AudioFileStatus.REMOVED,
+            )
+        )
+        repositories.library_repository.save_default(
+            MusicLibrary(
+                id="default",
+                root_path=Path("/Music/Library"),
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+        repositories.library_track_repository.save(
+            LibraryTrack(
+                id="library_matched",
+                library_id="default",
+                canonical_path=Path("/Music/Library/matched.mp3"),
+                filename="matched.mp3",
+                status=LibraryTrackStatus.ACTIVE,
+                title="Matched",
+                artist="Artist",
+                duration_seconds=180,
+                normalized_title="matched",
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+        repositories.library_track_repository.save(
+            LibraryTrack(
+                id="library_maybe_a",
+                library_id="default",
+                canonical_path=Path("/Music/Library/maybe-a.mp3"),
+                filename="maybe-a.mp3",
+                status=LibraryTrackStatus.ACTIVE,
+                title="Maybe",
+                artist="Artist",
+                duration_seconds=181,
+                normalized_title="maybe",
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+        repositories.library_track_repository.save(
+            LibraryTrack(
+                id="library_maybe_b",
+                library_id="default",
+                canonical_path=Path("/Music/Library/maybe-b.mp3"),
+                filename="maybe-b.mp3",
+                status=LibraryTrackStatus.ACTIVE,
+                title="Maybe",
+                artist="Artist",
+                duration_seconds=181,
+                normalized_title="maybe",
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+        repositories.song_library_link_repository.save(
+            SongLibraryLink(
+                song_id="song_1",
+                library_track_id="library_matched",
+                method="library_identity_exact",
+                confidence=1.0,
+                reviewed=False,
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
             )
         )
         repositories.match_link_repository.save(

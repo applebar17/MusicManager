@@ -33,7 +33,6 @@ from music_manager_backend.api.dependencies import (
 from music_manager_backend.application.dtos import (
     ApiErrorRead,
     AudioFileRead,
-    DownloadMatchRunResultRead,
     EnvironmentCreate,
     EnvironmentOverviewRead,
     EnvironmentRead,
@@ -48,9 +47,6 @@ from music_manager_backend.application.dtos import (
     LibraryMetadataImportRunRead,
     LibraryTrackCandidateRead,
     ManualLibraryMappingCreate,
-    ManualMappingCreate,
-    MatchCandidateRead,
-    MatchingRunSummary,
     MatchReviewRow,
     PlaylistDetailRead,
     PlaylistLocalItemCreate,
@@ -74,7 +70,6 @@ from music_manager_backend.application.use_cases.apply_export_plan import ApplyE
 from music_manager_backend.application.use_cases.archive_environment import ArchiveEnvironment
 from music_manager_backend.application.use_cases.align_library import AlignLibraryFromEnvironment
 from music_manager_backend.application.use_cases.create_environment import CreateEnvironment
-from music_manager_backend.application.use_cases.create_manual_mapping import CreateManualMapping
 from music_manager_backend.application.use_cases.discover_soundcloud_track import (
     DiscoverSoundCloudTrack,
 )
@@ -94,9 +89,6 @@ from music_manager_backend.application.use_cases.list_environment_playlists impo
     ListEnvironmentPlaylists,
 )
 from music_manager_backend.application.use_cases.list_export_plan import ListExportPlan
-from music_manager_backend.application.use_cases.list_manual_audio_file_candidates import (
-    ListManualAudioFileCandidates,
-)
 from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
 from music_manager_backend.application.use_cases.library_matching import (
     CreateManualLibraryMapping,
@@ -105,13 +97,11 @@ from music_manager_backend.application.use_cases.library_matching import (
     RunLibraryMatching,
 )
 from music_manager_backend.application.use_cases.list_unmanaged_files import ListUnmanagedFiles
-from music_manager_backend.application.use_cases.match_downloads import MatchDownloads
 from music_manager_backend.application.use_cases.manage_playlist_local_items import (
     AddPlaylistLocalItem,
     RemovePlaylistLocalItem,
 )
 from music_manager_backend.application.use_cases.plan_export import PlanExport
-from music_manager_backend.application.use_cases.run_matching import RunMatching
 from music_manager_backend.application.use_cases.scan_environment import ScanEnvironment
 from music_manager_backend.application.use_cases.sync_all_soundcloud_playlists import (
     SyncAllSoundCloudPlaylists,
@@ -400,29 +390,6 @@ def sync_soundcloud_playlist(
 
 
 @router.post(
-    "/{environment_id}/matching/run",
-    response_model=MatchingRunSummary,
-    responses=ERROR_RESPONSES,
-    dependencies=[Depends(guard_environment_operation("run_matching"))],
-)
-def run_matching(
-    environment_id: str,
-    environments: EnvironmentRepositoryDependency,
-    playlists: PlaylistRepositoryDependency,
-    songs: SongRepositoryDependency,
-    audio_files: AudioFileRepositoryDependency,
-    match_links: MatchLinkRepositoryDependency,
-) -> MatchingRunSummary:
-    return RunMatching(
-        environments=environments,
-        playlists=playlists,
-        songs=songs,
-        audio_files=audio_files,
-        match_links=match_links,
-    ).execute(environment_id)
-
-
-@router.post(
     "/{environment_id}/library/matching/run",
     response_model=LibraryMatchingRunSummary,
     responses=ERROR_RESPONSES,
@@ -447,33 +414,6 @@ def run_library_matching(
     ).execute(environment_id)
 
 
-@router.post(
-    "/{environment_id}/matching/downloads/run",
-    response_model=DownloadMatchRunResultRead,
-    responses=ERROR_RESPONSES,
-    dependencies=[Depends(guard_environment_operation("match_downloads"))],
-)
-def match_downloads(
-    environment_id: str,
-    environments: EnvironmentRepositoryDependency,
-    playlists: PlaylistRepositoryDependency,
-    songs: SongRepositoryDependency,
-    audio_files: AudioFileRepositoryDependency,
-    match_links: MatchLinkRepositoryDependency,
-    scan_runs: ScanRunRepositoryDependency,
-) -> DownloadMatchRunResultRead:
-    return MatchDownloads(
-        environments=environments,
-        playlists=playlists,
-        songs=songs,
-        audio_files=audio_files,
-        match_links=match_links,
-        scan_runs=scan_runs,
-        scanner_factory=LocalAudioScanner,
-        metadata_reader=MetadataReader(),
-    ).execute(environment_id)
-
-
 @router.get(
     "/{environment_id}/matching/review",
     response_model=list[MatchReviewRow],
@@ -484,8 +424,6 @@ def list_match_review(
     environments: EnvironmentRepositoryDependency,
     playlists: PlaylistRepositoryDependency,
     songs: SongRepositoryDependency,
-    audio_files: AudioFileRepositoryDependency,
-    match_links: MatchLinkRepositoryDependency,
     source_discoveries: SourceDiscoveryRepositoryDependency,
     libraries: LibraryRepositoryDependency,
     library_tracks: LibraryTrackRepositoryDependency,
@@ -495,8 +433,6 @@ def list_match_review(
         environments=environments,
         playlists=playlists,
         songs=songs,
-        audio_files=audio_files,
-        match_links=match_links,
         source_discoveries=source_discoveries,
         libraries=libraries,
         library_tracks=library_tracks,
@@ -529,30 +465,6 @@ def list_library_match_review(
 
 
 @router.get(
-    "/{environment_id}/matching/manual-file-candidates",
-    response_model=list[MatchCandidateRead],
-    responses=ERROR_RESPONSES,
-)
-def list_manual_audio_file_candidates(
-    environment_id: str,
-    environments: EnvironmentRepositoryDependency,
-    playlists: PlaylistRepositoryDependency,
-    songs: SongRepositoryDependency,
-    audio_files: AudioFileRepositoryDependency,
-    match_links: MatchLinkRepositoryDependency,
-    song_id: str = Query(...),
-    q: str = Query(default=""),
-) -> list[MatchCandidateRead]:
-    return ListManualAudioFileCandidates(
-        environments=environments,
-        playlists=playlists,
-        songs=songs,
-        audio_files=audio_files,
-        match_links=match_links,
-    ).execute(environment_id, song_id=song_id, query=q)
-
-
-@router.get(
     "/{environment_id}/library/matching/manual-track-candidates",
     response_model=list[LibraryTrackCandidateRead],
     responses=ERROR_RESPONSES,
@@ -576,30 +488,6 @@ def list_manual_library_track_candidates(
         library_tracks=library_tracks,
         song_library_links=song_library_links,
     ).execute(environment_id, song_id=song_id, query=q)
-
-
-@router.post(
-    "/{environment_id}/matching/manual-mappings",
-    response_model=MatchReviewRow,
-    responses=ERROR_RESPONSES,
-    dependencies=[Depends(guard_environment_operation("create_manual_mapping"))],
-)
-def create_manual_mapping(
-    environment_id: str,
-    data: ManualMappingCreate,
-    environments: EnvironmentRepositoryDependency,
-    playlists: PlaylistRepositoryDependency,
-    songs: SongRepositoryDependency,
-    audio_files: AudioFileRepositoryDependency,
-    match_links: MatchLinkRepositoryDependency,
-) -> MatchReviewRow:
-    return CreateManualMapping(
-        environments=environments,
-        playlists=playlists,
-        songs=songs,
-        audio_files=audio_files,
-        match_links=match_links,
-    ).execute(environment_id, data.song_id, data.audio_file_id)
 
 
 @router.post(
@@ -662,8 +550,6 @@ def sync_missing_soundcloud_sources(
     environments: EnvironmentRepositoryDependency,
     playlists: PlaylistRepositoryDependency,
     songs: SongRepositoryDependency,
-    audio_files: AudioFileRepositoryDependency,
-    match_links: MatchLinkRepositoryDependency,
     source_discoveries: SourceDiscoveryRepositoryDependency,
     discovery_provider: SoundCloudTrackDiscoveryProviderDependency,
 ) -> SoundCloudSourceSyncResultRead:
@@ -671,8 +557,6 @@ def sync_missing_soundcloud_sources(
         environments=environments,
         playlists=playlists,
         songs=songs,
-        audio_files=audio_files,
-        match_links=match_links,
         source_discoveries=source_discoveries,
         discovery_provider=discovery_provider,
     ).execute(environment_id)
@@ -853,6 +737,9 @@ def get_environment_overview(
     songs: SongRepositoryDependency,
     audio_files: AudioFileRepositoryDependency,
     match_links: MatchLinkRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    song_library_links: SongLibraryLinkRepositoryDependency,
 ) -> EnvironmentOverviewRead:
     return GetEnvironmentOverview(
         environments=environments,
@@ -860,6 +747,9 @@ def get_environment_overview(
         songs=songs,
         audio_files=audio_files,
         match_links=match_links,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        song_library_links=song_library_links,
     ).execute(environment_id)
 
 
@@ -875,6 +765,9 @@ def list_environment_playlists(
     songs: SongRepositoryDependency,
     audio_files: AudioFileRepositoryDependency,
     match_links: MatchLinkRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    song_library_links: SongLibraryLinkRepositoryDependency,
 ) -> list[PlaylistSummaryRead]:
     return ListEnvironmentPlaylists(
         environments=environments,
@@ -882,6 +775,9 @@ def list_environment_playlists(
         songs=songs,
         audio_files=audio_files,
         match_links=match_links,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        song_library_links=song_library_links,
     ).execute(environment_id)
 
 
@@ -931,6 +827,9 @@ def add_playlist_local_item(
     songs: SongRepositoryDependency,
     audio_files: AudioFileRepositoryDependency,
     match_links: MatchLinkRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    song_library_links: SongLibraryLinkRepositoryDependency,
     source_discoveries: SourceDiscoveryRepositoryDependency,
 ) -> PlaylistDetailRead:
     return AddPlaylistLocalItem(
@@ -939,6 +838,9 @@ def add_playlist_local_item(
         songs=songs,
         audio_files=audio_files,
         match_links=match_links,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        song_library_links=song_library_links,
         source_discoveries=source_discoveries,
     ).execute(environment_id, playlist_id, data.audio_file_id)
 

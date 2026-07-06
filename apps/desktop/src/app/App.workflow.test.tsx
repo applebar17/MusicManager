@@ -76,29 +76,14 @@ describe("desktop v1 workflow", () => {
     expect(await screen.findByText("Synced all")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /matching review/i }));
-    expect(await screen.findByText("Resolve track mismatches and map ambiguous candidates.")).toBeInTheDocument();
-
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /match downloads/i })).toBeEnabled(),
-    );
-    await user.click(screen.getByRole("button", { name: /match downloads/i }));
-    expect(await screen.findByText("Downloads Matched")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /^run matching$/i }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /map file/i })).toBeEnabled());
+    expect(
+      await screen.findByText("Map active SoundCloud playlist songs to shared library tracks."),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^run library matching$/i }));
-    expect(await screen.findByText("Library Matching Complete")).toBeInTheDocument();
-    expect(await screen.findByText("1 library matched")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /map file/i }));
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.some(([url]) =>
-          String(url).endsWith("/environments/env_1/matching/manual-mappings"),
-        ),
-      ).toBe(true),
-    );
+    expect(await screen.findByText("1 matched")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /match downloads/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^run matching$/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^export$/i }));
     await user.click(await screen.findByRole("button", { name: /preview export plan/i }));
@@ -119,8 +104,7 @@ describe("desktop v1 workflow", () => {
 
 function mockFetch() {
   let imported = false;
-  let mapped = false;
-  let libraryMapped = false;
+    let libraryMapped = false;
   let libraryRootPath: string | null = null;
 
   return (input: RequestInfo | URL, init?: RequestInit) => {
@@ -179,11 +163,11 @@ function mockFetch() {
       return jsonResponse({
         active_audio_file_count: 1,
         active_playlist_item_count: imported ? 1 : 0,
-        ambiguous_count: imported && !mapped ? 1 : 0,
+        ambiguous_count: imported && !libraryMapped ? 1 : 0,
         environment_id: "env_1",
         inactive_playlist_item_count: 0,
-        manually_mapped_count: mapped ? 1 : 0,
-        matched_count: mapped ? 1 : 0,
+        manually_mapped_count: 0,
+        matched_count: libraryMapped ? 1 : 0,
         missing_audio_count: 0,
         playlist_count: imported ? 1 : 0,
         removed_audio_file_count: 0,
@@ -201,7 +185,7 @@ function mockFetch() {
     }
 
     if (path === "/environments/env_1/playlists" && method === "GET") {
-      return jsonResponse(imported ? [playlistSummary(mapped)] : []);
+      return jsonResponse(imported ? [playlistSummary(libraryMapped)] : []);
     }
 
     if (path === "/environments/env_1/soundcloud/playlists" && method === "POST") {
@@ -279,18 +263,20 @@ function mockFetch() {
         inactive_item_count: 0,
         items: [
           {
-            accepted_audio_file_id: mapped ? "audio_1" : null,
-            accepted_library_filename: null,
-            accepted_library_path: null,
-            accepted_library_track_id: null,
+            accepted_audio_file_id: null,
+            accepted_library_filename: libraryMapped ? "smoke-track-candidate.mp3" : null,
+            accepted_library_path: libraryMapped
+              ? "/Users/demo/Music Library/smoke-track-candidate.mp3"
+              : null,
+            accepted_library_track_id: libraryMapped ? "library_track_1" : null,
             accepted_audio_warnings: [],
             artist: "Smoke Artist",
             duration_seconds: 184,
             local_membership_active: false,
             added_by_local_audio_file_id: null,
-            library_match_status: null,
-            match_status: mapped ? "manually_mapped" : "ambiguous",
-            playback_url: mapped ? "/environments/env_1/playback/audio-files/audio_1" : null,
+            library_match_status: libraryMapped ? "library_matched" : "missing_library",
+            match_status: libraryMapped ? "matched" : "missing_audio",
+            playback_url: null,
             position: 1,
             remote_removed_at: null,
             remote_membership_active: true,
@@ -301,17 +287,6 @@ function mockFetch() {
         name: "Wave 6 Smoke",
         removed_items: [],
         remote_playlist_id: "remote_1",
-      });
-    }
-
-    if (path === "/environments/env_1/matching/run" && method === "POST") {
-      return jsonResponse({
-        ambiguous: mapped ? 0 : 1,
-        environment_id: "env_1",
-        manually_mapped: mapped ? 1 : 0,
-        matched: mapped ? 1 : 0,
-        missing_audio: 0,
-        total: 1,
       });
     }
 
@@ -327,57 +302,19 @@ function mockFetch() {
       });
     }
 
-    if (path === "/environments/env_1/matching/downloads/run" && method === "POST") {
-      return jsonResponse({
-        download_path: "/Users/demo/Downloads",
-        environment_id: "env_1",
-        matching: {
-          ambiguous: mapped ? 0 : 1,
-          checked: 1,
-          matched: mapped ? 1 : 0,
-          missing_audio: 0,
-          preserved_reviewed: 0,
-        },
-        scan: {
-          added: 1,
-          changed: 0,
-          environment_id: "env_1",
-          moved: 0,
-          removed: 0,
-          scan_run_id: "scan_downloads_1",
-          total_active: 1,
-          unchanged: 0,
-        },
-      });
-    }
-
     if (path === "/environments/env_1/matching/review" && method === "GET") {
       return jsonResponse([
         {
           artist: "Smoke Artist",
-          candidates: mapped ? [] : [candidate()],
           duration_seconds: 184,
           library_candidates: libraryMapped ? [] : [libraryCandidate()],
           library_match: libraryMapped ? libraryCandidate() : null,
           library_status: libraryMapped ? "library_matched" : "missing_library",
-          match: mapped ? candidate() : null,
           song_id: "song_1",
-          status: mapped ? "manually_mapped" : "ambiguous",
+          status: libraryMapped ? "matched" : "missing_audio",
           title: "Smoke Track",
         },
       ]);
-    }
-
-    if (path === "/environments/env_1/matching/manual-mappings" && method === "POST") {
-      mapped = true;
-      return jsonResponse({
-        ambiguous: 0,
-        environment_id: "env_1",
-        manually_mapped: 1,
-        matched: 1,
-        missing_audio: 0,
-        total: 1,
-      });
     }
 
     if (path === "/environments/env_1/export-plans" && method === "POST") {
@@ -404,31 +341,17 @@ function mockFetch() {
   };
 }
 
-function playlistSummary(mapped: boolean) {
+function playlistSummary(libraryMapped: boolean) {
   return {
     active_item_count: 1,
-    ambiguous_count: mapped ? 0 : 1,
+    ambiguous_count: libraryMapped ? 0 : 1,
     id: "playlist_1",
     inactive_item_count: 0,
-    manually_mapped_count: mapped ? 1 : 0,
-    matched_count: mapped ? 1 : 0,
+    manually_mapped_count: 0,
+    matched_count: libraryMapped ? 1 : 0,
     missing_audio_count: 0,
     name: "Wave 6 Smoke",
     remote_playlist_id: "remote_1",
-  };
-}
-
-function candidate() {
-  return {
-    artist: "Smoke Artist",
-    audio_file_id: "audio_1",
-    confidence: 0.88,
-    duration_seconds: 184,
-    method: "title_duration",
-    path: "/Volumes/USB/smoke-track-candidate.mp3",
-    source_area: "download",
-    title: "Smoke Track",
-    warnings: [],
   };
 }
 

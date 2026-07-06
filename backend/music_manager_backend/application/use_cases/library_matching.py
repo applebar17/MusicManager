@@ -44,15 +44,15 @@ class RunLibraryMatching:
         self.song_library_links = song_library_links
 
     def execute(self, environment_id: str) -> LibraryMatchingRunSummary:
-        library = self.libraries.get_default()
-        if library is None:
-            raise ValidationError("Shared library is not configured.")
         environment_songs = load_environment_songs(
             environment_id=environment_id,
             environments=self.environments,
             playlists=self.playlists,
             songs=self.songs,
         )
+        library = self.libraries.get_default()
+        if library is None:
+            raise ValidationError("Shared library is not configured.")
         active_tracks = active_library_tracks_by_id(library.id, self.library_tracks)
 
         matched = 0

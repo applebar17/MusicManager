@@ -71,8 +71,6 @@ class GetPlaylistDetail:
                 environments=self.environments,
                 playlists=self.playlists,
                 songs=self.songs,
-                audio_files=self.audio_files,
-                match_links=self.match_links,
                 source_discoveries=self.source_discoveries,
                 libraries=self.libraries,
                 library_tracks=self.library_tracks,
@@ -156,14 +154,6 @@ def _playlist_item_read(
             accepted_library_track_id = review.library_match.library_track_id
             accepted_library_filename = review.library_match.filename
             accepted_library_path = review.library_match.path
-        if review.match is not None:
-            accepted_audio_file_id = review.match.audio_file_id
-            accepted_audio_filename = _accepted_audio_filename(review.match.path)
-            accepted_audio_relative_path = _accepted_audio_relative_path(
-                review.match.path,
-                environment.root_path,
-            )
-            accepted_audio_warnings = review.match.warnings
     else:
         accepted = preferred_match_link(match_links.list_by_song(song.id), active_files)
         if accepted is not None:

@@ -300,7 +300,7 @@ def test_alignment_uses_filename_suffix_for_existing_target(
     run = _align_use_case(
         sqlite_connection,
         _MetadataReader(
-            {str(library_root / "track.mp3"): 180, str(usb_root / "track.mp3"): 180},
+            {str(library_root / "track.mp3"): 180, str(usb_root / "track.mp3"): 181},
             titles={
                 str(library_root / "track.mp3"): "Existing Track",
                 str(usb_root / "track.mp3"): "USB Track",

@@ -2,102 +2,65 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleHelp,
-  Download,
   ExternalLink,
   Library,
   Link2,
-  Play,
   RefreshCw,
   Search,
   ShoppingCart,
-  X,
-  Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, RefObject } from "react";
+import type { CSSProperties, FormEvent } from "react";
 
 import { ApiError } from "../../shared/api/http";
 import type {
-  DownloadMatchRunResultRead,
-  EnvironmentRead,
   LibraryMatchingRunSummary,
   LibraryMatchStatus,
   LibraryTrackCandidateRead,
-  MatchCandidateRead,
-  MatchingRunSummary,
   MatchReviewRow,
-  MatchStatus,
   SoundCloudSourceSyncResultRead,
   SoundCloudTrackDiscoveryRead,
 } from "../../shared/api/types";
 import { useAppState } from "../../shared/state";
 import { Button, EmptyState, ErrorBanner, LoadingState, Panel, StatusBadge } from "../../shared/ui";
-import { listEnvironments } from "../environments/api";
 import {
   createManualLibraryMapping,
-  createManualMapping,
   discoverSoundCloudTrack,
   listManualLibraryTrackCandidates,
-  listManualFileCandidates,
   listMatchReview,
-  matchDownloads,
-  playbackAudioUrl,
   runLibraryMatching,
-  runMatching,
   syncMissingSoundCloudSources,
 } from "./api";
 
 type ReviewFilter =
-  | "needs_review"
-  | "all"
-  | "matched"
-  | "missing_audio"
-  | "ambiguous"
-  | "manually_mapped"
   | "library_needs_review"
+  | "all"
   | "library_matched"
   | "missing_library"
   | "ambiguous_library"
   | "manually_mapped_library";
 
-type PreviewState = {
-  audioFileId: string;
-  label: string;
-  detail: string;
-  url: string;
-};
+const DEFAULT_TARGET_COLUMN_WIDTH = 180;
 
 export function MatchingPanel() {
   const { selectedEnvironmentId, openLibraryTrack } = useAppState();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [rows, setRows] = useState<MatchReviewRow[]>([]);
-  const [selectedEnvironment, setSelectedEnvironment] = useState<EnvironmentRead | null>(null);
-  const [filter, setFilter] = useState<ReviewFilter>("needs_review");
+  const [filter, setFilter] = useState<ReviewFilter>("library_needs_review");
   const [reviewSearch, setReviewSearch] = useState("");
-  const [runSummary, setRunSummary] = useState<MatchingRunSummary | null>(null);
+  const [targetColumnWidth, setTargetColumnWidth] = useState(DEFAULT_TARGET_COLUMN_WIDTH);
   const [libraryRunSummary, setLibraryRunSummary] = useState<LibraryMatchingRunSummary | null>(
     null,
   );
-  const [downloadMatchResult, setDownloadMatchResult] =
-    useState<DownloadMatchRunResultRead | null>(null);
   const [sourceSyncResult, setSourceSyncResult] =
     useState<SoundCloudSourceSyncResultRead | null>(null);
-  const [preview, setPreview] = useState<PreviewState | null>(null);
   const [sourceDiscovery, setSourceDiscovery] = useState<SoundCloudTrackDiscoveryRead | null>(null);
   const [sourceDiscoverySongId, setSourceDiscoverySongId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
   const [isRunningLibrary, setIsRunningLibrary] = useState(false);
-  const [isMatchingDownloads, setIsMatchingDownloads] = useState(false);
   const [isDiscoveringSource, setIsDiscoveringSource] = useState(false);
   const [isSyncingSources, setIsSyncingSources] = useState(false);
-  const [mappingKey, setMappingKey] = useState<string | null>(null);
   const [libraryMappingKey, setLibraryMappingKey] = useState<string | null>(null);
-  const [manualMatchRow, setManualMatchRow] = useState<MatchReviewRow | null>(null);
-  const [manualCandidateQuery, setManualCandidateQuery] = useState("");
-  const [manualCandidates, setManualCandidates] = useState<MatchCandidateRead[]>([]);
-  const [isSearchingManualCandidates, setIsSearchingManualCandidates] = useState(false);
   const [manualLibraryMatchRow, setManualLibraryMatchRow] = useState<MatchReviewRow | null>(null);
   const [manualLibraryCandidateQuery, setManualLibraryCandidateQuery] = useState("");
   const [manualLibraryCandidates, setManualLibraryCandidates] = useState<
@@ -105,68 +68,35 @@ export function MatchingPanel() {
   >([]);
   const [isSearchingManualLibraryCandidates, setIsSearchingManualLibraryCandidates] =
     useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
-  const refreshReview = useCallback(
-    async (environmentId: string) => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        setRows(await listMatchReview(environmentId));
-      } catch (loadError) {
-        setRows([]);
-        setError(errorMessage(loadError));
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [],
-  );
+  const refreshReview = useCallback(async (environmentId: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      setRows(await listMatchReview(environmentId));
+    } catch (loadError) {
+      setRows([]);
+      setError(errorMessage(loadError));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!selectedEnvironmentId) {
       setRows([]);
-      setSelectedEnvironment(null);
-      setRunSummary(null);
       setLibraryRunSummary(null);
-      setDownloadMatchResult(null);
       setSourceSyncResult(null);
-      setPreview(null);
       setSourceDiscovery(null);
       setSourceDiscoverySongId(null);
-      setManualMatchRow(null);
-      setManualCandidates([]);
-      setManualCandidateQuery("");
       setManualLibraryMatchRow(null);
       setManualLibraryCandidates([]);
       setManualLibraryCandidateQuery("");
       return;
     }
     void refreshReview(selectedEnvironmentId);
-    void listEnvironments()
-      .then((environments) => {
-        setSelectedEnvironment(
-          environments.find((environment) => environment.id === selectedEnvironmentId) ?? null,
-        );
-      })
-      .catch(() => {
-        setSelectedEnvironment(null);
-      });
   }, [refreshReview, selectedEnvironmentId]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !preview) {
-      return;
-    }
-    setPlaybackError(null);
-    void audio.play().catch((playError: unknown) => {
-      setPlaybackError(errorMessage(playError));
-      setIsPlaying(false);
-    });
-  }, [preview]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -180,35 +110,20 @@ export function MatchingPanel() {
       }
       if (event.key.toLowerCase() === "r") {
         event.preventDefault();
-        if (!isRunning && !isRunningLibrary && selectedEnvironmentId) {
-          void handleRunMatching();
+        if (!isRunningLibrary && selectedEnvironmentId) {
+          void handleRunLibraryMatching();
         }
         return;
       }
       if (event.key === "Escape") {
         setReviewSearch("");
-        setPreview(null);
-        setPlaybackError(null);
-        audioRef.current?.pause();
         return;
-      }
-      const shortcutFilters: ReviewFilter[] = [
-        "needs_review",
-        "all",
-        "matched",
-        "missing_audio",
-        "ambiguous",
-      ];
-      const shortcutIndex = Number(event.key) - 1;
-      if (shortcutIndex >= 0 && shortcutIndex < shortcutFilters.length) {
-        event.preventDefault();
-        setFilter(shortcutFilters[shortcutIndex]);
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isRunning, isRunningLibrary, selectedEnvironmentId]);
+  }, [isRunningLibrary, selectedEnvironmentId]);
 
   const counts = useMemo(() => reviewCounts(rows), [rows]);
   const filteredRows = useMemo(
@@ -220,14 +135,6 @@ export function MatchingPanel() {
           row.title.toLowerCase().includes(query) ||
           (row.artist ?? "").toLowerCase().includes(query) ||
           row.song_id.toLowerCase().includes(query) ||
-          row.candidates.some((candidate) =>
-            [
-              candidate.path,
-              candidate.title ?? "",
-              candidate.artist ?? "",
-              candidate.method,
-            ].some((value) => value.toLowerCase().includes(query)),
-          ) ||
           (row.library_match
             ? [
                 row.library_match.path,
@@ -246,52 +153,22 @@ export function MatchingPanel() {
               candidate.method,
             ].some((value) => value.toLowerCase().includes(query)),
           );
-        if (filter === "all") {
-          return matchesText;
+        if (!matchesText) {
+          return false;
         }
-        if (filter === "needs_review") {
-          return matchesText && (row.status === "missing_audio" || row.status === "ambiguous");
+        if (filter === "all") {
+          return true;
         }
         if (filter === "library_needs_review") {
           return (
-            matchesText &&
-            (row.library_status === "missing_library" ||
-              row.library_status === "ambiguous_library")
+            row.library_status === "missing_library" ||
+            row.library_status === "ambiguous_library"
           );
         }
-        if (
-          filter === "library_matched" ||
-          filter === "missing_library" ||
-          filter === "ambiguous_library" ||
-          filter === "manually_mapped_library"
-        ) {
-          return matchesText && row.library_status === filter;
-        }
-        return matchesText && row.status === filter;
+        return row.library_status === filter;
       }),
     [filter, reviewSearch, rows],
   );
-
-  async function handleRunMatching() {
-    if (!selectedEnvironmentId) {
-      setError("Select an environment before running matching.");
-      return;
-    }
-    setIsRunning(true);
-    setError(null);
-    try {
-      const summary = await runMatching(selectedEnvironmentId);
-      setRunSummary(summary);
-      setLibraryRunSummary(null);
-      setDownloadMatchResult(null);
-      setSourceSyncResult(null);
-      await refreshReview(selectedEnvironmentId);
-    } catch (runError) {
-      setError(errorMessage(runError));
-    } finally {
-      setIsRunning(false);
-    }
-  }
 
   async function handleRunLibraryMatching() {
     if (!selectedEnvironmentId) {
@@ -303,64 +180,12 @@ export function MatchingPanel() {
     try {
       const summary = await runLibraryMatching(selectedEnvironmentId);
       setLibraryRunSummary(summary);
-      setRunSummary(null);
-      setDownloadMatchResult(null);
       setSourceSyncResult(null);
       await refreshReview(selectedEnvironmentId);
     } catch (runError) {
       setError(errorMessage(runError));
     } finally {
       setIsRunningLibrary(false);
-    }
-  }
-
-  async function handleMatchDownloads() {
-    if (!selectedEnvironmentId) {
-      setError("Select an environment before matching downloads.");
-      return;
-    }
-    if (!selectedEnvironment?.download_path) {
-      setError("Configure a download folder before matching downloads.");
-      return;
-    }
-    setIsMatchingDownloads(true);
-    setError(null);
-    try {
-      const result = await matchDownloads(selectedEnvironmentId);
-      setDownloadMatchResult(result);
-      setRunSummary(null);
-      setLibraryRunSummary(null);
-      setSourceSyncResult(null);
-      await refreshReview(selectedEnvironmentId);
-    } catch (matchError) {
-      setError(errorMessage(matchError));
-    } finally {
-      setIsMatchingDownloads(false);
-    }
-  }
-
-  async function handleMapCandidate(row: MatchReviewRow, candidate: MatchCandidateRead) {
-    if (!selectedEnvironmentId) {
-      return;
-    }
-    const key = `${row.song_id}-${candidate.audio_file_id}`;
-    setMappingKey(key);
-    setError(null);
-    try {
-      await createManualMapping(selectedEnvironmentId, {
-        song_id: row.song_id,
-        audio_file_id: candidate.audio_file_id,
-      });
-      await refreshReview(selectedEnvironmentId);
-      if (manualMatchRow?.song_id === row.song_id) {
-        setManualMatchRow(null);
-        setManualCandidates([]);
-        setManualCandidateQuery("");
-      }
-    } catch (mappingError) {
-      setError(errorMessage(mappingError));
-    } finally {
-      setMappingKey(null);
     }
   }
 
@@ -392,17 +217,6 @@ export function MatchingPanel() {
     }
   }
 
-  async function openManualMatchModal(row: MatchReviewRow) {
-    if (!selectedEnvironmentId) {
-      return;
-    }
-    const initialQuery = [row.title, row.artist].filter(Boolean).join(" ");
-    setManualMatchRow(row);
-    setManualCandidateQuery(initialQuery);
-    setManualCandidates([]);
-    await loadManualCandidates(row, initialQuery);
-  }
-
   async function openManualLibraryMatchModal(row: MatchReviewRow) {
     if (!selectedEnvironmentId) {
       return;
@@ -412,24 +226,6 @@ export function MatchingPanel() {
     setManualLibraryCandidateQuery(initialQuery);
     setManualLibraryCandidates([]);
     await loadManualLibraryCandidates(row, initialQuery);
-  }
-
-  async function loadManualCandidates(row: MatchReviewRow, query: string) {
-    if (!selectedEnvironmentId) {
-      return;
-    }
-    setIsSearchingManualCandidates(true);
-    setError(null);
-    try {
-      setManualCandidates(
-        await listManualFileCandidates(selectedEnvironmentId, row.song_id, query),
-      );
-    } catch (candidateError) {
-      setManualCandidates([]);
-      setError(errorMessage(candidateError));
-    } finally {
-      setIsSearchingManualCandidates(false);
-    }
   }
 
   async function loadManualLibraryCandidates(row: MatchReviewRow, query: string) {
@@ -450,35 +246,11 @@ export function MatchingPanel() {
     }
   }
 
-  async function handleManualCandidateSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (manualMatchRow) {
-      await loadManualCandidates(manualMatchRow, manualCandidateQuery);
-    }
-  }
-
   async function handleManualLibraryCandidateSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (manualLibraryMatchRow) {
       await loadManualLibraryCandidates(manualLibraryMatchRow, manualLibraryCandidateQuery);
     }
-  }
-
-  function handlePreviewAudio(audioFileId: string, label: string, detail: string) {
-    if (!selectedEnvironmentId) {
-      return;
-    }
-    const currentAudio = audioRef.current;
-    if (preview?.audioFileId === audioFileId && currentAudio && !currentAudio.paused) {
-      currentAudio.pause();
-      return;
-    }
-    setPreview({
-      audioFileId,
-      label,
-      detail,
-      url: playbackAudioUrl(selectedEnvironmentId, audioFileId),
-    });
   }
 
   async function handleDiscoverSource(row: MatchReviewRow) {
@@ -508,7 +280,6 @@ export function MatchingPanel() {
     try {
       const result = await syncMissingSoundCloudSources(selectedEnvironmentId);
       setSourceSyncResult(result);
-      setDownloadMatchResult(null);
       setLibraryRunSummary(null);
       await refreshReview(selectedEnvironmentId);
     } catch (syncError) {
@@ -523,15 +294,12 @@ export function MatchingPanel() {
       <header className="matching-topbar">
         <div className="top-tabs" aria-label="Matching context">
           <span>Environment</span>
-          <span className="top-tabs__active">Matching Review</span>
+          <span className="top-tabs__active">Library Matching</span>
         </div>
         <div className="top-actions">
-          <button className="icon-button" disabled type="button" title="Folder picker arrives in a later wave">
-            <Search size={17} />
-          </button>
           <button
             className="icon-button"
-            disabled={isRunning || !selectedEnvironmentId}
+            disabled={isLoading || !selectedEnvironmentId}
             type="button"
             title="Refresh review"
             onClick={() => {
@@ -564,15 +332,15 @@ export function MatchingPanel() {
         <Panel className="matching-empty-panel">
           <EmptyState
             title="Select an environment first"
-            description="Create or select an environment, import playlists, and scan audio before reviewing matches."
+            description="Create or select an environment, import playlists, and scan audio before reviewing library mappings."
           />
         </Panel>
       ) : (
         <main className="matching-main">
           <section className="matching-header">
             <div>
-              <h2>Matching Review</h2>
-              <p className="muted">Resolve track mismatches and map ambiguous candidates.</p>
+              <h2>Library Matching Review</h2>
+              <p className="muted">Map active SoundCloud playlist songs to shared library tracks.</p>
             </div>
             <div className="matching-header-actions">
               <Button
@@ -581,23 +349,6 @@ export function MatchingPanel() {
                 onClick={handleSyncSources}
               >
                 {isSyncingSources ? "Syncing Sources" : "Sync Sources"}
-              </Button>
-              <Button
-                disabled={
-                  isMatchingDownloads || !selectedEnvironmentId || !selectedEnvironment?.download_path
-                }
-                icon={<Download size={18} />}
-                onClick={handleMatchDownloads}
-              >
-                {isMatchingDownloads ? "Matching Downloads" : "Match Downloads"}
-              </Button>
-              <Button
-                disabled={isRunning}
-                icon={<Zap size={18} />}
-                variant="primary"
-                onClick={handleRunMatching}
-              >
-                {isRunning ? "Running" : "Run Matching"}
               </Button>
               <Button
                 disabled={isRunningLibrary}
@@ -610,101 +361,113 @@ export function MatchingPanel() {
             </div>
           </section>
 
-          {runSummary ? <RunSummary summary={runSummary} /> : null}
           {libraryRunSummary ? <LibraryRunSummary summary={libraryRunSummary} /> : null}
-          {downloadMatchResult ? <DownloadMatchSummary result={downloadMatchResult} /> : null}
           {sourceSyncResult ? <SourceSyncSummary result={sourceSyncResult} /> : null}
 
-          <ReviewFilters counts={counts} filter={filter} onFilterChange={setFilter} />
-
-          {sourceDiscovery ? (
-            <SourceDiscoveryPanel
-              discovery={sourceDiscovery}
-              onClose={() => {
-                setSourceDiscovery(null);
-                setSourceDiscoverySongId(null);
-              }}
-            />
-          ) : null}
-
-          <label className="matching-search-field">
-            <Search size={15} />
-            <input
-              ref={searchInputRef}
-              aria-label="Search matching review"
-              placeholder="Search title, artist, candidate path, or method... (/)"
-              value={reviewSearch}
-              onChange={(event) => setReviewSearch(event.target.value)}
-            />
-          </label>
-
-          {isLoading ? <LoadingState label="Loading review rows" /> : null}
-
-          {!isLoading && rows.length === 0 ? (
-            <Panel className="matching-empty-panel">
-              <EmptyState
-                title="No imported songs to review"
-                description="Import a SoundCloud playlist, scan local audio, then run matching to populate review rows."
+          <section className="matching-filter-row">
+            <div className="matching-filter-group">
+              <FilterButton
+                active={filter === "library_needs_review"}
+                count={counts.library_needs_review}
+                label="Needs Review"
+                tone="warning"
+                onClick={() => setFilter("library_needs_review")}
               />
-            </Panel>
-          ) : null}
-
-          {filteredRows.length > 0 ? (
-            <section className="matching-table" aria-label="Matching review rows">
-              <div className="matching-table-header">
-                <span>Target Track</span>
-                <span>Duration</span>
-                <span>Status</span>
-                <span>Actions</span>
-              </div>
-              <div className="matching-review-list">
-                {filteredRows.map((row) => (
-                  <ReviewRow
-                    key={row.song_id}
-                    mappingKey={mappingKey}
-                    libraryMappingKey={libraryMappingKey}
-                    row={row}
-                    isDiscoveringSource={
-                      isDiscoveringSource && sourceDiscoverySongId === row.song_id
-                    }
-                    onMapCandidate={handleMapCandidate}
-                    onMapLibraryCandidate={handleMapLibraryCandidate}
-                    onDiscoverSource={handleDiscoverSource}
-                    onOpenLibraryTrack={openLibraryTrack}
-                    onOpenManualLibraryMatch={openManualLibraryMatchModal}
-                    onOpenManualMatch={openManualMatchModal}
-                    onPreviewAudio={handlePreviewAudio}
-                  />
-                ))}
-              </div>
-            </section>
-          ) : rows.length > 0 ? (
-            <Panel className="matching-empty-panel">
-              <EmptyState
-                title="No rows in this filter"
-                description="Choose another filter or run matching again after scanning/importing more audio."
+              <FilterButton
+                active={filter === "all"}
+                count={counts.all}
+                label="All"
+                tone="accent"
+                onClick={() => setFilter("all")}
               />
-            </Panel>
-          ) : null}
+              <FilterButton
+                active={filter === "library_matched"}
+                count={counts.library_matched}
+                label="Matched"
+                tone="success"
+                onClick={() => setFilter("library_matched")}
+              />
+              <FilterButton
+                active={filter === "missing_library"}
+                count={counts.missing_library}
+                label="Missing"
+                tone="danger"
+                onClick={() => setFilter("missing_library")}
+              />
+              <FilterButton
+                active={filter === "ambiguous_library"}
+                count={counts.ambiguous_library}
+                label="Ambiguous"
+                tone="warning"
+                onClick={() => setFilter("ambiguous_library")}
+              />
+              <FilterButton
+                active={filter === "manually_mapped_library"}
+                count={counts.manually_mapped_library}
+                label="Manual"
+                tone="accent"
+                onClick={() => setFilter("manually_mapped_library")}
+              />
+            </div>
+            <label className="matching-search-field">
+              <Search size={15} />
+              <input
+                ref={searchInputRef}
+                placeholder="Search songs or library tracks..."
+                value={reviewSearch}
+                onChange={(event) => setReviewSearch(event.target.value)}
+              />
+            </label>
+            <label className="matching-column-size">
+              <span>Target</span>
+              <input
+                aria-label="Target track column width"
+                max={320}
+                min={140}
+                step={10}
+                type="range"
+                value={targetColumnWidth}
+                onChange={(event) => setTargetColumnWidth(Number(event.target.value))}
+              />
+            </label>
+          </section>
+
+          <section
+            className="matching-table matching-table--library"
+            style={{ "--target-track-column": `${targetColumnWidth}px` } as CSSProperties}
+          >
+            <div className="matching-table-header" role="row">
+              <span>Target Track</span>
+              <span>Artist</span>
+              <span>Library Track</span>
+              <span>Status</span>
+              <span>Actions</span>
+            </div>
+            {isLoading ? <LoadingState label="Loading library review" /> : null}
+            {!isLoading && filteredRows.length === 0 ? (
+              <EmptyState
+                title="No rows match this view"
+                description="Run library matching or adjust the filters."
+              />
+            ) : null}
+            <div className="matching-review-list">
+              {filteredRows.map((row) => (
+                <LibraryReviewRow
+                  isDiscoveringSource={isDiscoveringSource && sourceDiscoverySongId === row.song_id}
+                  isMapping={libraryMappingKey}
+                  key={row.song_id}
+                  row={row}
+                  sourceDiscovery={sourceDiscoverySongId === row.song_id ? sourceDiscovery : null}
+                  onDiscoverSource={handleDiscoverSource}
+                  onMapLibraryCandidate={handleMapLibraryCandidate}
+                  onOpenLibraryTrack={openLibraryTrack}
+                  onOpenManualLibraryMatch={openManualLibraryMatchModal}
+                />
+              ))}
+            </div>
+          </section>
         </main>
       )}
-
-      <ManualMatchModal
-        candidates={manualCandidates}
-        isMapping={mappingKey}
-        isSearching={isSearchingManualCandidates}
-        query={manualCandidateQuery}
-        row={manualMatchRow}
-        onClose={() => {
-          setManualMatchRow(null);
-          setManualCandidates([]);
-          setManualCandidateQuery("");
-        }}
-        onMapCandidate={handleMapCandidate}
-        onPreviewAudio={handlePreviewAudio}
-        onQueryChange={setManualCandidateQuery}
-        onSearch={handleManualCandidateSearch}
-      />
 
       <ManualLibraryMatchModal
         candidates={manualLibraryCandidates}
@@ -722,463 +485,173 @@ export function MatchingPanel() {
         onQueryChange={setManualLibraryCandidateQuery}
         onSearch={handleManualLibraryCandidateSearch}
       />
-
-      <MiniPreviewPlayer
-        audioRef={audioRef}
-        isPlaying={isPlaying}
-        playbackError={playbackError}
-        preview={preview}
-        onPause={() => setIsPlaying(false)}
-        onPlay={() => setIsPlaying(true)}
-        onPlaybackError={() => {
-          setPlaybackError("Playback failed. The local file may be unavailable or unreadable.");
-          setIsPlaying(false);
-        }}
-      />
     </div>
   );
 }
 
-type ReviewFiltersProps = {
-  counts: Record<ReviewFilter, number>;
-  filter: ReviewFilter;
-  onFilterChange: (filter: ReviewFilter) => void;
-};
-
-function ReviewFilters({ counts, filter, onFilterChange }: ReviewFiltersProps) {
-  const items: Array<{ filter: ReviewFilter; label: string; tone?: string }> = [
-    { filter: "needs_review", label: "Needs Review", tone: "warning" },
-    { filter: "all", label: "All" },
-    { filter: "matched", label: "Matched", tone: "success" },
-    { filter: "missing_audio", label: "Missing", tone: "danger" },
-    { filter: "ambiguous", label: "Ambiguous", tone: "warning" },
-    { filter: "manually_mapped", label: "Manual", tone: "accent" },
-    { filter: "library_needs_review", label: "Library Review", tone: "warning" },
-    { filter: "library_matched", label: "Library Matched", tone: "success" },
-    { filter: "missing_library", label: "Library Missing", tone: "danger" },
-    { filter: "ambiguous_library", label: "Library Ambiguous", tone: "warning" },
-    { filter: "manually_mapped_library", label: "Library Manual", tone: "accent" },
-  ];
-
+function FilterButton({
+  active,
+  count,
+  label,
+  tone,
+  onClick,
+}: {
+  active: boolean;
+  count: number;
+  label: string;
+  tone: "accent" | "success" | "warning" | "danger";
+  onClick: () => void;
+}) {
   return (
-    <div className="matching-filter-row" aria-label="Review filters">
-      {items.map((item) => (
-        <button
-          className={[
-            "matching-filter",
-            item.tone ? `matching-filter--${item.tone}` : "",
-            filter === item.filter ? "is-active" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          key={item.filter}
-          type="button"
-          onClick={() => onFilterChange(item.filter)}
-        >
-          {item.tone ? <span aria-hidden="true" /> : null}
-          {item.label} ({formatNumber(counts[item.filter])})
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function RunSummary({ summary }: { summary: MatchingRunSummary }) {
-  return (
-    <div className="matching-run-summary">
-      <StatusBadge tone="success">Matching Complete</StatusBadge>
-      <span>{formatNumber(summary.total)} songs reviewed</span>
-      <span>{formatNumber(summary.matched)} matched</span>
-      <span>{formatNumber(summary.missing_audio)} missing</span>
-      <span>{formatNumber(summary.ambiguous)} ambiguous</span>
-      <span>{formatNumber(summary.manually_mapped)} manual</span>
-    </div>
+    <button
+      className={["matching-filter", `matching-filter--${tone}`, active ? "is-active" : ""].join(
+        " ",
+      )}
+      type="button"
+      onClick={onClick}
+    >
+      {label}
+      <span>{formatNumber(count)}</span>
+    </button>
   );
 }
 
 function LibraryRunSummary({ summary }: { summary: LibraryMatchingRunSummary }) {
   return (
-    <div className="matching-run-summary">
-      <StatusBadge tone={summary.ambiguous_library > 0 ? "warning" : "success"}>
-        Library Matching Complete
-      </StatusBadge>
-      <span>{formatNumber(summary.total)} songs reviewed</span>
-      <span>{formatNumber(summary.matched)} library matched</span>
-      <span>{formatNumber(summary.missing_library)} missing</span>
-      <span>{formatNumber(summary.ambiguous_library)} ambiguous</span>
+    <section className="matching-run-summary">
+      <StatusBadge tone="neutral">{`${formatNumber(summary.total)} songs`}</StatusBadge>
+      <span>{formatNumber(summary.matched)} matched</span>
       <span>{formatNumber(summary.manually_mapped_library)} manual</span>
-    </div>
-  );
-}
-
-function DownloadMatchSummary({ result }: { result: DownloadMatchRunResultRead }) {
-  return (
-    <div className="matching-run-summary">
-      <StatusBadge tone="success">Downloads Matched</StatusBadge>
-      <span>{formatNumber(result.scan.added)} new files</span>
-      <span>{formatNumber(result.scan.changed + result.scan.moved)} changed or moved</span>
-      <span>{formatNumber(result.matching.checked)} songs checked</span>
-      <span>{formatNumber(result.matching.matched)} matched</span>
-      <span>{formatNumber(result.matching.ambiguous)} ambiguous</span>
-      <span>{formatNumber(result.matching.preserved_reviewed)} preserved</span>
-    </div>
+      <span>{formatNumber(summary.ambiguous_library)} ambiguous</span>
+      <span>{formatNumber(summary.missing_library)} missing</span>
+    </section>
   );
 }
 
 function SourceSyncSummary({ result }: { result: SoundCloudSourceSyncResultRead }) {
   return (
-    <div className="matching-run-summary">
-      <StatusBadge tone={result.failed > 0 ? "warning" : "success"}>
-        {result.failed > 0 ? "Source Sync Issues" : "Sources Synced"}
-      </StatusBadge>
-      <span>{formatNumber(result.total)} unmatched songs checked</span>
+    <section className="matching-run-summary">
+      <StatusBadge tone="neutral">{`${formatNumber(result.total)} checked`}</StatusBadge>
       <span>{formatNumber(result.discovered)} discovered</span>
-      <span>{formatNumber(result.skipped)} already known</span>
+      <span>{formatNumber(result.skipped)} skipped</span>
       <span>{formatNumber(result.failed)} failed</span>
-    </div>
-  );
-}
-
-function SourceDiscoveryPanel({
-  discovery,
-  onClose,
-}: {
-  discovery: SoundCloudTrackDiscoveryRead;
-  onClose: () => void;
-}) {
-  const primaryLinks = discovery.links.filter((link) =>
-    ["buy", "download", "buy_or_download"].includes(link.kind),
-  );
-  const secondaryLinks = discovery.links.filter(
-    (link) => !["buy", "download", "buy_or_download"].includes(link.kind),
-  );
-  const links = [...primaryLinks, ...secondaryLinks];
-
-  return (
-    <section className="source-discovery-panel">
-      <header>
-        <div>
-          <p className="eyebrow">SoundCloud Source Discovery</p>
-          <h3>{discovery.title}</h3>
-          <span>{discovery.artist ?? "Unknown uploader"}</span>
-        </div>
-        <button className="icon-button" type="button" onClick={onClose} title="Close source discovery">
-          <X size={16} />
-        </button>
-      </header>
-
-      <div className="source-discovery-actions">
-        <a href={discovery.track_url} rel="noreferrer" target="_blank">
-          <ExternalLink size={15} />
-          Open SoundCloud track
-        </a>
-        {discovery.purchase_url ? (
-          <a href={discovery.purchase_url} rel="noreferrer" target="_blank">
-            <ShoppingCart size={15} />
-            {discovery.purchase_title ?? "Buy / Download"}
-          </a>
-        ) : null}
-      </div>
-
-      {discovery.warnings.length > 0 ? (
-        <div className="source-discovery-warnings">
-          <AlertTriangle size={15} />
-          <span>{discovery.warnings.map(sourceWarningLabel).join(" ")}</span>
-        </div>
-      ) : null}
-
-      {links.length > 0 ? (
-        <div className="source-link-list">
-          {links.map((link) => (
-            <a href={link.url} key={`${link.source}-${link.url}`} rel="noreferrer" target="_blank">
-              <span>{link.label || link.url}</span>
-              <em>{sourceLinkKindLabel(link.kind)} · {sourceLabel(link.source)}</em>
-              <ExternalLink size={14} />
-            </a>
-          ))}
-        </div>
-      ) : (
-        <p className="muted">No buy, download, or artist source links were exposed for this track.</p>
-      )}
-
-      {discovery.description ? (
-        <details className="source-description">
-          <summary>Description</summary>
-          <p>{linkifyText(discovery.description)}</p>
-        </details>
-      ) : null}
     </section>
   );
 }
 
-type ReviewRowProps = {
+type LibraryReviewRowProps = {
   row: MatchReviewRow;
-  mappingKey: string | null;
-  libraryMappingKey: string | null;
   isDiscoveringSource: boolean;
+  isMapping: string | null;
+  sourceDiscovery: SoundCloudTrackDiscoveryRead | null;
   onDiscoverSource: (row: MatchReviewRow) => void;
-  onMapCandidate: (row: MatchReviewRow, candidate: MatchCandidateRead) => void;
   onMapLibraryCandidate: (row: MatchReviewRow, candidate: LibraryTrackCandidateRead) => void;
-  onOpenManualLibraryMatch: (row: MatchReviewRow) => void;
-  onOpenManualMatch: (row: MatchReviewRow) => void;
   onOpenLibraryTrack: (libraryTrackId: string) => void;
-  onPreviewAudio: (audioFileId: string, label: string, detail: string) => void;
+  onOpenManualLibraryMatch: (row: MatchReviewRow) => void;
 };
 
-function ReviewRow({
+function LibraryReviewRow({
   row,
-  mappingKey,
-  libraryMappingKey,
   isDiscoveringSource,
+  isMapping,
+  sourceDiscovery,
   onDiscoverSource,
-  onMapCandidate,
   onMapLibraryCandidate,
   onOpenLibraryTrack,
   onOpenManualLibraryMatch,
-  onOpenManualMatch,
-  onPreviewAudio,
-}: ReviewRowProps) {
-  const expanded =
-    row.status === "ambiguous" ||
-    row.candidates.length > 0 ||
-    row.library_status === "ambiguous_library" ||
-    row.library_candidates.length > 0;
-  const acceptedMatch = row.match;
-  const acceptedLibraryMatch = row.library_match;
-  const sourceLink = bestSourceLink(row.source_discovery);
+}: LibraryReviewRowProps) {
+  const status = row.library_status ?? "missing_library";
+  const expanded = status === "ambiguous_library" || row.library_candidates.length > 0;
+
   return (
-    <article className={["matching-row", `matching-row--${row.status}`].join(" ")}>
-      <div className="matching-row-main">
+    <article className={["matching-row", `matching-row--${legacyStatusClass(status)}`].join(" ")}>
+      <div className="matching-row-main matching-row-main--library">
         <div className="matching-row-title">
-          <StatusIcon status={row.status} />
+          <LibraryStatusIcon status={status} />
           <div>
             <strong>{row.title}</strong>
-            <span>{row.artist ?? "Unknown artist"}</span>
+            <span>{row.song_id}</span>
           </div>
         </div>
-        <span className="matching-row-duration">{formatDuration(row.duration_seconds)}</span>
+        <span className="matching-row-artist">{row.artist ?? "Unknown artist"}</span>
+        <LibraryTrackCell row={row} onOpenLibraryTrack={onOpenLibraryTrack} />
         <div className="matching-status-stack">
-          <MatchStatusPill status={row.status} />
-          {row.library_status ? <LibraryMatchStatusPill status={row.library_status} /> : null}
+          <LibraryMatchStatusPill status={status} />
+          <span className="matching-row-duration">{formatDuration(row.duration_seconds)}</span>
         </div>
         <div className="matching-row-actions">
-          {!acceptedLibraryMatch && row.library_status ? (
-            <Button
-              icon={<Library size={15} />}
-              type="button"
-              onClick={() => onOpenManualLibraryMatch(row)}
-            >
-              Map Library Track
-            </Button>
-          ) : null}
-          {acceptedMatch ? (
-            <button
-              className="icon-button"
-              title="Preview accepted audio"
-              type="button"
-              onClick={() =>
-                onPreviewAudio(
-                  acceptedMatch.audio_file_id,
-                  acceptedMatch.title ?? row.title,
-                  acceptedMatch.path,
-                )
-              }
-            >
-              <Play size={16} />
-            </button>
-          ) : (
-            <>
-              <Button
-                icon={<Link2 size={15} />}
-                type="button"
-                onClick={() => onOpenManualMatch(row)}
-              >
-                Map Local File
-              </Button>
-              {sourceLink ? (
-                <a
-                  className="button button--ghost source-action-link"
-                  href={sourceLink.url}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <ShoppingCart size={15} />
-                  {sourceLink.label}
-                </a>
-              ) : row.source_discovery ? (
-                <a
-                  className="button button--ghost source-action-link"
-                  href={row.source_discovery.track_url}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <ExternalLink size={15} />
-                  Open Track
-                </a>
-              ) : (
-                <Button
-                  disabled={isDiscoveringSource}
-                  icon={<ShoppingCart size={15} />}
-                  type="button"
-                  onClick={() => onDiscoverSource(row)}
-                >
-                  {isDiscoveringSource ? "Finding" : "Find Source"}
-                </Button>
-              )}
-            </>
-          )}
+          <Button icon={<Link2 size={15} />} onClick={() => onOpenManualLibraryMatch(row)}>
+            Map Track
+          </Button>
+          <Button
+            disabled={isDiscoveringSource}
+            icon={<ShoppingCart size={15} />}
+            onClick={() => onDiscoverSource(row)}
+          >
+            {isDiscoveringSource ? "Checking" : "Sources"}
+          </Button>
         </div>
       </div>
 
-      {!acceptedMatch && row.source_discovery?.description ? (
-        <details className="matching-source-description">
-          <summary>Source description</summary>
-          <p>{linkifyText(row.source_discovery.description)}</p>
+      {sourceDiscovery?.description ? (
+        <details className="matching-source-description" open>
+          <summary>SoundCloud source details</summary>
+          <p>{linkifyText(sourceDiscovery.description)}</p>
+          <SourceLinks discovery={sourceDiscovery} />
         </details>
-      ) : null}
-
-      {acceptedMatch ? (
-        <div className="accepted-match-row">
-          <CheckCircle2 size={15} />
-          <span>{acceptedMatch.path}</span>
-          <em>
-            {sourceAreaLabel(acceptedMatch.source_area)} - {confidenceLabel(acceptedMatch.confidence)} via{" "}
-            {methodLabel(acceptedMatch.method)}
-          </em>
-          {hasLikelyPreviewWarning(acceptedMatch) ? (
-            <strong className="accepted-match-warning">
-              Likely preview download. Unmatch this audio and move it to deprecated before exporting.
-            </strong>
-          ) : null}
-        </div>
-      ) : null}
-
-      {acceptedLibraryMatch ? (
-        <div className="accepted-match-row accepted-library-row">
-          <Library size={15} />
-          <span>{acceptedLibraryMatch.path}</span>
-          <em>
-            Library - {confidenceLabel(acceptedLibraryMatch.confidence)} via{" "}
-            {methodLabel(acceptedLibraryMatch.method)}
-          </em>
-          <button
-            className="icon-button"
-            type="button"
-            title="Open in Library"
-            onClick={() => onOpenLibraryTrack(acceptedLibraryMatch.library_track_id)}
-          >
-            <ExternalLink size={15} />
-          </button>
-        </div>
       ) : null}
 
       {expanded ? (
         <div className="candidate-list">
-          <div className="candidate-list-title">Candidates found in collection</div>
-          {row.candidates.length > 0 ? (
-            row.candidates.map((candidate) => (
-              <CandidateCard
+          <div className="candidate-list-title">Library candidates</div>
+          {row.library_candidates.length > 0 ? (
+            row.library_candidates.map((candidate) => (
+              <LibraryCandidateCard
                 candidate={candidate}
-                isMapping={mappingKey === `${row.song_id}-${candidate.audio_file_id}`}
-                key={candidate.audio_file_id}
+                isMapping={isMapping === `${row.song_id}-${candidate.library_track_id}`}
+                key={candidate.library_track_id}
                 row={row}
-                onMapCandidate={onMapCandidate}
-                onPreviewAudio={onPreviewAudio}
+                onMapCandidate={onMapLibraryCandidate}
+                onOpenLibraryTrack={onOpenLibraryTrack}
               />
             ))
           ) : (
             <div className="candidate-empty">
               <AlertTriangle size={15} />
-              <span>No viable local audio candidates were found.</span>
+              <span>No viable library candidates were found.</span>
             </div>
           )}
-          {row.library_status === "ambiguous_library" || row.library_candidates.length > 0 ? (
-            <>
-              <div className="candidate-list-title">Library candidates</div>
-              {row.library_candidates.length > 0 ? (
-                row.library_candidates.map((candidate) => (
-                  <LibraryCandidateCard
-                    candidate={candidate}
-                    isMapping={
-                      libraryMappingKey === `${row.song_id}-${candidate.library_track_id}`
-                    }
-                    key={candidate.library_track_id}
-                    row={row}
-                    onMapCandidate={onMapLibraryCandidate}
-                    onOpenLibraryTrack={onOpenLibraryTrack}
-                  />
-                ))
-              ) : (
-                <div className="candidate-empty">
-                  <AlertTriangle size={15} />
-                  <span>No viable library candidates were found.</span>
-                </div>
-              )}
-            </>
-          ) : null}
         </div>
       ) : null}
     </article>
   );
 }
 
-type CandidateCardProps = {
-  candidate: MatchCandidateRead;
-  row: MatchReviewRow;
-  isMapping: boolean;
-  onMapCandidate: (row: MatchReviewRow, candidate: MatchCandidateRead) => void;
-  onPreviewAudio: (audioFileId: string, label: string, detail: string) => void;
-};
-
-function CandidateCard({
-  candidate,
+function LibraryTrackCell({
   row,
-  isMapping,
-  onMapCandidate,
-  onPreviewAudio,
-}: CandidateCardProps) {
-  const likelyPreview = hasLikelyPreviewWarning(candidate);
+  onOpenLibraryTrack,
+}: {
+  row: MatchReviewRow;
+  onOpenLibraryTrack: (libraryTrackId: string) => void;
+}) {
+  if (!row.library_match) {
+    return <span className="matching-library-empty">No library track</span>;
+  }
   return (
-    <div className={["candidate-card", likelyPreview ? "candidate-card--warning" : ""].join(" ")}>
+    <div className="accepted-match-row accepted-library-row matching-library-cell">
+      <Library size={15} />
+      <span>{row.library_match.path}</span>
+      <em>
+        {confidenceLabel(row.library_match.confidence)} via {methodLabel(row.library_match.method)}
+      </em>
       <button
-        className="candidate-play"
-        title="Preview candidate"
+        className="icon-button"
         type="button"
-        onClick={() =>
-          onPreviewAudio(
-            candidate.audio_file_id,
-            candidate.title ?? row.title,
-            candidate.path,
-          )
-        }
+        title="Open in Library"
+        onClick={() => onOpenLibraryTrack(row.library_match!.library_track_id)}
       >
-        <Play size={16} />
+        <ExternalLink size={15} />
       </button>
-      <div className="candidate-body">
-        <strong>{candidate.path}</strong>
-        <span>
-          {candidate.title ?? "Unknown title"}
-          {candidate.artist ? ` · ${candidate.artist}` : ""}
-        </span>
-        <div>
-          <em>{confidenceLabel(candidate.confidence)} match</em>
-          <span>{sourceAreaLabel(candidate.source_area)}</span>
-          <span>{methodLabel(candidate.method)}</span>
-          <span>{formatDuration(candidate.duration_seconds)}</span>
-        </div>
-        {likelyPreview ? (
-          <p className="candidate-warning">
-            Likely preview download. Consider unmatching and moving this file to deprecated.
-          </p>
-        ) : null}
-      </div>
-      <Button
-        disabled={isMapping}
-        icon={<Link2 size={15} />}
-        onClick={() => onMapCandidate(row, candidate)}
-      >
-        {isMapping ? "Mapping" : "Map File"}
-      </Button>
     </div>
   );
 }
@@ -1207,7 +680,7 @@ function LibraryCandidateCard({
         <strong>{candidate.path}</strong>
         <span>
           {candidate.title ?? candidate.filename}
-          {candidate.artist ? ` · ${candidate.artist}` : ""}
+          {candidate.artist ? ` - ${candidate.artist}` : ""}
         </span>
         <div>
           <em>{confidenceLabel(candidate.confidence)} match</em>
@@ -1231,97 +704,6 @@ function LibraryCandidateCard({
       >
         <ExternalLink size={15} />
       </button>
-    </div>
-  );
-}
-
-type ManualMatchModalProps = {
-  candidates: MatchCandidateRead[];
-  isMapping: string | null;
-  isSearching: boolean;
-  query: string;
-  row: MatchReviewRow | null;
-  onClose: () => void;
-  onMapCandidate: (row: MatchReviewRow, candidate: MatchCandidateRead) => void;
-  onPreviewAudio: (audioFileId: string, label: string, detail: string) => void;
-  onQueryChange: (query: string) => void;
-  onSearch: (event: FormEvent<HTMLFormElement>) => void;
-};
-
-function ManualMatchModal({
-  candidates,
-  isMapping,
-  isSearching,
-  query,
-  row,
-  onClose,
-  onMapCandidate,
-  onPreviewAudio,
-  onQueryChange,
-  onSearch,
-}: ManualMatchModalProps) {
-  if (!row) {
-    return null;
-  }
-
-  return (
-    <div className="dialog-backdrop" role="presentation">
-      <div
-        className="usb-match-dialog manual-match-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="manual-match-title"
-      >
-        <header>
-          <div>
-            <p className="eyebrow">Map local file</p>
-            <h2 id="manual-match-title">{row.title}</h2>
-            <p className="muted">
-              {row.artist ?? "Unknown artist"} · {formatDuration(row.duration_seconds)}
-            </p>
-          </div>
-          <MatchStatusPill status={row.status} />
-        </header>
-
-        <form className="usb-match-search" onSubmit={onSearch}>
-          <label className="playlist-search-field playlist-search-field--wide">
-            <Search size={14} />
-            <input
-              aria-label="Search local audio files"
-              placeholder="Search USB and download files..."
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-            />
-          </label>
-          <Button disabled={isSearching} type="submit">
-            {isSearching ? "Searching" : "Search"}
-          </Button>
-        </form>
-
-        <div className="usb-candidate-list manual-file-candidate-list">
-          {isSearching ? <LoadingState label="Searching local files" /> : null}
-          {!isSearching && candidates.length === 0 ? (
-            <EmptyState
-              title="No local files found"
-              description="No active unmapped USB or download files match this search."
-            />
-          ) : null}
-          {candidates.map((candidate) => (
-            <CandidateCard
-              candidate={candidate}
-              isMapping={isMapping === `${row.song_id}-${candidate.audio_file_id}`}
-              key={candidate.audio_file_id}
-              row={row}
-              onMapCandidate={onMapCandidate}
-              onPreviewAudio={onPreviewAudio}
-            />
-          ))}
-        </div>
-
-        <footer>
-          <Button onClick={onClose}>Close</Button>
-        </footer>
-      </div>
     </div>
   );
 }
@@ -1368,7 +750,7 @@ function ManualLibraryMatchModal({
             <p className="eyebrow">Map library track</p>
             <h2 id="manual-library-match-title">{row.title}</h2>
             <p className="muted">
-              {row.artist ?? "Unknown artist"} · {formatDuration(row.duration_seconds)}
+              {row.artist ?? "Unknown artist"} - {formatDuration(row.duration_seconds)}
             </p>
           </div>
           {row.library_status ? <LibraryMatchStatusPill status={row.library_status} /> : null}
@@ -1417,79 +799,17 @@ function ManualLibraryMatchModal({
   );
 }
 
-function MiniPreviewPlayer({
-  audioRef,
-  isPlaying,
-  playbackError,
-  preview,
-  onPause,
-  onPlay,
-  onPlaybackError,
-}: {
-  audioRef: RefObject<HTMLAudioElement>;
-  isPlaying: boolean;
-  playbackError: string | null;
-  preview: PreviewState | null;
-  onPause: () => void;
-  onPlay: () => void;
-  onPlaybackError: () => void;
-}) {
-  return (
-    <footer className="mini-preview-player">
-      <audio
-        ref={audioRef}
-        src={preview?.url}
-        onEnded={onPause}
-        onError={onPlaybackError}
-        onPause={onPause}
-        onPlay={onPlay}
-      />
-      <div className="mini-preview-track">
-        <div className="mini-preview-art">
-          <Play size={18} />
-        </div>
-        <div>
-          <strong>{preview?.label ?? "No preview selected"}</strong>
-          <span>{playbackError ?? preview?.detail ?? "Select a candidate or accepted match to preview."}</span>
-        </div>
-      </div>
-      <button
-        className="mini-preview-play"
-        disabled={!preview}
-        type="button"
-        onClick={() => {
-          const audio = audioRef.current;
-          if (!audio) {
-            return;
-          }
-          if (audio.paused) {
-            void audio.play().catch(onPlaybackError);
-          } else {
-            audio.pause();
-          }
-        }}
-      >
-        {isPlaying ? "Pause" : "Play"}
-      </button>
-    </footer>
-  );
-}
-
-function StatusIcon({ status }: { status: MatchStatus }) {
-  if (status === "matched" || status === "manually_mapped") {
+function LibraryStatusIcon({ status }: { status: LibraryMatchStatus | "missing_library" }) {
+  if (status === "library_matched" || status === "manually_mapped_library") {
     return <CheckCircle2 size={19} />;
   }
-  if (status === "ambiguous") {
+  if (status === "ambiguous_library") {
     return <CircleHelp size={19} />;
   }
   return <AlertTriangle size={19} />;
 }
 
-function MatchStatusPill({ status }: { status: MatchStatus }) {
-  return <span className={`match-pill match-pill--${pillTone(status)}`}>{matchStatusLabel(status)}</span>;
-}
-
-function LibraryMatchStatusPill({ status }: { status: LibraryMatchStatus }) {
+function LibraryMatchStatusPill({ status }: { status: LibraryMatchStatus | "missing_library" }) {
   return (
     <span className={`match-pill match-pill--${libraryPillTone(status)}`}>
       {libraryStatusLabel(status)}
@@ -1499,57 +819,24 @@ function LibraryMatchStatusPill({ status }: { status: LibraryMatchStatus }) {
 
 function reviewCounts(rows: MatchReviewRow[]): Record<ReviewFilter, number> {
   const counts: Record<ReviewFilter, number> = {
-    needs_review: 0,
-    all: rows.length,
-    matched: 0,
-    missing_audio: 0,
-    ambiguous: 0,
-    manually_mapped: 0,
     library_needs_review: 0,
+    all: rows.length,
     library_matched: 0,
     missing_library: 0,
     ambiguous_library: 0,
     manually_mapped_library: 0,
   };
   for (const row of rows) {
-    counts[row.status] += 1;
-    if (row.status === "missing_audio" || row.status === "ambiguous") {
-      counts.needs_review += 1;
-    }
-    if (row.library_status) {
-      counts[row.library_status] += 1;
-      if (row.library_status === "missing_library" || row.library_status === "ambiguous_library") {
-        counts.library_needs_review += 1;
-      }
+    const status = row.library_status ?? "missing_library";
+    counts[status] += 1;
+    if (status === "missing_library" || status === "ambiguous_library") {
+      counts.library_needs_review += 1;
     }
   }
   return counts;
 }
 
-function pillTone(status: MatchStatus) {
-  if (status === "matched") {
-    return "matched";
-  }
-  if (status === "missing_audio") {
-    return "missing";
-  }
-  if (status === "ambiguous") {
-    return "ambiguous";
-  }
-  return "manual";
-}
-
-function matchStatusLabel(status: MatchStatus) {
-  if (status === "missing_audio") {
-    return "Missing";
-  }
-  if (status === "manually_mapped") {
-    return "Manual";
-  }
-  return status[0].toUpperCase() + status.slice(1);
-}
-
-function libraryPillTone(status: LibraryMatchStatus) {
+function libraryPillTone(status: LibraryMatchStatus | "missing_library") {
   if (status === "library_matched") {
     return "matched";
   }
@@ -1562,32 +849,60 @@ function libraryPillTone(status: LibraryMatchStatus) {
   return "manual";
 }
 
-function libraryStatusLabel(status: LibraryMatchStatus) {
-  const labels: Record<LibraryMatchStatus, string> = {
-    library_matched: "Library",
-    missing_library: "No Library",
-    ambiguous_library: "Library Ambiguous",
-    manually_mapped_library: "Library Manual",
+function libraryStatusLabel(status: LibraryMatchStatus | "missing_library") {
+  const labels: Record<LibraryMatchStatus | "missing_library", string> = {
+    library_matched: "Matched",
+    missing_library: "Missing",
+    ambiguous_library: "Ambiguous",
+    manually_mapped_library: "Manual",
   };
   return labels[status];
 }
 
+function legacyStatusClass(status: LibraryMatchStatus | "missing_library") {
+  if (status === "library_matched") {
+    return "matched";
+  }
+  if (status === "manually_mapped_library") {
+    return "manually_mapped";
+  }
+  if (status === "ambiguous_library") {
+    return "ambiguous";
+  }
+  return "missing_audio";
+}
+
+function SourceLinks({ discovery }: { discovery: SoundCloudTrackDiscoveryRead }) {
+  const primary = bestSourceLink(discovery);
+  const secondary = discovery.links.filter((link) => primary?.url !== link.url).slice(0, 4);
+  if (!primary && secondary.length === 0 && discovery.warnings.length === 0) {
+    return null;
+  }
+  return (
+    <div className="source-link-stack">
+      {primary ? (
+        <a href={primary.url} rel="noreferrer" target="_blank">
+          {primary.label}
+          <ExternalLink size={13} />
+        </a>
+      ) : null}
+      {secondary.map((link) => (
+        <a href={link.url} key={`${link.kind}-${link.url}`} rel="noreferrer" target="_blank">
+          {sourceLinkKindLabel(link.kind)}
+          <ExternalLink size={13} />
+        </a>
+      ))}
+      {discovery.warnings.map((warning) => (
+        <span className="source-warning" key={warning}>
+          {sourceWarningLabel(warning)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function methodLabel(method: string) {
   return method.replace(/_/g, " ");
-}
-
-function sourceAreaLabel(sourceArea: MatchCandidateRead["source_area"]) {
-  if (sourceArea === "download") {
-    return "Downloads";
-  }
-  if (sourceArea === "usb") {
-    return "USB";
-  }
-  return "Other";
-}
-
-function hasLikelyPreviewWarning(candidate: MatchCandidateRead) {
-  return candidate.warnings.includes("likely_preview_download");
 }
 
 function confidenceLabel(confidence: number) {
@@ -1623,16 +938,11 @@ function sourceLinkKindLabel(kind: string) {
   return labels[kind] ?? methodLabel(kind);
 }
 
-function sourceLabel(source: string) {
-  return source.replace(/_/g, " ");
-}
-
 function sourceWarningLabel(warning: string) {
   const labels: Record<string, string> = {
     free_download_mentioned_without_link:
       "The description mentions a free download, but no public download link was exposed.",
-    no_purchase_or_download_link_found:
-      "No buy or download link was found.",
+    no_purchase_or_download_link_found: "No buy or download link was found.",
     promotional_low_quality_notice:
       "The description says this upload may be low quality or promotional.",
   };

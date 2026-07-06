@@ -36,15 +36,10 @@ from music_manager_backend.application.dtos.library import (
     library_track_read,
 )
 from music_manager_backend.application.dtos.matching import (
-    DownloadMatchRunResultRead,
-    DownloadMatchSummaryRead,
     LibraryMatchingRunSummary,
     LibraryMatchReviewRow,
     LibraryTrackCandidateRead,
     ManualLibraryMappingCreate,
-    ManualMappingCreate,
-    MatchCandidateRead,
-    MatchingRunSummary,
     MatchReviewRow,
 )
 from music_manager_backend.application.dtos.playlist import (
@@ -100,11 +95,6 @@ __all__ = [
     "LibraryMatchReviewRow",
     "LibraryTrackCandidateRead",
     "ManualLibraryMappingCreate",
-    "DownloadMatchRunResultRead",
-    "DownloadMatchSummaryRead",
-    "ManualMappingCreate",
-    "MatchCandidateRead",
-    "MatchingRunSummary",
     "MatchReviewRow",
     "PlaylistDetailRead",
     "PlaylistItemRead",

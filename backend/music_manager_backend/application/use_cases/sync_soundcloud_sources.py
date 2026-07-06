@@ -8,9 +8,7 @@ from music_manager_backend.application.use_cases.discover_soundcloud_track impor
 from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
 from music_manager_backend.application.use_cases.matching_common import load_environment_songs
 from music_manager_backend.ports.repositories import (
-    AudioFileRepository,
     EnvironmentRepository,
-    MatchLinkRepository,
     PlaylistRepository,
     SongRepository,
     SourceDiscoveryRepository,
@@ -26,16 +24,12 @@ class SyncMissingSoundCloudSources:
         environments: EnvironmentRepository,
         playlists: PlaylistRepository,
         songs: SongRepository,
-        audio_files: AudioFileRepository,
-        match_links: MatchLinkRepository,
         source_discoveries: SourceDiscoveryRepository,
         discovery_provider: SoundCloudTrackDiscoveryProvider,
     ) -> None:
         self.environments = environments
         self.playlists = playlists
         self.songs = songs
-        self.audio_files = audio_files
-        self.match_links = match_links
         self.source_discoveries = source_discoveries
         self.discovery_provider = discovery_provider
 
@@ -50,8 +44,6 @@ class SyncMissingSoundCloudSources:
             environments=self.environments,
             playlists=self.playlists,
             songs=self.songs,
-            audio_files=self.audio_files,
-            match_links=self.match_links,
             source_discoveries=self.source_discoveries,
         ).execute(environment_id)
         songs_by_id = {song.id: song for song in environment_songs.songs}

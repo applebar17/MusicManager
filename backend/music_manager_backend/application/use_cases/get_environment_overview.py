@@ -6,8 +6,11 @@ from music_manager_backend.domain.entities import AudioFileStatus
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
+    LibraryRepository,
+    LibraryTrackRepository,
     MatchLinkRepository,
     PlaylistRepository,
+    SongLibraryLinkRepository,
     SongRepository,
 )
 from music_manager_backend.shared.errors import NotFoundError
@@ -22,12 +25,18 @@ class GetEnvironmentOverview:
         songs: SongRepository,
         audio_files: AudioFileRepository,
         match_links: MatchLinkRepository,
+        libraries: LibraryRepository | None = None,
+        library_tracks: LibraryTrackRepository | None = None,
+        song_library_links: SongLibraryLinkRepository | None = None,
     ) -> None:
         self.environments = environments
         self.playlists = playlists
         self.songs = songs
         self.audio_files = audio_files
         self.match_links = match_links
+        self.libraries = libraries
+        self.library_tracks = library_tracks
+        self.song_library_links = song_library_links
 
     def execute(self, environment_id: str) -> EnvironmentOverviewRead:
         if self.environments.get(environment_id) is None:
@@ -61,8 +70,9 @@ class GetEnvironmentOverview:
                 environments=self.environments,
                 playlists=self.playlists,
                 songs=self.songs,
-                audio_files=self.audio_files,
-                match_links=self.match_links,
+                libraries=self.libraries,
+                library_tracks=self.library_tracks,
+                song_library_links=self.song_library_links,
             ).execute(environment_id)
         )
         return EnvironmentOverviewRead(

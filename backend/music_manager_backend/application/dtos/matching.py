@@ -1,23 +1,8 @@
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
-from music_manager_backend.application.dtos.environment import ScanSummaryRead
 from music_manager_backend.application.dtos.soundcloud_discovery import (
     SoundCloudTrackDiscoveryRead,
 )
-
-
-class MatchCandidateRead(BaseModel):
-    audio_file_id: str
-    path: str
-    source_area: Literal["download", "usb", "other"]
-    title: str | None = None
-    artist: str | None = None
-    duration_seconds: int | None = None
-    method: str
-    confidence: float
-    warnings: list[str] = Field(default_factory=list)
 
 
 class LibraryTrackCandidateRead(BaseModel):
@@ -38,8 +23,6 @@ class MatchReviewRow(BaseModel):
     artist: str | None = None
     duration_seconds: int | None = None
     status: str
-    match: MatchCandidateRead | None = None
-    candidates: list[MatchCandidateRead] = []
     library_status: str | None = None
     library_match: LibraryTrackCandidateRead | None = None
     library_candidates: list[LibraryTrackCandidateRead] = []
@@ -56,15 +39,6 @@ class LibraryMatchReviewRow(BaseModel):
     candidates: list[LibraryTrackCandidateRead] = []
 
 
-class MatchingRunSummary(BaseModel):
-    environment_id: str
-    total: int
-    matched: int
-    missing_audio: int
-    ambiguous: int
-    manually_mapped: int
-
-
 class LibraryMatchingRunSummary(BaseModel):
     environment_id: str
     total: int
@@ -72,26 +46,6 @@ class LibraryMatchingRunSummary(BaseModel):
     missing_library: int
     ambiguous_library: int
     manually_mapped_library: int
-
-
-class DownloadMatchSummaryRead(BaseModel):
-    checked: int
-    matched: int
-    missing_audio: int
-    ambiguous: int
-    preserved_reviewed: int
-
-
-class DownloadMatchRunResultRead(BaseModel):
-    environment_id: str
-    download_path: str
-    scan: ScanSummaryRead
-    matching: DownloadMatchSummaryRead
-
-
-class ManualMappingCreate(BaseModel):
-    song_id: str
-    audio_file_id: str
 
 
 class ManualLibraryMappingCreate(BaseModel):

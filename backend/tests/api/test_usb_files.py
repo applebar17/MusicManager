@@ -118,8 +118,8 @@ def test_usb_manual_mapping_updates_usb_row(
     _seed_usb_data(_container(api_client), tmp_path)
 
     mapping = api_client.post(
-        "/environments/env_1/matching/manual-mappings",
-        json={"song_id": "song_2", "audio_file_id": "file_candidate"},
+        "/environments/env_1/usb/audio-files/file_candidate/mapping",
+        json={"song_id": "song_2"},
     )
     files = api_client.get("/environments/env_1/usb/files")
 
