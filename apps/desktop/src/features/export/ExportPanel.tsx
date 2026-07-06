@@ -195,6 +195,10 @@ export function ExportPanel() {
     () => plan?.items.filter((item) => item.included) ?? [],
     [plan],
   );
+  const visibleActionItems = useMemo(
+    () => includedItems.filter((item) => isChangeAction(item.action)),
+    [includedItems],
+  );
   const applyResultsByPlanItemId = useMemo(() => {
     const byId = new Map<string, ExportApplyItemResultRead>();
     for (const item of applyRun?.item_results ?? []) {
@@ -320,6 +324,27 @@ export function ExportPanel() {
     }
   }
 
+  function persistVisiblePlanItems(visibleItemIds: string[]) {
+    const orderedVisibleIds = [...visibleItemIds];
+    const visibleIdSet = new Set(orderedVisibleIds);
+    const nextIncludedIds: string[] = [];
+    for (const item of includedItems) {
+      if (!isChangeAction(item.action)) {
+        nextIncludedIds.push(item.export_plan_item_id);
+        continue;
+      }
+      if (!visibleIdSet.has(item.export_plan_item_id)) {
+        continue;
+      }
+      const nextVisibleId = orderedVisibleIds.shift();
+      if (nextVisibleId) {
+        nextIncludedIds.push(nextVisibleId);
+      }
+    }
+    nextIncludedIds.push(...orderedVisibleIds);
+    void persistPlanItems(nextIncludedIds);
+  }
+
   function handleActionSelection(
     itemId: string,
     checked: boolean,
@@ -328,7 +353,7 @@ export function ExportPanel() {
     setSelectedActionIds((current) => {
       const next = new Set(current);
       if (event.shiftKey && lastSelectedActionId) {
-        const ids = includedItems.map((item) => item.export_plan_item_id);
+        const ids = visibleActionItems.map((item) => item.export_plan_item_id);
         const start = ids.indexOf(lastSelectedActionId);
         const end = ids.indexOf(itemId);
         if (start >= 0 && end >= 0) {
@@ -370,7 +395,7 @@ export function ExportPanel() {
     }
     const activeId = String(active.id);
     const overId = String(over.id);
-    const currentIds = includedItems.map((item) => item.export_plan_item_id);
+    const currentIds = visibleActionItems.map((item) => item.export_plan_item_id);
     const movingIds = selectedActionIds.has(activeId)
       ? new Set([...selectedActionIds].filter((itemId) => currentIds.includes(itemId)))
       : new Set([activeId]);
@@ -379,26 +404,29 @@ export function ExportPanel() {
     }
     const movingBlock = currentIds.filter((itemId) => movingIds.has(itemId));
     const remaining = currentIds.filter((itemId) => !movingIds.has(itemId));
-    const insertAt = remaining.indexOf(overId);
-    if (insertAt < 0) {
+    const activeIndex = currentIds.indexOf(activeId);
+    const overIndex = currentIds.indexOf(overId);
+    const overRemainingIndex = remaining.indexOf(overId);
+    if (activeIndex < 0 || overIndex < 0 || overRemainingIndex < 0) {
       return;
     }
+    const insertAt = overIndex > activeIndex ? overRemainingIndex + 1 : overRemainingIndex;
     const nextIds = [
       ...remaining.slice(0, insertAt),
       ...movingBlock,
       ...remaining.slice(insertAt),
     ];
-    void persistPlanItems(nextIds);
+    persistVisiblePlanItems(nextIds);
   }
 
   function handleDeleteSelectedActions() {
     if (selectedActionIds.size === 0 || !plan || plan.locked_at) {
       return;
     }
-    const nextIncludedIds = includedItems
+    const nextVisibleIds = visibleActionItems
       .map((item) => item.export_plan_item_id)
       .filter((itemId) => !selectedActionIds.has(itemId));
-    void persistPlanItems(nextIncludedIds);
+    persistVisiblePlanItems(nextVisibleIds);
   }
 
   function clearActionSelection() {
@@ -529,7 +557,7 @@ export function ExportPanel() {
                 expandedActionIds={expandedActionIds}
                 isLocked={Boolean(plan.locked_at)}
                 isUpdating={isUpdatingPlan}
-                items={includedItems}
+                items={visibleActionItems}
                 selectedActionIds={selectedActionIds}
                 sensors={sensors}
                 validationMessage={plan.validation_error_message}
