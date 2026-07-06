@@ -9,6 +9,7 @@ from music_manager_backend.domain.entities import (
     ExportApplyRun,
     ExportApplyRunStatus,
     ExportPlanItem,
+    LibraryTrackStatus,
 )
 from music_manager_backend.domain.entities.export_plan import ExportAction
 from music_manager_backend.infrastructure.filesystem import (
@@ -20,6 +21,8 @@ from music_manager_backend.ports.repositories import (
     EnvironmentRepository,
     ExportApplyRunRepository,
     ExportPlanRepository,
+    LibraryRepository,
+    LibraryTrackRepository,
 )
 from music_manager_backend.shared.errors import MusicManagerError, NotFoundError, ValidationError
 from music_manager_backend.shared.ids import new_id
@@ -36,12 +39,16 @@ class ApplyExportPlan:
         audio_files: AudioFileRepository,
         export_plans: ExportPlanRepository,
         apply_runs: ExportApplyRunRepository,
+        libraries: LibraryRepository | None = None,
+        library_tracks: LibraryTrackRepository | None = None,
         writer: ExportFileWriter | None = None,
     ) -> None:
         self.environments = environments
         self.audio_files = audio_files
         self.export_plans = export_plans
         self.apply_runs = apply_runs
+        self.libraries = libraries
+        self.library_tracks = library_tracks
         self.writer = writer or ExportFileWriter()
 
     def execute(self, environment_id: str, export_plan_id: str) -> ExportApplyRun:
@@ -103,6 +110,7 @@ class ApplyExportPlan:
                 apply_run.environment_id, status=AudioFileStatus.ACTIVE
             )
         }
+        active_source_paths.update(self._active_library_source_paths())
 
         results: list[ExportApplyItemResult] = list(apply_run.item_results)
         manifest_add_targets = set()
@@ -228,6 +236,20 @@ class ApplyExportPlan:
         except OSError:
             logger.warning("Failed to update export manifest", exc_info=True)
         return apply_run
+
+    def _active_library_source_paths(self) -> set[Path]:
+        if self.libraries is None or self.library_tracks is None:
+            return set()
+        library = self.libraries.get_default()
+        if library is None:
+            return set()
+        return {
+            item.canonical_path.resolve(strict=False)
+            for item in self.library_tracks.list_by_status(
+                library.id,
+                LibraryTrackStatus.ACTIVE,
+            )
+        }
 
 
 def _run_status(results: list[ExportApplyItemResult]) -> ExportApplyRunStatus:

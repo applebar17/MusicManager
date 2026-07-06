@@ -1,5 +1,9 @@
 from pathlib import Path
 
+from music_manager_backend.application.use_cases.library_matching import (
+    active_library_tracks_by_id,
+    preferred_library_link,
+)
 from music_manager_backend.application.use_cases.match_link_selection import (
     active_match_links,
     preferred_match_link,
@@ -12,6 +16,7 @@ from music_manager_backend.domain.entities import (
     AudioFileStatus,
     ExportPlan,
     ExportPlanItem,
+    LibraryTrack,
     Playlist,
     SongMaster,
 )
@@ -25,8 +30,11 @@ from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
     ExportPlanRepository,
+    LibraryRepository,
+    LibraryTrackRepository,
     MatchLinkRepository,
     PlaylistRepository,
+    SongLibraryLinkRepository,
     SongRepository,
 )
 from music_manager_backend.shared.errors import NotFoundError
@@ -47,6 +55,9 @@ class PlanExport:
         match_links: MatchLinkRepository,
         export_plans: ExportPlanRepository,
         metadata_reader: AudioMetadataReader,
+        libraries: LibraryRepository | None = None,
+        library_tracks: LibraryTrackRepository | None = None,
+        song_library_links: SongLibraryLinkRepository | None = None,
     ) -> None:
         self.environments = environments
         self.playlists = playlists
@@ -55,6 +66,9 @@ class PlanExport:
         self.match_links = match_links
         self.export_plans = export_plans
         self.metadata_reader = metadata_reader
+        self.libraries = libraries
+        self.library_tracks = library_tracks
+        self.song_library_links = song_library_links
 
     def execute(self, environment_id: str, playlist_ids: list[str] | None = None) -> ExportPlan:
         environment = self.environments.get(environment_id)
@@ -69,6 +83,17 @@ class PlanExport:
                 environment_id, status=AudioFileStatus.ACTIVE
             )
         }
+        library = self.libraries.get_default() if self.libraries is not None else None
+        active_library_tracks = (
+            active_library_tracks_by_id(library.id, self.library_tracks)
+            if library is not None and self.library_tracks is not None
+            else {}
+        )
+        use_library_sources = (
+            library is not None
+            and self.library_tracks is not None
+            and self.song_library_links is not None
+        )
         layout = ExportLayout(environment)
         items: list[ExportPlanItem] = []
         for folder in (layout.metadata_root, layout.deprecated_folder):
@@ -95,6 +120,55 @@ class PlanExport:
                     active_files=active_files,
                     match_links=self.match_links,
                 )
+                if use_library_sources:
+                    library_track = _linked_library_track(
+                        song_id=song.id,
+                        active_tracks=active_library_tracks,
+                        song_library_links=self.song_library_links,
+                    )
+                    if library_track is None:
+                        items.append(
+                            ExportPlanItem(
+                                action=ExportAction.SKIP,
+                                target_path=folder,
+                                reason=f"No active library mapping for {song.display_title}",
+                            )
+                        )
+                        continue
+
+                    existing_file = _preferred_audio_file_in_folder(
+                        folder=folder,
+                        linked_files=linked_files,
+                    )
+                    if existing_file is not None:
+                        target = existing_file.path
+                        item = ExportPlanItem(
+                            action=ExportAction.KEEP_EXISTING,
+                            source_path=target,
+                            target_path=target,
+                            reason="linked file already exists in playlist folder",
+                        )
+                    else:
+                        target, item = _copy_or_keep_library_item(
+                            folder=folder,
+                            library_track=library_track,
+                            layout=layout,
+                        )
+                    planned_copy_targets.add(target)
+                    if item is not None:
+                        items.append(item)
+                    duplicate_items = _duplicate_copy_items(
+                        folder=folder,
+                        linked_files=linked_files,
+                        kept_target=target,
+                        song=song,
+                    )
+                    planned_removal_targets.update(
+                        item.target_path for item in duplicate_items
+                    )
+                    items.extend(duplicate_items)
+                    continue
+
                 if not linked_files:
                     items.append(
                         ExportPlanItem(
@@ -205,6 +279,30 @@ def _linked_audio_files(
         seen.add(link.audio_file_id)
         files.append(active_files[link.audio_file_id])
     return files
+
+
+def _linked_library_track(
+    *,
+    song_id: str,
+    active_tracks: dict[str, LibraryTrack],
+    song_library_links: SongLibraryLinkRepository,
+) -> LibraryTrack | None:
+    link = preferred_library_link(song_library_links.list_by_song(song_id), active_tracks)
+    if link is None:
+        return None
+    return active_tracks.get(link.library_track_id)
+
+
+def _preferred_audio_file_in_folder(
+    *,
+    folder: Path,
+    linked_files: list[AudioFile],
+) -> AudioFile | None:
+    folder_resolved = folder.resolve(strict=False)
+    for audio_file in _exportable_audio_files(linked_files):
+        if audio_file.path.parent.resolve(strict=False) == folder_resolved:
+            return audio_file
+    return None
 
 
 def _preferred_audio_file_for_folder(
@@ -364,6 +462,34 @@ def _copy_or_keep_item(
             ),
         )
 
+    return (
+        target,
+        ExportPlanItem(
+            action=ExportAction.COPY_FILE,
+            source_path=source,
+            target_path=target,
+        ),
+    )
+
+
+def _copy_or_keep_library_item(
+    *,
+    folder: Path,
+    library_track: LibraryTrack,
+    layout: ExportLayout,
+) -> tuple[Path, ExportPlanItem | None]:
+    source = library_track.canonical_path
+    target = layout.track_target_from_path(folder=folder, source_path=source)
+    if target.exists() and target.is_file():
+        return (
+            target,
+            ExportPlanItem(
+                action=ExportAction.KEEP_EXISTING,
+                source_path=source,
+                target_path=target,
+                reason="target file already exists",
+            ),
+        )
     return (
         target,
         ExportPlanItem(

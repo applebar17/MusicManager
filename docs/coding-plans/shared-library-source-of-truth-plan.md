@@ -238,6 +238,14 @@ Exit criteria:
 
 Goal: use library tracks as the source for organized USB exports.
 
+Locked Wave 5 decisions:
+
+- A configured library makes library mappings required for active exports.
+- New copied USB files use the library track filename.
+- Correctly placed existing USB copies are kept instead of recopied.
+- When no library is configured, legacy audio-file export behavior remains unchanged.
+- Apply allows active library tracks as approved copy sources.
+
 Deliverables:
 
 - Update export planning to prefer mapped library track paths.

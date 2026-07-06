@@ -219,7 +219,7 @@ def _validate_source_file(
     planned_source = source_path.resolve(strict=False)
     if planned_source not in active_source_paths:
         raise ValidationError(
-            f"Export source path is not an active matched audio file: {source_path}"
+            f"Export source path is not an approved active export source: {source_path}"
         )
     if not source_path.exists():
         raise ValidationError(f"Export source path does not exist: {source_path}")

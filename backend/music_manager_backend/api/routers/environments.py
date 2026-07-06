@@ -983,6 +983,9 @@ def create_export_plan(
     songs: SongRepositoryDependency,
     audio_files: AudioFileRepositoryDependency,
     match_links: MatchLinkRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    song_library_links: SongLibraryLinkRepositoryDependency,
     export_plans: ExportPlanRepositoryDependency,
     data: ExportPlanCreate | None = None,
 ) -> ExportPlanRead:
@@ -992,6 +995,9 @@ def create_export_plan(
         songs=songs,
         audio_files=audio_files,
         match_links=match_links,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        song_library_links=song_library_links,
         export_plans=export_plans,
         metadata_reader=MetadataReader(),
     ).execute(environment_id, data.playlist_ids if data is not None else None)
@@ -1047,6 +1053,8 @@ def apply_export_plan(
     request: Request,
     environments: EnvironmentRepositoryDependency,
     audio_files: AudioFileRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
     export_plans: ExportPlanRepositoryDependency,
     apply_runs: ExportApplyRunRepositoryDependency,
 ) -> ExportApplyRunRead:
@@ -1060,6 +1068,8 @@ def apply_export_plan(
         apply_run = ApplyExportPlan(
             environments=environments,
             audio_files=audio_files,
+            libraries=libraries,
+            library_tracks=library_tracks,
             export_plans=export_plans,
             apply_runs=apply_runs,
         ).start(environment_id, export_plan_id)
@@ -1149,6 +1159,8 @@ def _run_export_apply_worker(
             ApplyExportPlan(
                 environments=repositories.environment_repository,
                 audio_files=repositories.audio_file_repository,
+                libraries=repositories.library_repository,
+                library_tracks=repositories.library_track_repository,
                 export_plans=repositories.export_plan_repository,
                 apply_runs=repositories.export_apply_run_repository,
             ).run(apply_run_id)

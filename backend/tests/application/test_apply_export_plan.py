@@ -10,7 +10,10 @@ from music_manager_backend.domain.entities import (
     ExportApplyRunStatus,
     ExportPlan,
     ExportPlanItem,
+    LibraryTrack,
+    LibraryTrackStatus,
     MusicEnvironment,
+    MusicLibrary,
 )
 from music_manager_backend.domain.entities.export_plan import ExportAction
 from music_manager_backend.infrastructure.filesystem import update_export_manifest
@@ -19,6 +22,8 @@ from music_manager_backend.infrastructure.persistence import (
     SqliteEnvironmentRepository,
     SqliteExportApplyRunRepository,
     SqliteExportPlanRepository,
+    SqliteLibraryRepository,
+    SqliteLibraryTrackRepository,
 )
 from music_manager_backend.shared.errors import ValidationError
 
@@ -137,6 +142,72 @@ def test_apply_export_plan_records_partial_failures_and_continues(
     assert apply_run.item_results[0].status == ExportApplyItemStatus.FAILED
     assert apply_run.item_results[1].status == ExportApplyItemStatus.SUCCEEDED
     assert good_target.read_bytes() == b"audio"
+
+
+def test_apply_export_plan_allows_active_library_track_source(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    library_source = tmp_path / "library" / "track.mp3"
+    library_source.parent.mkdir()
+    library_source.write_bytes(b"library audio")
+    _seed_library_track(repositories, library_source)
+    target = root / "Set" / "track.mp3"
+    repositories.export_plans.save(
+        ExportPlan(
+            id="plan_1",
+            environment_id="env_1",
+            items=(
+                ExportPlanItem(
+                    action=ExportAction.COPY_FILE,
+                    source_path=library_source,
+                    target_path=target,
+                ),
+            ),
+        )
+    )
+
+    apply_run = _apply_export_plan(repositories).execute("env_1", "plan_1")
+
+    assert target.read_bytes() == b"library audio"
+    assert apply_run.status == ExportApplyRunStatus.COMPLETED
+    assert apply_run.item_results[0].status == ExportApplyItemStatus.SUCCEEDED
+
+
+def test_apply_export_plan_rejects_missing_library_track_source(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    library_source = tmp_path / "library" / "track.mp3"
+    library_source.parent.mkdir()
+    library_source.write_bytes(b"library audio")
+    _seed_library_track(repositories, library_source, status=LibraryTrackStatus.MISSING)
+    target = root / "Set" / "track.mp3"
+    repositories.export_plans.save(
+        ExportPlan(
+            id="plan_1",
+            environment_id="env_1",
+            items=(
+                ExportPlanItem(
+                    action=ExportAction.COPY_FILE,
+                    source_path=library_source,
+                    target_path=target,
+                ),
+            ),
+        )
+    )
+
+    apply_run = _apply_export_plan(repositories).execute("env_1", "plan_1")
+
+    assert not target.exists()
+    assert apply_run.status == ExportApplyRunStatus.FAILED
+    assert apply_run.item_results[0].status == ExportApplyItemStatus.FAILED
+    assert apply_run.item_results[0].error_code == "validation_error"
+    assert "approved active export source" in (apply_run.item_results[0].error_message or "")
 
 
 def test_apply_export_plan_locks_plan_after_apply(
@@ -337,6 +408,8 @@ class _Repositories:
         self.audio_files = SqliteAudioFileRepository(connection)
         self.export_plans = SqliteExportPlanRepository(connection)
         self.apply_runs = SqliteExportApplyRunRepository(connection)
+        self.libraries = SqliteLibraryRepository(connection)
+        self.library_tracks = SqliteLibraryTrackRepository(connection)
 
 
 def _repositories(connection: sqlite3.Connection) -> _Repositories:
@@ -357,6 +430,33 @@ def _source_file(root: Path, filename: str, content: bytes) -> Path:
     return source
 
 
+def _seed_library_track(
+    repositories: _Repositories,
+    source: Path,
+    *,
+    status: LibraryTrackStatus = LibraryTrackStatus.ACTIVE,
+) -> None:
+    repositories.libraries.save_default(
+        MusicLibrary(
+            id="default",
+            root_path=source.parent,
+            created_at="2026-07-06T10:00:00+00:00",
+            updated_at="2026-07-06T10:00:00+00:00",
+        )
+    )
+    repositories.library_tracks.save(
+        LibraryTrack(
+            id="library_track_1",
+            library_id="default",
+            canonical_path=source,
+            filename=source.name,
+            status=status,
+            created_at="2026-07-06T10:00:00+00:00",
+            updated_at="2026-07-06T10:00:00+00:00",
+        )
+    )
+
+
 def _audio_file(audio_file_id: str, path: Path) -> AudioFile:
     return AudioFile(
         id=audio_file_id,
@@ -371,6 +471,8 @@ def _apply_export_plan(repositories: _Repositories) -> ApplyExportPlan:
     return ApplyExportPlan(
         environments=repositories.environments,
         audio_files=repositories.audio_files,
+        libraries=repositories.libraries,
+        library_tracks=repositories.library_tracks,
         export_plans=repositories.export_plans,
         apply_runs=repositories.apply_runs,
     )

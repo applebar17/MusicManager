@@ -46,6 +46,12 @@ class ExportLayout:
         used_paths = self._used_track_paths.setdefault(folder, set())
         return self._ensure_export_root(unique_path(target, used_paths))
 
+    def track_target_from_path(self, *, folder: Path, source_path: Path) -> Path:
+        filename = sanitize_path_part(source_path.stem)
+        target = folder / f"{filename}{source_path.suffix}"
+        used_paths = self._used_track_paths.setdefault(folder, set())
+        return self._ensure_export_root(unique_path(target, used_paths))
+
     def deprecated_target(self, *, song: SongMaster, audio_file: AudioFile) -> Path:
         _ = song
         filename = sanitize_path_part(audio_file.path.stem)

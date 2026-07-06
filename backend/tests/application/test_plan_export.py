@@ -5,10 +5,14 @@ from music_manager_backend.application.use_cases.plan_export import PlanExport
 from music_manager_backend.domain.entities import (
     AudioFile,
     AudioMetadata,
+    LibraryTrack,
+    LibraryTrackStatus,
     MatchLink,
     MusicEnvironment,
+    MusicLibrary,
     Playlist,
     PlaylistItem,
+    SongLibraryLink,
     SongMaster,
 )
 from music_manager_backend.domain.entities.export_plan import ExportAction
@@ -17,9 +21,12 @@ from music_manager_backend.infrastructure.persistence import (
     SqliteAudioFileRepository,
     SqliteEnvironmentRepository,
     SqliteExportPlanRepository,
+    SqliteLibraryRepository,
+    SqliteLibraryTrackRepository,
     SqliteMatchLinkRepository,
     SqlitePlaylistRepository,
     SqliteSongRepository,
+    SqliteSongLibraryLinkRepository,
 )
 
 
@@ -58,6 +65,164 @@ def test_export_plan_creates_folders_and_copy_items(
     assert copy_items[0].target_path == root / "Set" / "source.mp3"
     assert not (root / "_music_manager").exists()
     assert not (root / "Set").exists()
+
+
+def test_export_plan_copies_from_library_when_configured(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    library_source = _library_file(tmp_path, "library-track.mp3")
+    local_source = _source_file(root, "local-track.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Track", artist="Artist"))
+    repositories.audio_files.save(_audio_file("file_1", local_source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    _seed_library_mapping(repositories, library_source=library_source)
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    copy_items = [item for item in plan.items if item.action == ExportAction.COPY_FILE]
+    assert copy_items[0].source_path == library_source
+    assert copy_items[0].target_path == root / "Set" / "library-track.mp3"
+
+
+def test_export_plan_skips_missing_library_mapping_when_configured(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    local_source = _source_file(root, "local-track.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Track", artist="Artist"))
+    repositories.audio_files.save(_audio_file("file_1", local_source))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    _save_library(repositories, tmp_path / "library")
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    skip_items = [item for item in plan.items if item.action == ExportAction.SKIP]
+    assert skip_items[0].reason == "No active library mapping for Track"
+    assert not [item for item in plan.items if item.action == ExportAction.COPY_FILE]
+
+
+def test_export_plan_ignores_missing_library_track(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    library_source = _library_file(tmp_path, "missing-track.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Track", artist="Artist"))
+    _seed_library_mapping(
+        repositories,
+        library_source=library_source,
+        status=LibraryTrackStatus.MISSING,
+    )
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    skip_items = [item for item in plan.items if item.action == ExportAction.SKIP]
+    assert skip_items[0].reason == "No active library mapping for Track"
+
+
+def test_export_plan_keeps_existing_playlist_copy_when_library_mapped(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    repositories = _repositories(sqlite_connection)
+    root = _seed_environment(repositories, tmp_path)
+    existing = root / "Set" / "already-there.mp3"
+    existing.parent.mkdir()
+    existing.write_bytes(b"existing")
+    duplicate = root / "Set" / "duplicate.mp3"
+    duplicate.write_bytes(b"duplicate")
+    library_source = _library_file(tmp_path, "library-track.mp3")
+    repositories.songs.save(SongMaster(id="song_1", title="Track", artist="Artist"))
+    repositories.audio_files.save(_audio_file("file_existing", existing))
+    repositories.audio_files.save(_audio_file("file_duplicate", duplicate))
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_existing",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+    repositories.match_links.save(
+        MatchLink(
+            song_id="song_1",
+            audio_file_id="file_duplicate",
+            method="local_duplicate",
+            confidence=0.99,
+            reviewed=True,
+        )
+    )
+    _seed_library_mapping(repositories, library_source=library_source)
+    _seed_playlist(
+        repositories,
+        playlist=Playlist(
+            id="playlist_1",
+            environment_id="env_1",
+            name="Set",
+            items=(PlaylistItem(song_id="song_1", position=1),),
+        ),
+    )
+
+    plan = _plan_export(repositories).execute("env_1")
+
+    keep_items = [item for item in plan.items if item.action == ExportAction.KEEP_EXISTING]
+    duplicate_items = [
+        item for item in plan.items if item.action == ExportAction.REMOVE_DUPLICATE_COPY
+    ]
+    assert keep_items[0].source_path == existing
+    assert keep_items[0].target_path == existing
+    assert duplicate_items[0].target_path == duplicate
+    assert not [item for item in plan.items if item.action == ExportAction.COPY_FILE]
 
 
 def test_export_plan_includes_local_playlist_items(
@@ -759,6 +924,9 @@ class _Repositories:
         self.songs = SqliteSongRepository(connection)
         self.audio_files = SqliteAudioFileRepository(connection)
         self.match_links = SqliteMatchLinkRepository(connection)
+        self.libraries = SqliteLibraryRepository(connection)
+        self.library_tracks = SqliteLibraryTrackRepository(connection)
+        self.song_library_links = SqliteSongLibraryLinkRepository(connection)
         self.export_plans = SqliteExportPlanRepository(connection)
 
 
@@ -792,6 +960,58 @@ def _source_file(root: Path, filename: str) -> Path:
     return source
 
 
+def _library_file(tmp_path: Path, filename: str) -> Path:
+    source = tmp_path / "library" / filename
+    source.parent.mkdir(exist_ok=True)
+    source.write_bytes(b"library audio")
+    return source
+
+
+def _save_library(repositories: _Repositories, root: Path) -> None:
+    root.mkdir(exist_ok=True)
+    repositories.libraries.save_default(
+        MusicLibrary(
+            id="default",
+            root_path=root,
+            created_at="2026-07-06T10:00:00+00:00",
+            updated_at="2026-07-06T10:00:00+00:00",
+        )
+    )
+
+
+def _seed_library_mapping(
+    repositories: _Repositories,
+    *,
+    library_source: Path,
+    status: LibraryTrackStatus = LibraryTrackStatus.ACTIVE,
+) -> None:
+    _save_library(repositories, library_source.parent)
+    repositories.library_tracks.save(
+        LibraryTrack(
+            id="library_track_1",
+            library_id="default",
+            canonical_path=library_source,
+            filename=library_source.name,
+            status=status,
+            title="Track",
+            artist="Artist",
+            duration_seconds=180,
+            normalized_title="track",
+            created_at="2026-07-06T10:00:00+00:00",
+            updated_at="2026-07-06T10:00:00+00:00",
+        )
+    )
+    repositories.song_library_links.save(
+        SongLibraryLink(
+            song_id="song_1",
+            library_track_id="library_track_1",
+            method="manual",
+            confidence=1.0,
+            reviewed=True,
+        )
+    )
+
+
 def _audio_file(
     audio_file_id: str,
     path: Path,
@@ -820,6 +1040,9 @@ def _plan_export(
         songs=repositories.songs,
         audio_files=repositories.audio_files,
         match_links=repositories.match_links,
+        libraries=repositories.libraries,
+        library_tracks=repositories.library_tracks,
+        song_library_links=repositories.song_library_links,
         export_plans=repositories.export_plans,
         metadata_reader=metadata_reader or FakeMetadataReader(),
     )

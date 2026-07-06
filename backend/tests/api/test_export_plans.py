@@ -10,10 +10,14 @@ from music_manager_backend.domain.entities import (
     AudioFile,
     ExportPlan,
     ExportPlanItem,
+    LibraryTrack,
+    LibraryTrackStatus,
     MatchLink,
     MusicEnvironment,
+    MusicLibrary,
     Playlist,
     PlaylistItem,
+    SongLibraryLink,
     SongMaster,
 )
 from music_manager_backend.domain.entities.export_plan import ExportAction
@@ -137,6 +141,68 @@ def test_apply_export_plan_can_copy_matched_download_source_outside_usb_root(
     _wait_apply_run(api_client, response.json()["apply_run_id"])
     assert (root / "Set" / "track.mp3").read_bytes() == b"audio"
     assert source.exists()
+
+
+def test_export_plan_uses_library_source_and_apply_copies_it(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    container = _container(api_client)
+    root = tmp_path / "usb"
+    library_root = tmp_path / "library"
+    root.mkdir()
+    library_root.mkdir()
+    local_source = root / "local-track.mp3"
+    local_source.write_bytes(b"local")
+    library_source = library_root / "library-track.mp3"
+    library_source.write_bytes(b"library")
+    _seed_export_data(container, root=root, source=local_source)
+    _seed_library_mapping(container, library_root=library_root, source=library_source)
+
+    create_response = api_client.post("/environments/env_1/export-plans")
+    plan = create_response.json()
+    copy_item = next(item for item in plan["items"] if item["action"] == "copy_file")
+    apply_response = api_client.post(
+        f"/environments/env_1/export-plans/{plan['export_plan_id']}/apply"
+    )
+    final = _wait_apply_run(api_client, apply_response.json()["apply_run_id"])
+
+    assert create_response.status_code == 200
+    assert copy_item["source_path"] == str(library_source)
+    assert copy_item["target_path"] == str(root / "Set" / "library-track.mp3")
+    assert final["status"] == "completed"
+    assert (root / "Set" / "library-track.mp3").read_bytes() == b"library"
+
+
+def test_export_plan_skips_missing_library_mapping(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    container = _container(api_client)
+    root = tmp_path / "usb"
+    library_root = tmp_path / "library"
+    root.mkdir()
+    library_root.mkdir()
+    local_source = root / "local-track.mp3"
+    local_source.write_bytes(b"local")
+    _seed_export_data(container, root=root, source=local_source)
+    with container.repository_bundle() as repositories:
+        repositories.library_repository.save_default(
+            MusicLibrary(
+                id="default",
+                root_path=library_root,
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+
+    response = api_client.post("/environments/env_1/export-plans")
+    plan = response.json()
+    skip_item = next(item for item in plan["items"] if item["action"] == "skip")
+
+    assert response.status_code == 200
+    assert skip_item["reason"] == "No active library mapping for Track"
+    assert "copy_file" not in plan["counts"]
 
 
 def test_update_export_plan_reorders_and_excludes_items(
@@ -325,6 +391,48 @@ def _seed_export_data(
                 audio_file_id="file_1",
                 method="metadata_exact",
                 confidence=0.95,
+            )
+        )
+
+
+def _seed_library_mapping(
+    container: AppContainer,
+    *,
+    library_root: Path,
+    source: Path,
+    status: LibraryTrackStatus = LibraryTrackStatus.ACTIVE,
+) -> None:
+    with container.repository_bundle() as repositories:
+        repositories.library_repository.save_default(
+            MusicLibrary(
+                id="default",
+                root_path=library_root,
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+        repositories.library_track_repository.save(
+            LibraryTrack(
+                id="library_track_1",
+                library_id="default",
+                canonical_path=source,
+                filename=source.name,
+                status=status,
+                title="Track",
+                artist="Artist",
+                duration_seconds=180,
+                normalized_title="track",
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+        repositories.song_library_link_repository.save(
+            SongLibraryLink(
+                song_id="song_1",
+                library_track_id="library_track_1",
+                method="manual",
+                confidence=1.0,
+                reviewed=True,
             )
         )
 
