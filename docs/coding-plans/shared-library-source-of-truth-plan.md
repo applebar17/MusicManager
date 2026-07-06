@@ -139,6 +139,16 @@ Exit criteria:
 
 Goal: populate the library from an existing USB while preserving existing files.
 
+Locked Wave 2 decisions:
+
+- Imported USB files keep the original filename, with numeric suffixes for flat-library
+  filename collisions.
+- Alignment writes immediately and returns a persisted summary; there is no preview/apply
+  workflow in this wave.
+- Matching uses normalized title plus exact rounded duration seconds.
+- Library files missing from disk are marked missing, not deleted from the database.
+- Alignment collision/review items are persisted for a later resolution UI.
+
 Deliverables:
 
 - Add library scanner for supported audio files in the flat library root.

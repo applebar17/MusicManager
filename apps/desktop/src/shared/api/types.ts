@@ -36,10 +36,53 @@ export type LibraryRead = {
   created_at: string | null;
   updated_at: string | null;
   track_count: number;
+  missing_track_count: number;
 };
 
 export type LibraryConfigure = {
   root_path: string;
+};
+
+export type LibraryAlignmentItemStatus =
+  | "copied"
+  | "reused"
+  | "updated"
+  | "skipped_collision"
+  | "skipped_error"
+  | "warning_identity_incomplete";
+
+export type LibraryAlignmentRunStatus = "completed" | "completed_with_issues" | "failed";
+
+export type LibraryAlignmentItemRead = {
+  id: string;
+  status: LibraryAlignmentItemStatus;
+  source_path: string;
+  target_path: string | null;
+  library_track_id: string | null;
+  reason_code: string | null;
+  reason_message: string | null;
+  title: string | null;
+  artist: string | null;
+  duration_seconds: number | null;
+  normalized_title: string | null;
+};
+
+export type LibraryAlignmentRunRead = {
+  run_id: string;
+  library_id: string;
+  environment_id: string;
+  status: LibraryAlignmentRunStatus;
+  started_at: string;
+  finished_at: string | null;
+  scanned_library_count: number;
+  scanned_usb_count: number;
+  copied_count: number;
+  reused_count: number;
+  updated_count: number;
+  skipped_collision_count: number;
+  skipped_error_count: number;
+  warning_count: number;
+  items: LibraryAlignmentItemRead[];
 };
 
 export type ScanSummaryRead = {

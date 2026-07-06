@@ -9,7 +9,12 @@ from music_manager_backend.domain.entities import (
     ExportApplyRunStatus,
     ExportPlan,
     ExportPlanItem,
+    LibraryAlignmentItem,
+    LibraryAlignmentItemStatus,
+    LibraryAlignmentRun,
+    LibraryAlignmentRunStatus,
     LibraryTrack,
+    LibraryTrackStatus,
     MatchLink,
     MusicEnvironment,
     MusicLibrary,
@@ -27,6 +32,7 @@ from music_manager_backend.infrastructure.persistence import (
     SqliteEnvironmentRepository,
     SqliteExportApplyRunRepository,
     SqliteExportPlanRepository,
+    SqliteLibraryAlignmentRunRepository,
     SqliteLibraryRepository,
     SqliteLibraryTrackRepository,
     SqliteMatchLinkRepository,
@@ -101,6 +107,9 @@ def test_library_track_repository_round_trips_tracks_and_identity(
         library_id="default",
         canonical_path=Path("/Music/Library/track.mp3"),
         filename="track.mp3",
+        size_bytes=123,
+        modified_at=12.5,
+        status=LibraryTrackStatus.ACTIVE,
         title="Track",
         artist="Artist",
         duration_seconds=180,
@@ -108,15 +117,86 @@ def test_library_track_repository_round_trips_tracks_and_identity(
         file_hash=None,
         created_at="2026-07-06T10:00:00+00:00",
         updated_at="2026-07-06T10:00:00+00:00",
+        first_seen_at="2026-07-06T10:00:00+00:00",
+        last_seen_at="2026-07-06T10:00:00+00:00",
+    )
+    missing = LibraryTrack(
+        id="library_track_2",
+        library_id="default",
+        canonical_path=Path("/Music/Library/missing.mp3"),
+        filename="missing.mp3",
+        status=LibraryTrackStatus.MISSING,
+        normalized_title="track",
+        duration_seconds=180,
+        created_at="2026-07-06T10:00:00+00:00",
+        updated_at="2026-07-06T11:00:00+00:00",
+        missing_at="2026-07-06T11:00:00+00:00",
     )
 
     repository.save(track)
+    repository.save(missing)
 
     assert repository.get("library_track_1") == track
-    assert repository.list("default") == [track]
+    assert repository.get_by_canonical_path("default", track.canonical_path) == track
+    assert repository.list("default") == [missing, track]
+    assert repository.list_by_status("default", LibraryTrackStatus.ACTIVE) == [track]
     assert repository.count("default") == 1
+    assert repository.count_by_status("default", LibraryTrackStatus.MISSING) == 1
     assert repository.get_by_identity("default", "track", 180) == [track]
     assert repository.get_by_identity("default", "track", 181) == []
+
+
+def test_library_alignment_repository_round_trips_runs_and_items(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    SqliteEnvironmentRepository(sqlite_connection).save(
+        MusicEnvironment(id="env_1", name="Gig USB", root_path=Path("/Volumes/GIG"))
+    )
+    SqliteLibraryRepository(sqlite_connection).save_default(
+        MusicLibrary(
+            id="default",
+            root_path=Path("/Music/Library"),
+            created_at="2026-07-06T10:00:00+00:00",
+            updated_at="2026-07-06T10:00:00+00:00",
+        )
+    )
+    track = LibraryTrack(
+        id="library_track_1",
+        library_id="default",
+        canonical_path=Path("/Music/Library/track.mp3"),
+        filename="track.mp3",
+        created_at="2026-07-06T10:00:00+00:00",
+        updated_at="2026-07-06T10:00:00+00:00",
+    )
+    SqliteLibraryTrackRepository(sqlite_connection).save(track)
+    repository = SqliteLibraryAlignmentRunRepository(sqlite_connection)
+    run = LibraryAlignmentRun(
+        id="alignment_1",
+        library_id="default",
+        environment_id="env_1",
+        status=LibraryAlignmentRunStatus.COMPLETED,
+        started_at="2026-07-06T10:00:00+00:00",
+        finished_at="2026-07-06T10:00:01+00:00",
+        scanned_library_count=1,
+        scanned_usb_count=1,
+        copied_count=1,
+    )
+    item = LibraryAlignmentItem(
+        id="alignment_item_1",
+        run_id="alignment_1",
+        status=LibraryAlignmentItemStatus.COPIED,
+        source_path=Path("/Volumes/GIG/track.mp3"),
+        target_path=Path("/Music/Library/track.mp3"),
+        library_track_id="library_track_1",
+        title="Track",
+        duration_seconds=180,
+        normalized_title="track",
+    )
+
+    repository.save(run, (item,))
+
+    assert repository.get("alignment_1") == (run, (item,))
+    assert repository.latest("default") == (run, (item,))
 
 
 def test_song_repository_preserves_local_overrides(sqlite_connection: sqlite3.Connection) -> None:

@@ -781,6 +781,52 @@ button {
   max-width: 720px;
 }
 
+.library-actions-panel,
+.library-alignment-panel {
+  max-width: 920px;
+}
+
+.library-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+}
+
+.library-alignment-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  color: var(--color-on-surface-variant);
+  font-size: 13px;
+}
+
+.library-alignment-summary span {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-xs) var(--space-sm);
+}
+
+.library-alignment-issues {
+  display: grid;
+  gap: var(--space-sm);
+  padding: 0 var(--space-md) var(--space-md);
+}
+
+.library-alignment-issue {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm);
+}
+
+.library-alignment-issue small {
+  color: var(--color-on-surface-variant);
+  word-break: break-all;
+}
+
 .environment-form {
   display: grid;
   gap: var(--space-md);

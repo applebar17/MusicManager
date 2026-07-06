@@ -20,8 +20,11 @@ from music_manager_backend.application.dtos.export import (
     export_plan_read,
 )
 from music_manager_backend.application.dtos.library import (
+    LibraryAlignmentItemRead,
+    LibraryAlignmentRunRead,
     LibraryConfigure,
     LibraryRead,
+    library_alignment_run_read,
     library_read,
 )
 from music_manager_backend.application.dtos.matching import (
@@ -74,6 +77,8 @@ __all__ = [
     "ExportPlanUpdate",
     "ExportPlanValidationErrorRead",
     "LibraryConfigure",
+    "LibraryAlignmentItemRead",
+    "LibraryAlignmentRunRead",
     "LibraryRead",
     "DownloadMatchRunResultRead",
     "DownloadMatchSummaryRead",
@@ -103,5 +108,6 @@ __all__ = [
     "environment_read",
     "export_apply_run_read",
     "export_plan_read",
+    "library_alignment_run_read",
     "library_read",
 ]

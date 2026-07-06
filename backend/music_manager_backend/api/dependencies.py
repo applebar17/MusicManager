@@ -9,6 +9,7 @@ from music_manager_backend.ports.repositories import (
     EnvironmentRepository,
     ExportApplyRunRepository,
     ExportPlanRepository,
+    LibraryAlignmentRunRepository,
     LibraryRepository,
     LibraryTrackRepository,
     MatchLinkRepository,
@@ -65,6 +66,12 @@ def get_library_repository(bundle: RepositoryBundleDependency) -> LibraryReposit
     return bundle.library_repository
 
 
+def get_library_alignment_run_repository(
+    bundle: RepositoryBundleDependency,
+) -> LibraryAlignmentRunRepository:
+    return bundle.library_alignment_run_repository
+
+
 def get_library_track_repository(bundle: RepositoryBundleDependency) -> LibraryTrackRepository:
     return bundle.library_track_repository
 
@@ -117,6 +124,19 @@ def guard_environment_operation(
     def _guard(environment_id: str, request: Request) -> Generator[None, None, None]:
         with get_container(request).operation_coordinator.guard(
             environment_id=environment_id,
+            operation_name=operation_name,
+        ):
+            yield
+
+    return _guard
+
+
+def guard_library_operation(
+    operation_name: str,
+) -> Callable[[Request], Generator[None, None, None]]:
+    def _guard(request: Request) -> Generator[None, None, None]:
+        with get_container(request).operation_coordinator.guard(
+            environment_id="__library__",
             operation_name=operation_name,
         ):
             yield

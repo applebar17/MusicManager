@@ -4,6 +4,7 @@ from music_manager_backend.application.dtos.library import (
     library_read,
 )
 from music_manager_backend.domain.entities.library import DEFAULT_LIBRARY_ID, MusicLibrary
+from music_manager_backend.domain.entities.library import LibraryTrackStatus
 from music_manager_backend.infrastructure.filesystem import validate_writable_directory
 from music_manager_backend.ports.repositories import LibraryRepository, LibraryTrackRepository
 from music_manager_backend.shared.time import utc_now_iso
@@ -32,4 +33,8 @@ class ConfigureLibrary:
         return library_read(
             library,
             track_count=self.library_tracks.count(library.id),
+            missing_track_count=self.library_tracks.count_by_status(
+                library.id,
+                LibraryTrackStatus.MISSING,
+            ),
         )

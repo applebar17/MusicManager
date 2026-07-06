@@ -13,6 +13,7 @@ def test_get_library_returns_unconfigured_by_default(api_client: TestClient) -> 
         "created_at": None,
         "updated_at": None,
         "track_count": 0,
+        "missing_track_count": 0,
     }
 
 
@@ -31,6 +32,7 @@ def test_configure_library_persists_existing_folder(
     assert configured["configured"] is True
     assert configured["root_path"] == str(library_root)
     assert configured["track_count"] == 0
+    assert configured["missing_track_count"] == 0
     assert configured["created_at"] is not None
     assert configured["updated_at"] is not None
     assert get_response.json() == configured
@@ -52,3 +54,38 @@ def test_configure_library_rejects_invalid_paths(
     assert missing_response.json()["code"] == "validation_error"
     assert file_response.status_code == 400
     assert file_response.json()["code"] == "validation_error"
+
+
+def test_scan_library_rejects_unconfigured_library(api_client: TestClient) -> None:
+    response = api_client.post("/library/scan")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"
+
+
+def test_align_library_from_environment_copies_usb_audio_and_persists_latest_run(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    library_root = tmp_path / "library"
+    environment_root = tmp_path / "usb"
+    library_root.mkdir()
+    environment_root.mkdir()
+    (environment_root / "track.mp3").write_bytes(b"fake audio")
+    api_client.put("/library", json={"root_path": str(library_root)})
+    environment_id = api_client.post(
+        "/environments",
+        json={"name": "Gig USB", "root_path": str(environment_root)},
+    ).json()["id"]
+
+    response = api_client.post(f"/environments/{environment_id}/library/align")
+    latest_response = api_client.get("/library/alignment-runs/latest")
+
+    assert response.status_code == 200
+    run = response.json()
+    assert run["environment_id"] == environment_id
+    assert run["scanned_usb_count"] == 1
+    assert run["copied_count"] == 1
+    assert run["warning_count"] == 1
+    assert (library_root / "track.mp3").exists()
+    assert latest_response.json()["run_id"] == run["run_id"]

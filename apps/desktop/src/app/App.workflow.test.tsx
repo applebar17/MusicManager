@@ -129,6 +129,10 @@ function mockFetch() {
       return jsonResponse(libraryResponse(libraryRootPath));
     }
 
+    if (path === "/library/alignment-runs/latest" && method === "GET") {
+      return jsonResponse(null);
+    }
+
     if (path === "/library" && method === "PUT") {
       const body = JSON.parse(String(init?.body ?? "{}")) as { root_path: string };
       libraryRootPath = body.root_path;
@@ -441,6 +445,7 @@ function libraryResponse(rootPath: string | null) {
   return {
     configured: rootPath !== null,
     created_at: rootPath === null ? null : "2026-07-06T10:00:00+00:00",
+    missing_track_count: 0,
     root_path: rootPath,
     track_count: 0,
     updated_at: rootPath === null ? null : "2026-07-06T10:00:00+00:00",

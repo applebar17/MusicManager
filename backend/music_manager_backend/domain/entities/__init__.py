@@ -11,7 +11,12 @@ from music_manager_backend.domain.entities.export_apply import (
 from music_manager_backend.domain.entities.export_plan import ExportPlan, ExportPlanItem
 from music_manager_backend.domain.entities.library import (
     DEFAULT_LIBRARY_ID,
+    LibraryAlignmentItem,
+    LibraryAlignmentItemStatus,
+    LibraryAlignmentRun,
+    LibraryAlignmentRunStatus,
     LibraryTrack,
+    LibraryTrackStatus,
     MusicLibrary,
 )
 from music_manager_backend.domain.entities.matching import MatchCandidate, MatchLink, MatchStatus
@@ -33,7 +38,12 @@ __all__ = [
     "ExportPlan",
     "ExportPlanItem",
     "DEFAULT_LIBRARY_ID",
+    "LibraryAlignmentItem",
+    "LibraryAlignmentItemStatus",
+    "LibraryAlignmentRun",
+    "LibraryAlignmentRunStatus",
     "LibraryTrack",
+    "LibraryTrackStatus",
     "MatchLink",
     "MatchCandidate",
     "MatchStatus",

@@ -7,7 +7,10 @@ from music_manager_backend.domain.entities import (
     AudioFile,
     ExportApplyRun,
     ExportPlan,
+    LibraryAlignmentItem,
+    LibraryAlignmentRun,
     LibraryTrack,
+    LibraryTrackStatus,
     MatchLink,
     MusicEnvironment,
     MusicLibrary,
@@ -88,10 +91,19 @@ class LibraryTrackRepository(Protocol):
     def get(self, track_id: str) -> LibraryTrack | None:
         pass
 
+    def get_by_canonical_path(self, library_id: str, canonical_path: Path) -> LibraryTrack | None:
+        pass
+
     def list(self, library_id: str) -> list[LibraryTrack]:
         pass
 
+    def list_by_status(self, library_id: str, status: LibraryTrackStatus) -> list[LibraryTrack]:
+        pass
+
     def count(self, library_id: str) -> int:
+        pass
+
+    def count_by_status(self, library_id: str, status: LibraryTrackStatus) -> int:
         pass
 
     def get_by_identity(
@@ -100,6 +112,24 @@ class LibraryTrackRepository(Protocol):
         normalized_title: str,
         duration_seconds: int,
     ) -> list[LibraryTrack]:
+        pass
+
+
+class LibraryAlignmentRunRepository(Protocol):
+    def save(
+        self,
+        run: LibraryAlignmentRun,
+        items: tuple[LibraryAlignmentItem, ...] = (),
+    ) -> None:
+        pass
+
+    def get(self, run_id: str) -> tuple[LibraryAlignmentRun, tuple[LibraryAlignmentItem, ...]] | None:
+        pass
+
+    def latest(
+        self,
+        library_id: str,
+    ) -> tuple[LibraryAlignmentRun, tuple[LibraryAlignmentItem, ...]] | None:
         pass
 
 

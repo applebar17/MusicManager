@@ -12,6 +12,9 @@ from music_manager_backend.api.dependencies import (
     get_environment_repository,
     get_export_apply_run_repository,
     get_export_plan_repository,
+    get_library_alignment_run_repository,
+    get_library_repository,
+    get_library_track_repository,
     get_match_link_repository,
     get_playlist_repository,
     get_remote_playlist_repository,
@@ -23,6 +26,7 @@ from music_manager_backend.api.dependencies import (
     get_sync_snapshot_repository,
     get_container,
     guard_environment_operation,
+    guard_library_operation,
 )
 from music_manager_backend.application.dtos import (
     ApiErrorRead,
@@ -36,6 +40,7 @@ from music_manager_backend.application.dtos import (
     ExportPlanCreate,
     ExportPlanRead,
     ExportPlanUpdate,
+    LibraryAlignmentRunRead,
     ManualMappingCreate,
     MatchCandidateRead,
     MatchingRunSummary,
@@ -60,6 +65,7 @@ from music_manager_backend.application.dtos import (
 )
 from music_manager_backend.application.use_cases.apply_export_plan import ApplyExportPlan
 from music_manager_backend.application.use_cases.archive_environment import ArchiveEnvironment
+from music_manager_backend.application.use_cases.align_library import AlignLibraryFromEnvironment
 from music_manager_backend.application.use_cases.create_environment import CreateEnvironment
 from music_manager_backend.application.use_cases.create_manual_mapping import CreateManualMapping
 from music_manager_backend.application.use_cases.discover_soundcloud_track import (
@@ -118,6 +124,9 @@ from music_manager_backend.ports.repositories import (
     EnvironmentRepository,
     ExportApplyRunRepository,
     ExportPlanRepository,
+    LibraryAlignmentRunRepository,
+    LibraryRepository,
+    LibraryTrackRepository,
     MatchLinkRepository,
     PlaylistRepository,
     RemotePlaylistRepository,
@@ -156,6 +165,18 @@ ExportPlanRepositoryDependency = Annotated[
 ExportApplyRunRepositoryDependency = Annotated[
     ExportApplyRunRepository,
     Depends(get_export_apply_run_repository),
+]
+LibraryRepositoryDependency = Annotated[
+    LibraryRepository,
+    Depends(get_library_repository),
+]
+LibraryTrackRepositoryDependency = Annotated[
+    LibraryTrackRepository,
+    Depends(get_library_track_repository),
+]
+LibraryAlignmentRunRepositoryDependency = Annotated[
+    LibraryAlignmentRunRepository,
+    Depends(get_library_alignment_run_repository),
 ]
 ScanRunRepositoryDependency = Annotated[
     ScanRunRepository,
@@ -637,6 +658,29 @@ def quarantine_usb_audio_file(
         audio_files=audio_files,
         match_links=match_links,
     ).execute(environment_id, audio_file_id)
+
+
+@router.post(
+    "/{environment_id}/library/align",
+    response_model=LibraryAlignmentRunRead,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_library_operation("align_library"))],
+)
+def align_library_from_environment(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    alignment_runs: LibraryAlignmentRunRepositoryDependency,
+) -> LibraryAlignmentRunRead:
+    return AlignLibraryFromEnvironment(
+        environments=environments,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        alignment_runs=alignment_runs,
+        scanner_factory=LocalAudioScanner,
+        metadata_reader=MetadataReader(),
+    ).execute(environment_id)
 
 
 @router.get(

@@ -1,11 +1,18 @@
-import { Database, RefreshCcw, Save } from "lucide-react";
+import { Database, RefreshCcw, Save, ScanLine, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { ApiError } from "../../shared/api/http";
-import type { LibraryRead } from "../../shared/api/types";
+import type { LibraryAlignmentRunRead, LibraryRead } from "../../shared/api/types";
+import { useAppState } from "../../shared/state";
 import { Button, ErrorBanner, LoadingState, MetricCard, Panel, PanelHeader } from "../../shared/ui";
-import { configureLibrary, getLibrary } from "./api";
+import {
+  alignLibraryFromEnvironment,
+  configureLibrary,
+  getLatestLibraryAlignmentRun,
+  getLibrary,
+  scanLibrary,
+} from "./api";
 
 type LibraryState =
   | { status: "loading" }
@@ -13,17 +20,24 @@ type LibraryState =
   | { status: "error"; message: string };
 
 export function LibraryPanel() {
+  const { selectedEnvironmentId } = useAppState();
   const [state, setState] = useState<LibraryState>({ status: "loading" });
+  const [latestRun, setLatestRun] = useState<LibraryAlignmentRunRead | null>(null);
   const [rootPath, setRootPath] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [isAligning, setIsAligning] = useState(false);
 
   const loadLibrary = useCallback(() => {
     setState({ status: "loading" });
     setSaveError(null);
-    void getLibrary()
-      .then((library) => {
+    setActionError(null);
+    void Promise.all([getLibrary(), getLatestLibraryAlignmentRun()])
+      .then(([library, alignmentRun]) => {
         setRootPath(library.root_path ?? "");
+        setLatestRun(alignmentRun);
         setState({ status: "ready", library });
       })
       .catch((error: unknown) => {
@@ -64,6 +78,45 @@ export function LibraryPanel() {
       })
       .finally(() => {
         setIsSaving(false);
+      });
+  };
+
+  const handleScan = () => {
+    setIsScanning(true);
+    setActionError(null);
+    void scanLibrary()
+      .then((library) => {
+        setState({ status: "ready", library });
+      })
+      .catch((error: unknown) => {
+        setActionError(
+          error instanceof ApiError ? error.message : "The shared library scan failed.",
+        );
+      })
+      .finally(() => {
+        setIsScanning(false);
+      });
+  };
+
+  const handleAlign = () => {
+    if (!selectedEnvironmentId) {
+      setActionError("Select a USB environment before aligning the library.");
+      return;
+    }
+    setIsAligning(true);
+    setActionError(null);
+    void alignLibraryFromEnvironment(selectedEnvironmentId)
+      .then(async (run) => {
+        setLatestRun(run);
+        setState({ status: "ready", library: await getLibrary() });
+      })
+      .catch((error: unknown) => {
+        setActionError(
+          error instanceof ApiError ? error.message : "The USB library alignment failed.",
+        );
+      })
+      .finally(() => {
+        setIsAligning(false);
       });
   };
 
@@ -115,9 +168,37 @@ export function LibraryPanel() {
           value={formatNumber(state.library.track_count)}
           icon={<Database size={18} />}
           tone="accent"
-          footer="Scanning starts in a later wave"
+          footer={`${formatNumber(state.library.missing_track_count)} missing`}
         />
       </section>
+
+      <Panel className="library-actions-panel">
+        <PanelHeader eyebrow="Actions" title="Scan and align" icon={<ScanLine size={18} />} />
+        <div className="library-action-row">
+          <Button
+            icon={<ScanLine size={16} />}
+            onClick={handleScan}
+            disabled={!state.library.configured || isSaving || isScanning || isAligning}
+          >
+            {isScanning ? "Scanning" : "Scan Library"}
+          </Button>
+          <Button
+            variant="primary"
+            icon={<Upload size={16} />}
+            onClick={handleAlign}
+            disabled={
+              !state.library.configured ||
+              !selectedEnvironmentId ||
+              isSaving ||
+              isScanning ||
+              isAligning
+            }
+          >
+            {isAligning ? "Aligning" : "Align From Selected USB"}
+          </Button>
+        </div>
+        {actionError ? <ErrorBanner title="Library action failed" message={actionError} /> : null}
+      </Panel>
 
       <Panel className="library-config-panel">
         <PanelHeader
@@ -153,10 +234,46 @@ export function LibraryPanel() {
           </div>
         </form>
       </Panel>
+      {latestRun ? <LatestAlignmentPanel run={latestRun} /> : null}
     </div>
   );
 }
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat().format(value);
+}
+
+function LatestAlignmentPanel({ run }: { run: LibraryAlignmentRunRead }) {
+  const issueItems = run.items.filter((item) =>
+    ["skipped_collision", "skipped_error", "warning_identity_incomplete"].includes(item.status),
+  );
+  return (
+    <Panel className="library-alignment-panel">
+      <PanelHeader eyebrow="Latest alignment" title={alignmentTitle(run)} icon={<Upload size={18} />} />
+      <div className="library-alignment-summary">
+        <span>{formatNumber(run.scanned_usb_count)} USB files scanned</span>
+        <span>{formatNumber(run.copied_count)} copied</span>
+        <span>{formatNumber(run.reused_count)} reused</span>
+        <span>{formatNumber(run.skipped_collision_count)} collisions</span>
+        <span>{formatNumber(run.skipped_error_count)} errors</span>
+      </div>
+      {issueItems.length > 0 ? (
+        <div className="library-alignment-issues">
+          {issueItems.map((item) => (
+            <div className="library-alignment-issue" key={item.id}>
+              <strong>{item.title ?? item.source_path}</strong>
+              <span>{item.reason_message ?? item.status}</span>
+              <small>{item.source_path}</small>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">No alignment issues in the latest run.</p>
+      )}
+    </Panel>
+  );
+}
+
+function alignmentTitle(run: LibraryAlignmentRunRead) {
+  return run.status === "completed_with_issues" ? "Completed with issues" : "Completed";
 }
