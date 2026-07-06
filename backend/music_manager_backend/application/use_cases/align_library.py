@@ -1,3 +1,4 @@
+import re
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -43,6 +44,7 @@ from music_manager_backend.shared.ids import new_id
 from music_manager_backend.shared.time import utc_now_iso
 
 ScannerFactory = Callable[[Path], AudioFileScanner]
+_DUPLICATE_NUMBER_SUFFIX = re.compile(r"^(?P<base>.+) \((?P<number>\d+)\)$")
 
 
 class AlignLibraryFromEnvironment:
@@ -93,7 +95,19 @@ class AlignLibraryFromEnvironment:
         counts = _Counts()
         used_paths = _existing_library_paths(library_root)
         active_tracks = self.library_tracks.list_by_status(library.id, LibraryTrackStatus.ACTIVE)
+        cleanup_items, removed_track_ids = _cleanup_duplicate_suffix_tracks(
+            run_id=run_id,
+            library_tracks=self.library_tracks,
+            tracks=active_tracks,
+        )
+        items.extend(cleanup_items)
+        for cleanup_item in cleanup_items:
+            counts.add(cleanup_item.status)
+        if removed_track_ids:
+            active_tracks = [track for track in active_tracks if track.id not in removed_track_ids]
+            used_paths = _existing_library_paths(library_root)
         identity_map = _identity_map(active_tracks)
+        filename_identity_map = _filename_identity_map(active_tracks)
 
         for usb_file in usb_files:
             item = self._align_file(
@@ -102,6 +116,7 @@ class AlignLibraryFromEnvironment:
                 library_root=library_root,
                 usb_file=usb_file,
                 identity_map=identity_map,
+                filename_identity_map=filename_identity_map,
                 used_paths=used_paths,
             )
             items.append(item)
@@ -149,6 +164,7 @@ class AlignLibraryFromEnvironment:
         library_root: Path,
         usb_file: DiscoveredAudioFile,
         identity_map: dict[tuple[str, int], list[LibraryTrack]],
+        filename_identity_map: dict[tuple[str, int], list[LibraryTrack]],
         used_paths: set[Path],
     ) -> LibraryAlignmentItem:
         title = usb_file.title or usb_file.path.stem
@@ -175,6 +191,35 @@ class AlignLibraryFromEnvironment:
                 normalized_title=normalized_title,
                 reason_code="identity_collision",
                 reason_message="Multiple active library tracks match this title and duration.",
+            )
+
+        filename_matches = (
+            filename_identity_map.get(
+                (_normalized_duplicate_base(usb_file.path.stem), usb_file.duration_seconds),
+                [],
+            )
+            if usb_file.duration_seconds is not None
+            else []
+        )
+        if len(filename_matches) == 1:
+            return _item(
+                run_id=run_id,
+                status=LibraryAlignmentItemStatus.REUSED,
+                source=usb_file,
+                normalized_title=normalized_title,
+                target_path=filename_matches[0].canonical_path,
+                library_track_id=filename_matches[0].id,
+                reason_code="filename_identity_reused",
+                reason_message="Reused existing library file with matching filename base and duration.",
+            )
+        if len(filename_matches) > 1:
+            return _item(
+                run_id=run_id,
+                status=LibraryAlignmentItemStatus.SKIPPED_COLLISION,
+                source=usb_file,
+                normalized_title=normalized_title,
+                reason_code="filename_identity_collision",
+                reason_message="Multiple active library tracks match this filename base and duration.",
             )
 
         target_path = _target_path(library_root, usb_file.path, used_paths)
@@ -214,6 +259,8 @@ class AlignLibraryFromEnvironment:
             missing_at=None,
         )
         self.library_tracks.save(track)
+        _append_identity(identity_map, track)
+        _append_filename_identity(filename_identity_map, track)
         status = (
             LibraryAlignmentItemStatus.WARNING_IDENTITY_INCOMPLETE
             if usb_file.duration_seconds is None
@@ -322,10 +369,152 @@ def _existing_library_paths(library_root: Path) -> set[Path]:
 def _identity_map(tracks: list[LibraryTrack]) -> dict[tuple[str, int], list[LibraryTrack]]:
     grouped: dict[tuple[str, int], list[LibraryTrack]] = {}
     for track in tracks:
-        if track.normalized_title is None or track.duration_seconds is None:
-            continue
-        grouped.setdefault((track.normalized_title, track.duration_seconds), []).append(track)
+        _append_identity(grouped, track)
     return grouped
+
+
+def _append_identity(
+    identity_map: dict[tuple[str, int], list[LibraryTrack]],
+    track: LibraryTrack,
+) -> None:
+    if track.normalized_title is None or track.duration_seconds is None:
+        return
+    identity_map.setdefault((track.normalized_title, track.duration_seconds), []).append(track)
+
+
+def _filename_identity_map(tracks: list[LibraryTrack]) -> dict[tuple[str, int], list[LibraryTrack]]:
+    grouped: dict[tuple[str, int], list[LibraryTrack]] = {}
+    for track in tracks:
+        _append_filename_identity(grouped, track)
+    return grouped
+
+
+def _append_filename_identity(
+    identity_map: dict[tuple[str, int], list[LibraryTrack]],
+    track: LibraryTrack,
+) -> None:
+    if track.duration_seconds is None:
+        return
+    identity_map.setdefault(
+        (_normalized_duplicate_base(track.canonical_path.stem), track.duration_seconds),
+        [],
+    ).append(track)
+
+
+def _cleanup_duplicate_suffix_tracks(
+    *,
+    run_id: str,
+    library_tracks: LibraryTrackRepository,
+    tracks: list[LibraryTrack],
+) -> tuple[list[LibraryAlignmentItem], set[str]]:
+    items: list[LibraryAlignmentItem] = []
+    removed_ids: set[str] = set()
+    now = utc_now_iso()
+    groups: dict[tuple[str, int], list[LibraryTrack]] = {}
+    for track in tracks:
+        if track.duration_seconds is None:
+            continue
+        groups.setdefault(
+            (_normalized_duplicate_base(track.canonical_path.stem), track.duration_seconds),
+            [],
+        ).append(track)
+
+    for group in groups.values():
+        duplicate_tracks = [
+            track
+            for track in group
+            if _duplicate_number(track.canonical_path.stem) is not None
+        ]
+        if len(group) < 2 or not duplicate_tracks:
+            continue
+        keeper = min(group, key=_duplicate_keeper_sort_key)
+        for duplicate in group:
+            if (
+                duplicate.id == keeper.id
+                or _duplicate_number(duplicate.canonical_path.stem) is None
+            ):
+                continue
+            try:
+                if duplicate.canonical_path.is_file():
+                    duplicate.canonical_path.unlink()
+            except OSError as exc:
+                items.append(
+                    _track_item(
+                        run_id=run_id,
+                        status=LibraryAlignmentItemStatus.SKIPPED_ERROR,
+                        source_path=duplicate.canonical_path,
+                        target_path=keeper.canonical_path,
+                        library_track_id=duplicate.id,
+                        title=duplicate.title,
+                        artist=duplicate.artist,
+                        duration_seconds=duplicate.duration_seconds,
+                        normalized_title=duplicate.normalized_title,
+                        reason_code="duplicate_cleanup_failed",
+                        reason_message=str(exc),
+                    )
+                )
+                continue
+            library_tracks.save(_missing_track(duplicate, now))
+            removed_ids.add(duplicate.id)
+            items.append(
+                _track_item(
+                    run_id=run_id,
+                    status=LibraryAlignmentItemStatus.UPDATED,
+                    source_path=duplicate.canonical_path,
+                    target_path=keeper.canonical_path,
+                    library_track_id=keeper.id,
+                    title=duplicate.title,
+                    artist=duplicate.artist,
+                    duration_seconds=duplicate.duration_seconds,
+                    normalized_title=duplicate.normalized_title,
+                    reason_code="duplicate_library_track_removed",
+                    reason_message="Removed numbered duplicate library file and kept the preferred existing track.",
+                )
+            )
+    return items, removed_ids
+
+
+def _missing_track(track: LibraryTrack, missing_at: str) -> LibraryTrack:
+    return LibraryTrack(
+        id=track.id,
+        library_id=track.library_id,
+        canonical_path=track.canonical_path,
+        filename=track.filename,
+        size_bytes=track.size_bytes,
+        modified_at=track.modified_at,
+        status=LibraryTrackStatus.MISSING,
+        title=track.title,
+        artist=track.artist,
+        duration_seconds=track.duration_seconds,
+        normalized_title=track.normalized_title,
+        file_hash=track.file_hash,
+        created_at=track.created_at,
+        updated_at=missing_at,
+        first_seen_at=track.first_seen_at,
+        last_seen_at=track.last_seen_at,
+        missing_at=missing_at,
+    )
+
+
+def _duplicate_keeper_sort_key(track: LibraryTrack) -> tuple[int, int, str]:
+    duplicate_number = _duplicate_number(track.canonical_path.stem)
+    return (
+        1 if duplicate_number is not None else 0,
+        duplicate_number if duplicate_number is not None else 0,
+        track.filename.casefold(),
+    )
+
+
+def _duplicate_number(stem: str) -> int | None:
+    match = _DUPLICATE_NUMBER_SUFFIX.match(stem)
+    if match is None:
+        return None
+    return int(match.group("number"))
+
+
+def _normalized_duplicate_base(stem: str) -> str:
+    match = _DUPLICATE_NUMBER_SUFFIX.match(stem)
+    return normalize_match_title(match.group("base") if match is not None else stem)
 
 
 def _target_path(library_root: Path, source_path: Path, used_paths: set[Path]) -> Path:
@@ -344,8 +533,7 @@ def _item(
     reason_code: str | None = None,
     reason_message: str | None = None,
 ) -> LibraryAlignmentItem:
-    return LibraryAlignmentItem(
-        id=new_id("library_alignment_item"),
+    return _track_item(
         run_id=run_id,
         status=status,
         source_path=source.path,
@@ -356,5 +544,35 @@ def _item(
         title=source.title,
         artist=source.artist,
         duration_seconds=source.duration_seconds,
+        normalized_title=normalized_title,
+    )
+
+
+def _track_item(
+    *,
+    run_id: str,
+    status: LibraryAlignmentItemStatus,
+    source_path: Path,
+    normalized_title: str | None,
+    target_path: Path | None = None,
+    library_track_id: str | None = None,
+    reason_code: str | None = None,
+    reason_message: str | None = None,
+    title: str | None = None,
+    artist: str | None = None,
+    duration_seconds: int | None = None,
+) -> LibraryAlignmentItem:
+    return LibraryAlignmentItem(
+        id=new_id("library_alignment_item"),
+        run_id=run_id,
+        status=status,
+        source_path=source_path,
+        target_path=target_path,
+        library_track_id=library_track_id,
+        reason_code=reason_code,
+        reason_message=reason_message,
+        title=title,
+        artist=artist,
+        duration_seconds=duration_seconds,
         normalized_title=normalized_title,
     )
