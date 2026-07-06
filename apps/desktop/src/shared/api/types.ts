@@ -124,6 +124,25 @@ export type LibraryMetadataImportRunRead = {
   index_entries: LibraryMetadataIndexEntryRead[];
 };
 
+export type LibraryTrackRead = {
+  id: string;
+  filename: string;
+  path: string;
+  title: string | null;
+  artist: string | null;
+  duration_seconds: number | null;
+  status: "active" | "missing";
+  size_bytes: number;
+  modified_at: number;
+  normalized_title: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  missing_at: string | null;
+  mapped_song_count: number;
+};
+
 export type ScanSummaryRead = {
   scan_run_id: string;
   environment_id: string;

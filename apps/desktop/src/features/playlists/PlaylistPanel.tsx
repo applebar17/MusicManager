@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ExternalLink,
   FileAudio,
+  Library,
   Link2,
   ListMusic,
   Plus,
@@ -42,7 +43,8 @@ import {
 } from "./api";
 
 export function PlaylistPanel() {
-  const { selectedEnvironmentId, selectedPlaylistId, selectPlaylist } = useAppState();
+  const { selectedEnvironmentId, selectedPlaylistId, selectPlaylist, openLibraryTrack } =
+    useAppState();
   const [playlists, setPlaylists] = useState<PlaylistSummaryRead[]>([]);
   const [playlistDetail, setPlaylistDetail] = useState<PlaylistDetailRead | null>(null);
   const [importResult, setImportResult] = useState<SoundCloudPlaylistImportResult | null>(null);
@@ -393,6 +395,7 @@ export function PlaylistPanel() {
                 summary={selectedPlaylist}
                 onSyncPlaylist={handleSyncSelectedPlaylist}
                 onOpenAddLocalFile={handleOpenLocalFileDialog}
+                onOpenLibraryTrack={openLibraryTrack}
                 onRemoveLocalItem={handleRemoveLocalItem}
                 trackSearch={trackSearch}
                 onStatusFilterChange={setTrackStatusFilter}
@@ -633,6 +636,7 @@ type PlaylistDetailViewProps = {
   summary: PlaylistSummaryRead;
   trackSearch: string;
   onOpenAddLocalFile: () => void;
+  onOpenLibraryTrack: (libraryTrackId: string) => void;
   onRemoveLocalItem: (songId: string) => void;
   onSyncPlaylist: () => void;
   onStatusFilterChange: (filter: TrackStatusFilter) => void;
@@ -649,6 +653,7 @@ function PlaylistDetailView({
   summary,
   trackSearch,
   onOpenAddLocalFile,
+  onOpenLibraryTrack,
   onRemoveLocalItem,
   onSyncPlaylist,
   onStatusFilterChange,
@@ -750,6 +755,7 @@ function PlaylistDetailView({
               <th>Dur</th>
               <th>Status</th>
               <th>Accepted Audio</th>
+              <th>Library</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -759,6 +765,7 @@ function PlaylistDetailView({
                 item={item}
                 key={`${item.song_id}-${item.position}`}
                 isRemovingLocal={removingLocalSongId === item.song_id}
+                onOpenLibraryTrack={onOpenLibraryTrack}
                 onRemoveLocalItem={onRemoveLocalItem}
               />
             ))}
@@ -780,9 +787,11 @@ function PlaylistTrackRow({
   item,
   isRemovingLocal,
   onRemoveLocalItem,
+  onOpenLibraryTrack,
 }: {
   item: PlaylistItemRead;
   isRemovingLocal?: boolean;
+  onOpenLibraryTrack: (libraryTrackId: string) => void;
   onRemoveLocalItem?: (songId: string) => void;
 }) {
   const rowClassName = [
@@ -811,6 +820,9 @@ function PlaylistTrackRow({
         <AcceptedAudioCell item={item} />
       </td>
       <td>
+        <AcceptedLibraryCell item={item} onOpenLibraryTrack={onOpenLibraryTrack} />
+      </td>
+      <td>
         {item.local_membership_active && onRemoveLocalItem ? (
           <button
             className="icon-button"
@@ -824,6 +836,40 @@ function PlaylistTrackRow({
         ) : null}
       </td>
     </tr>
+  );
+}
+
+function AcceptedLibraryCell({
+  item,
+  onOpenLibraryTrack,
+}: {
+  item: PlaylistItemRead;
+  onOpenLibraryTrack: (libraryTrackId: string) => void;
+}) {
+  const libraryTrackId = item.accepted_library_track_id;
+  if (!libraryTrackId) {
+    return <span className="muted">-</span>;
+  }
+  return (
+    <div className="accepted-audio accepted-audio--ready playlist-library-cell">
+      <div className="accepted-audio__main">
+        <Library size={14} />
+        <span className="accepted-audio__text">
+          <span title={item.accepted_library_path ?? item.accepted_library_filename ?? ""}>
+            {item.accepted_library_filename ?? item.accepted_library_path}
+          </span>
+          {item.accepted_library_path ? <em title={item.accepted_library_path}>{item.accepted_library_path}</em> : null}
+        </span>
+      </div>
+      <button
+        className="icon-button"
+        title="Open in Library"
+        type="button"
+        onClick={() => onOpenLibraryTrack(libraryTrackId)}
+      >
+        <ExternalLink size={14} />
+      </button>
+    </div>
   );
 }
 

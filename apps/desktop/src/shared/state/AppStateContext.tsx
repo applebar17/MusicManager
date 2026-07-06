@@ -18,6 +18,7 @@ type AppSelection = {
   selectedPlaylistId: string | null;
   selectedExportPlanId: string | null;
   selectedExportApplyRunId: string | null;
+  focusedLibraryTrackId: string | null;
 };
 
 type AppStateContextValue = AppSelection & {
@@ -26,6 +27,8 @@ type AppStateContextValue = AppSelection & {
   selectPlaylist: (playlistId: string | null) => void;
   selectExportPlan: (exportPlanId: string | null) => void;
   selectExportApplyRun: (applyRunId: string | null) => void;
+  openLibraryTrack: (libraryTrackId: string) => void;
+  clearFocusedLibraryTrack: () => void;
 };
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
@@ -42,6 +45,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
     selectedPlaylistId: preferences.selectedPlaylistId,
     selectedExportPlanId: preferences.selectedExportPlanId,
     selectedExportApplyRunId: preferences.selectedExportApplyRunId,
+    focusedLibraryTrackId: null,
   });
 
   useEffect(() => {
@@ -102,6 +106,20 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
           current.selectedExportApplyRunId === applyRunId
             ? current
             : { ...current, selectedExportApplyRunId: applyRunId },
+        );
+      },
+      openLibraryTrack: (libraryTrackId) => {
+        setSelection((current) => ({
+          ...current,
+          activeView: "library",
+          focusedLibraryTrackId: libraryTrackId,
+        }));
+      },
+      clearFocusedLibraryTrack: () => {
+        setSelection((current) =>
+          current.focusedLibraryTrackId === null
+            ? current
+            : { ...current, focusedLibraryTrackId: null },
         );
       },
     }),

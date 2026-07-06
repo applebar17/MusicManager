@@ -8,6 +8,7 @@ from music_manager_backend.domain.entities.library import (
     LibraryMetadataAsset,
     LibraryMetadataImportRun,
     LibraryMetadataIndexEntry,
+    LibraryTrack,
     MusicLibrary,
 )
 
@@ -94,6 +95,25 @@ class LibraryMetadataImportRunRead(BaseModel):
     error_count: int
     assets: list[LibraryMetadataAssetRead]
     index_entries: list[LibraryMetadataIndexEntryRead]
+
+
+class LibraryTrackRead(BaseModel):
+    id: str
+    filename: str
+    path: str
+    title: str | None
+    artist: str | None
+    duration_seconds: int | None
+    status: str
+    size_bytes: int
+    modified_at: float
+    normalized_title: str | None
+    created_at: str | None
+    updated_at: str | None
+    first_seen_at: str | None
+    last_seen_at: str | None
+    missing_at: str | None
+    mapped_song_count: int
 
 
 def library_read(
@@ -189,6 +209,27 @@ def library_metadata_import_run_read(
         error_count=run.error_count,
         assets=[library_metadata_asset_read(asset) for asset in assets],
         index_entries=[library_metadata_index_entry_read(entry) for entry in entries],
+    )
+
+
+def library_track_read(track: LibraryTrack, *, mapped_song_count: int = 0) -> LibraryTrackRead:
+    return LibraryTrackRead(
+        id=track.id,
+        filename=track.filename,
+        path=str(track.canonical_path),
+        title=track.title,
+        artist=track.artist,
+        duration_seconds=track.duration_seconds,
+        status=track.status.value,
+        size_bytes=track.size_bytes,
+        modified_at=track.modified_at,
+        normalized_title=track.normalized_title,
+        created_at=track.created_at,
+        updated_at=track.updated_at,
+        first_seen_at=track.first_seen_at,
+        last_seen_at=track.last_seen_at,
+        missing_at=track.missing_at,
+        mapped_song_count=mapped_song_count,
     )
 
 

@@ -552,6 +552,28 @@ class SqliteLibraryMetadataRepository:
         ).fetchone()
         return cast(str | None, row[0])
 
+    def list_assets(self, library_id: str) -> list[LibraryMetadataAsset]:
+        rows = self.connection.execute(
+            """
+            SELECT * FROM library_metadata_assets
+            WHERE library_id = ?
+            ORDER BY imported_at DESC, source_path, id
+            """,
+            (library_id,),
+        ).fetchall()
+        return [_metadata_asset_from_row(row) for row in rows]
+
+    def list_index_entries(self, library_id: str) -> list[LibraryMetadataIndexEntry]:
+        rows = self.connection.execute(
+            """
+            SELECT * FROM library_metadata_index_entries
+            WHERE library_id = ?
+            ORDER BY imported_at DESC, provider, entry_key, id
+            """,
+            (library_id,),
+        ).fetchall()
+        return [_metadata_entry_from_row(row) for row in rows]
+
     def _run_bundle(
         self,
         run: LibraryMetadataImportRun,

@@ -70,6 +70,13 @@ def test_scan_library_rejects_unconfigured_library(api_client: TestClient) -> No
     assert response.json()["code"] == "not_found"
 
 
+def test_library_inventory_rejects_unconfigured_library(api_client: TestClient) -> None:
+    response = api_client.get("/library/tracks")
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "validation_error"
+
+
 def test_align_library_from_environment_copies_usb_audio_and_persists_latest_run(
     api_client: TestClient,
     tmp_path: Path,
@@ -97,6 +104,12 @@ def test_align_library_from_environment_copies_usb_audio_and_persists_latest_run
     assert run["metadata_import"] is not None
     assert (library_root / "track.mp3").exists()
     assert latest_response.json()["run_id"] == run["run_id"]
+    tracks_response = api_client.get("/library/tracks")
+    assert tracks_response.status_code == 200
+    tracks = tracks_response.json()
+    assert tracks[0]["filename"] == "track.mp3"
+    assert tracks[0]["status"] == "active"
+    assert tracks[0]["mapped_song_count"] == 0
 
 
 def test_metadata_import_endpoint_and_latest_summary(
@@ -130,6 +143,12 @@ def test_metadata_import_endpoint_and_latest_summary(
     assert library["metadata_asset_count"] == 1
     assert library["metadata_index_entry_count"] == 1
     assert library["last_metadata_imported_at"] is not None
+    assets_response = api_client.get("/library/metadata/assets")
+    entries_response = api_client.get("/library/metadata/index-entries")
+    assert assets_response.status_code == 200
+    assert entries_response.status_code == 200
+    assert assets_response.json()[0]["source_path"].endswith("tracks.json")
+    assert entries_response.json()[0]["entry_key"]
 
 
 def test_metadata_import_rejects_unconfigured_library(api_client: TestClient) -> None:

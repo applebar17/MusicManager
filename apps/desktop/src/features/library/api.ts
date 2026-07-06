@@ -2,8 +2,11 @@ import { apiGet, apiPost, apiPut } from "../../shared/api/http";
 import type {
   LibraryAlignmentRunRead,
   LibraryConfigure,
+  LibraryMetadataAssetRead,
   LibraryMetadataImportRunRead,
+  LibraryMetadataIndexEntryRead,
   LibraryRead,
+  LibraryTrackRead,
 } from "../../shared/api/types";
 
 export function getLibrary() {
@@ -34,4 +37,16 @@ export function importLibraryMetadataFromEnvironment(environmentId: string) {
 
 export function getLatestLibraryMetadataImportRun() {
   return apiGet<LibraryMetadataImportRunRead | null>("/library/metadata/import-runs/latest");
+}
+
+export function getLibraryTracks() {
+  return apiGet<LibraryTrackRead[]>("/library/tracks");
+}
+
+export function getLibraryMetadataAssets() {
+  return apiGet<LibraryMetadataAssetRead[]>("/library/metadata/assets");
+}
+
+export function getLibraryMetadataIndexEntries() {
+  return apiGet<LibraryMetadataIndexEntryRead[]>("/library/metadata/index-entries");
 }

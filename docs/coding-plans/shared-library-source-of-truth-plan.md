@@ -266,30 +266,49 @@ Exit criteria:
 - A USB can be rebuilt from SoundCloud playlist order using library files as the source
   of truth.
 
-### Wave 6: Library Frontend Page
+### Wave 6: Library Inspection And Navigation
 
-Goal: expose the library workflow to the user.
+Goal: expand the existing Library page into the inspection workspace for current
+library data.
 
 Deliverables:
 
-- Add Library navigation/page.
-- Show configured path, track count, metadata count, and latest alignment status.
-- Provide setup path form/folder picker.
-- Provide align-from-current-USB action with progress and result counts.
-- Show track table with search and mapping status.
-- Show metadata inventory and conflicts.
-- Link from playlist/matching views to relevant library track records.
+- Keep the existing Library setup, scan, align, and metadata import actions.
+- Add read APIs for library tracks, metadata assets, and metadata index entries.
+- Show Overview, Tracks, Metadata, and Issues sections in the Library page.
+- Show searchable/filterable track inventory with active/missing and mapped/unmapped
+  state.
+- Show metadata asset and compacted index-entry inventories using the existing
+  persisted metadata rows.
+- Show issue rows from persisted alignment items and metadata asset errors.
+- Keep the typed root path field; folder browsing is a progressive enhancement.
+- Link from playlist and matching views to the Library page focused on a mapped
+  library track.
+
+Locked decisions:
+
+- The Library page is expanded rather than recreated.
+- Inventory is read-only in this wave.
+- Metadata inventory shows assets, index entries, and issue rows, not resolved
+  provider conflicts.
+- Provider-specific cue/grid interpretation remains Wave 7.
+- Cross-view links are navigational only and do not change matching, playlist, or
+  export state.
 
 Tests:
 
-- Library setup renders and calls the correct API.
-- Align action refreshes library counts.
-- Track table filters and shows mapped/unmapped state.
-- Metadata inventory displays imported sidecar metadata.
+- Library inventory endpoints reject an unconfigured library and return configured
+  track/metadata rows.
+- Library setup and refresh still render and call the correct APIs.
+- Track search and active/missing plus mapped/unmapped filters work.
+- Metadata inventory displays imported metadata assets and index entries.
+- Playlist and matching rows render Library links only when a library track id is
+  available.
 
 Exit criteria:
 
-- The user can configure, populate, inspect, and use the shared library from the app.
+- The user can inspect current shared library contents and navigate to mapped
+  library tracks from playlist and matching workflows.
 
 ### Wave 7: Metadata Export And Provider-Specific Enhancements
 

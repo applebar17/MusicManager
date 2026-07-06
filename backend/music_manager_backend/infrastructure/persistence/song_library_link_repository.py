@@ -65,6 +65,24 @@ class SqliteSongLibraryLinkRepository:
         ).fetchall()
         return [_link_from_row(row) for row in rows]
 
+    def count_by_library_track_ids(self, library_track_ids: set[str]) -> dict[str, int]:
+        if not library_track_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in library_track_ids)
+        rows = self.connection.execute(
+            f"""
+            SELECT library_track_id, COUNT(DISTINCT song_id) AS mapped_count
+            FROM song_library_links
+            WHERE library_track_id IN ({placeholders})
+            GROUP BY library_track_id
+            """,
+            tuple(sorted(library_track_ids)),
+        ).fetchall()
+        return {
+            cast(str, row["library_track_id"]): int(row["mapped_count"])
+            for row in rows
+        }
+
     def delete_automatic_by_song(self, song_id: str) -> None:
         self.connection.execute(
             "DELETE FROM song_library_links WHERE song_id = ? AND reviewed = 0",

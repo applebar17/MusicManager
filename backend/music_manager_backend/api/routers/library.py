@@ -7,20 +7,29 @@ from music_manager_backend.api.dependencies import (
     get_library_metadata_repository,
     get_library_repository,
     get_library_track_repository,
+    get_song_library_link_repository,
     guard_library_operation,
 )
 from music_manager_backend.application.dtos import (
     ApiErrorRead,
     LibraryAlignmentRunRead,
     LibraryConfigure,
+    LibraryMetadataAssetRead,
     LibraryMetadataImportRunRead,
+    LibraryMetadataIndexEntryRead,
     LibraryRead,
+    LibraryTrackRead,
 )
 from music_manager_backend.application.use_cases.align_library import GetLatestLibraryAlignmentRun
 from music_manager_backend.application.use_cases.configure_library import ConfigureLibrary
 from music_manager_backend.application.use_cases.get_library import GetLibrary
 from music_manager_backend.application.use_cases.import_library_metadata import (
     GetLatestLibraryMetadataImportRun,
+)
+from music_manager_backend.application.use_cases.list_library_inventory import (
+    ListLibraryMetadataAssets,
+    ListLibraryMetadataIndexEntries,
+    ListLibraryTracks,
 )
 from music_manager_backend.application.use_cases.scan_library import ScanLibrary
 from music_manager_backend.infrastructure.audio import MetadataReader
@@ -29,6 +38,7 @@ from music_manager_backend.ports.repositories import (
     LibraryMetadataRepository,
     LibraryRepository,
     LibraryTrackRepository,
+    SongLibraryLinkRepository,
 )
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -55,6 +65,10 @@ LibraryAlignmentRunRepositoryDependency = Annotated[
 LibraryMetadataRepositoryDependency = Annotated[
     LibraryMetadataRepository,
     Depends(get_library_metadata_repository),
+]
+SongLibraryLinkRepositoryDependency = Annotated[
+    SongLibraryLinkRepository,
+    Depends(get_song_library_link_repository),
 ]
 
 
@@ -94,6 +108,39 @@ def scan_library(
         metadata_reader=MetadataReader(),
         library_metadata=metadata_repository,
     ).execute()
+
+
+@router.get("/tracks", response_model=list[LibraryTrackRead], responses=ERROR_RESPONSES)
+def list_library_tracks(
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    song_library_links: SongLibraryLinkRepositoryDependency,
+) -> list[LibraryTrackRead]:
+    return ListLibraryTracks(libraries, library_tracks, song_library_links).execute()
+
+
+@router.get(
+    "/metadata/assets",
+    response_model=list[LibraryMetadataAssetRead],
+    responses=ERROR_RESPONSES,
+)
+def list_library_metadata_assets(
+    libraries: LibraryRepositoryDependency,
+    metadata_repository: LibraryMetadataRepositoryDependency,
+) -> list[LibraryMetadataAssetRead]:
+    return ListLibraryMetadataAssets(libraries, metadata_repository).execute()
+
+
+@router.get(
+    "/metadata/index-entries",
+    response_model=list[LibraryMetadataIndexEntryRead],
+    responses=ERROR_RESPONSES,
+)
+def list_library_metadata_index_entries(
+    libraries: LibraryRepositoryDependency,
+    metadata_repository: LibraryMetadataRepositoryDependency,
+) -> list[LibraryMetadataIndexEntryRead]:
+    return ListLibraryMetadataIndexEntries(libraries, metadata_repository).execute()
 
 
 @router.get(

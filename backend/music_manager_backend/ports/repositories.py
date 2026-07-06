@@ -175,6 +175,12 @@ class LibraryMetadataRepository(Protocol):
     def last_imported_at(self, library_id: str) -> str | None:
         pass
 
+    def list_assets(self, library_id: str) -> list[LibraryMetadataAsset]:
+        pass
+
+    def list_index_entries(self, library_id: str) -> list[LibraryMetadataIndexEntry]:
+        pass
+
 
 class SourceDiscoveryRepository(Protocol):
     def save(self, discovery: SoundCloudSourceDiscovery) -> None:
@@ -247,6 +253,9 @@ class SongLibraryLinkRepository(Protocol):
         pass
 
     def list_by_library_track(self, library_track_id: str) -> list[SongLibraryLink]:
+        pass
+
+    def count_by_library_track_ids(self, library_track_ids: set[str]) -> dict[str, int]:
         pass
 
     def delete_automatic_by_song(self, song_id: str) -> None:

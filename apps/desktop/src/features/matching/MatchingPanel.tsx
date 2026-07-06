@@ -68,7 +68,7 @@ type PreviewState = {
 };
 
 export function MatchingPanel() {
-  const { selectedEnvironmentId } = useAppState();
+  const { selectedEnvironmentId, openLibraryTrack } = useAppState();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [rows, setRows] = useState<MatchReviewRow[]>([]);
@@ -670,6 +670,7 @@ export function MatchingPanel() {
                     onMapCandidate={handleMapCandidate}
                     onMapLibraryCandidate={handleMapLibraryCandidate}
                     onDiscoverSource={handleDiscoverSource}
+                    onOpenLibraryTrack={openLibraryTrack}
                     onOpenManualLibraryMatch={openManualLibraryMatchModal}
                     onOpenManualMatch={openManualMatchModal}
                     onPreviewAudio={handlePreviewAudio}
@@ -717,6 +718,7 @@ export function MatchingPanel() {
           setManualLibraryCandidateQuery("");
         }}
         onMapCandidate={handleMapLibraryCandidate}
+        onOpenLibraryTrack={openLibraryTrack}
         onQueryChange={setManualLibraryCandidateQuery}
         onSearch={handleManualLibraryCandidateSearch}
       />
@@ -919,6 +921,7 @@ type ReviewRowProps = {
   onMapLibraryCandidate: (row: MatchReviewRow, candidate: LibraryTrackCandidateRead) => void;
   onOpenManualLibraryMatch: (row: MatchReviewRow) => void;
   onOpenManualMatch: (row: MatchReviewRow) => void;
+  onOpenLibraryTrack: (libraryTrackId: string) => void;
   onPreviewAudio: (audioFileId: string, label: string, detail: string) => void;
 };
 
@@ -930,6 +933,7 @@ function ReviewRow({
   onDiscoverSource,
   onMapCandidate,
   onMapLibraryCandidate,
+  onOpenLibraryTrack,
   onOpenManualLibraryMatch,
   onOpenManualMatch,
   onPreviewAudio,
@@ -1057,6 +1061,14 @@ function ReviewRow({
             Library - {confidenceLabel(acceptedLibraryMatch.confidence)} via{" "}
             {methodLabel(acceptedLibraryMatch.method)}
           </em>
+          <button
+            className="icon-button"
+            type="button"
+            title="Open in Library"
+            onClick={() => onOpenLibraryTrack(acceptedLibraryMatch.library_track_id)}
+          >
+            <ExternalLink size={15} />
+          </button>
         </div>
       ) : null}
 
@@ -1093,6 +1105,7 @@ function ReviewRow({
                     key={candidate.library_track_id}
                     row={row}
                     onMapCandidate={onMapLibraryCandidate}
+                    onOpenLibraryTrack={onOpenLibraryTrack}
                   />
                 ))
               ) : (
@@ -1175,6 +1188,7 @@ type LibraryCandidateCardProps = {
   row: MatchReviewRow;
   isMapping: boolean;
   onMapCandidate: (row: MatchReviewRow, candidate: LibraryTrackCandidateRead) => void;
+  onOpenLibraryTrack: (libraryTrackId: string) => void;
 };
 
 function LibraryCandidateCard({
@@ -1182,6 +1196,7 @@ function LibraryCandidateCard({
   row,
   isMapping,
   onMapCandidate,
+  onOpenLibraryTrack,
 }: LibraryCandidateCardProps) {
   return (
     <div className="candidate-card library-candidate-card">
@@ -1208,6 +1223,14 @@ function LibraryCandidateCard({
       >
         {isMapping ? "Mapping" : "Map Track"}
       </Button>
+      <button
+        className="icon-button"
+        type="button"
+        title="Open in Library"
+        onClick={() => onOpenLibraryTrack(candidate.library_track_id)}
+      >
+        <ExternalLink size={15} />
+      </button>
     </div>
   );
 }
@@ -1311,6 +1334,7 @@ type ManualLibraryMatchModalProps = {
   row: MatchReviewRow | null;
   onClose: () => void;
   onMapCandidate: (row: MatchReviewRow, candidate: LibraryTrackCandidateRead) => void;
+  onOpenLibraryTrack: (libraryTrackId: string) => void;
   onQueryChange: (query: string) => void;
   onSearch: (event: FormEvent<HTMLFormElement>) => void;
 };
@@ -1323,6 +1347,7 @@ function ManualLibraryMatchModal({
   row,
   onClose,
   onMapCandidate,
+  onOpenLibraryTrack,
   onQueryChange,
   onSearch,
 }: ManualLibraryMatchModalProps) {
@@ -1379,6 +1404,7 @@ function ManualLibraryMatchModal({
               key={candidate.library_track_id}
               row={row}
               onMapCandidate={onMapCandidate}
+              onOpenLibraryTrack={onOpenLibraryTrack}
             />
           ))}
         </div>

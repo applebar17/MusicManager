@@ -51,6 +51,8 @@ describe("desktop v1 workflow", () => {
     await user.click(screen.getByRole("button", { name: /save library/i }));
     expect(await screen.findByText("Ready")).toBeInTheDocument();
     expect(await screen.findByText("Current library: /Users/demo/Music Library")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^tracks$/i }));
+    expect(await screen.findByText("smoke-track-candidate.mp3")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /dashboard/i }));
 
     await user.click(screen.getByRole("button", { name: /playlists/i }));
@@ -140,6 +142,18 @@ function mockFetch() {
 
     if (path === "/library/metadata/import-runs/latest" && method === "GET") {
       return jsonResponse(null);
+    }
+
+    if (path === "/library/tracks" && method === "GET") {
+      return libraryRootPath ? jsonResponse([libraryTrack()]) : jsonResponse({ code: "validation_error", message: "Shared library is not configured." }, 400);
+    }
+
+    if (path === "/library/metadata/assets" && method === "GET") {
+      return libraryRootPath ? jsonResponse([]) : jsonResponse({ code: "validation_error", message: "Shared library is not configured." }, 400);
+    }
+
+    if (path === "/library/metadata/index-entries" && method === "GET") {
+      return libraryRootPath ? jsonResponse([]) : jsonResponse({ code: "validation_error", message: "Shared library is not configured." }, 400);
     }
 
     if (path === "/library" && method === "PUT") {
@@ -429,6 +443,27 @@ function libraryCandidate() {
     path: "/Users/demo/Music Library/smoke-track-candidate.mp3",
     title: "Smoke Track",
     warnings: [],
+  };
+}
+
+function libraryTrack() {
+  return {
+    artist: "Smoke Artist",
+    created_at: "2026-01-01T00:00:00+00:00",
+    duration_seconds: 184,
+    filename: "smoke-track-candidate.mp3",
+    first_seen_at: "2026-01-01T00:00:00+00:00",
+    id: "library_track_1",
+    last_seen_at: "2026-01-02T00:00:00+00:00",
+    mapped_song_count: 1,
+    missing_at: null,
+    modified_at: 1_704_067_200,
+    normalized_title: "smoke track",
+    path: "/Users/demo/Music Library/smoke-track-candidate.mp3",
+    size_bytes: 1024,
+    status: "active",
+    title: "Smoke Track",
+    updated_at: "2026-01-02T00:00:00+00:00",
   };
 }
 
