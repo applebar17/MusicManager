@@ -1051,6 +1051,34 @@ button {
   padding: 0 var(--space-md) var(--space-md);
 }
 
+.environment-form.compact.environment-library-form {
+  margin-top: 0;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-md);
+}
+
+.environment-form-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-on-surface);
+}
+
+.environment-form-heading svg {
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.environment-form-heading strong,
+.environment-form-heading span {
+  display: block;
+}
+
+.environment-form-heading span {
+  color: var(--color-on-surface-variant);
+  font-size: 12px;
+}
+
 .field {
   display: grid;
   gap: var(--space-xs);
