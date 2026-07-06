@@ -32,6 +32,10 @@ class PlaylistItemRead(BaseModel):
     accepted_audio_filename: str | None = None
     accepted_audio_relative_path: str | None = None
     accepted_audio_warnings: list[str] = Field(default_factory=list)
+    library_match_status: str | None = None
+    accepted_library_track_id: str | None = None
+    accepted_library_filename: str | None = None
+    accepted_library_path: str | None = None
     playback_url: str | None = None
     source_discovery: SoundCloudTrackDiscoveryRead | None = None
 

@@ -4,6 +4,7 @@ import {
   CircleHelp,
   Download,
   ExternalLink,
+  Library,
   Link2,
   Play,
   RefreshCw,
@@ -19,6 +20,9 @@ import { ApiError } from "../../shared/api/http";
 import type {
   DownloadMatchRunResultRead,
   EnvironmentRead,
+  LibraryMatchingRunSummary,
+  LibraryMatchStatus,
+  LibraryTrackCandidateRead,
   MatchCandidateRead,
   MatchingRunSummary,
   MatchReviewRow,
@@ -30,12 +34,15 @@ import { useAppState } from "../../shared/state";
 import { Button, EmptyState, ErrorBanner, LoadingState, Panel, StatusBadge } from "../../shared/ui";
 import { listEnvironments } from "../environments/api";
 import {
+  createManualLibraryMapping,
   createManualMapping,
   discoverSoundCloudTrack,
+  listManualLibraryTrackCandidates,
   listManualFileCandidates,
   listMatchReview,
   matchDownloads,
   playbackAudioUrl,
+  runLibraryMatching,
   runMatching,
   syncMissingSoundCloudSources,
 } from "./api";
@@ -46,7 +53,12 @@ type ReviewFilter =
   | "matched"
   | "missing_audio"
   | "ambiguous"
-  | "manually_mapped";
+  | "manually_mapped"
+  | "library_needs_review"
+  | "library_matched"
+  | "missing_library"
+  | "ambiguous_library"
+  | "manually_mapped_library";
 
 type PreviewState = {
   audioFileId: string;
@@ -64,6 +76,9 @@ export function MatchingPanel() {
   const [filter, setFilter] = useState<ReviewFilter>("needs_review");
   const [reviewSearch, setReviewSearch] = useState("");
   const [runSummary, setRunSummary] = useState<MatchingRunSummary | null>(null);
+  const [libraryRunSummary, setLibraryRunSummary] = useState<LibraryMatchingRunSummary | null>(
+    null,
+  );
   const [downloadMatchResult, setDownloadMatchResult] =
     useState<DownloadMatchRunResultRead | null>(null);
   const [sourceSyncResult, setSourceSyncResult] =
@@ -73,14 +88,23 @@ export function MatchingPanel() {
   const [sourceDiscoverySongId, setSourceDiscoverySongId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [isRunningLibrary, setIsRunningLibrary] = useState(false);
   const [isMatchingDownloads, setIsMatchingDownloads] = useState(false);
   const [isDiscoveringSource, setIsDiscoveringSource] = useState(false);
   const [isSyncingSources, setIsSyncingSources] = useState(false);
   const [mappingKey, setMappingKey] = useState<string | null>(null);
+  const [libraryMappingKey, setLibraryMappingKey] = useState<string | null>(null);
   const [manualMatchRow, setManualMatchRow] = useState<MatchReviewRow | null>(null);
   const [manualCandidateQuery, setManualCandidateQuery] = useState("");
   const [manualCandidates, setManualCandidates] = useState<MatchCandidateRead[]>([]);
   const [isSearchingManualCandidates, setIsSearchingManualCandidates] = useState(false);
+  const [manualLibraryMatchRow, setManualLibraryMatchRow] = useState<MatchReviewRow | null>(null);
+  const [manualLibraryCandidateQuery, setManualLibraryCandidateQuery] = useState("");
+  const [manualLibraryCandidates, setManualLibraryCandidates] = useState<
+    LibraryTrackCandidateRead[]
+  >([]);
+  const [isSearchingManualLibraryCandidates, setIsSearchingManualLibraryCandidates] =
+    useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
@@ -106,6 +130,7 @@ export function MatchingPanel() {
       setRows([]);
       setSelectedEnvironment(null);
       setRunSummary(null);
+      setLibraryRunSummary(null);
       setDownloadMatchResult(null);
       setSourceSyncResult(null);
       setPreview(null);
@@ -114,6 +139,9 @@ export function MatchingPanel() {
       setManualMatchRow(null);
       setManualCandidates([]);
       setManualCandidateQuery("");
+      setManualLibraryMatchRow(null);
+      setManualLibraryCandidates([]);
+      setManualLibraryCandidateQuery("");
       return;
     }
     void refreshReview(selectedEnvironmentId);
@@ -152,7 +180,7 @@ export function MatchingPanel() {
       }
       if (event.key.toLowerCase() === "r") {
         event.preventDefault();
-        if (!isRunning && selectedEnvironmentId) {
+        if (!isRunning && !isRunningLibrary && selectedEnvironmentId) {
           void handleRunMatching();
         }
         return;
@@ -180,7 +208,7 @@ export function MatchingPanel() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isRunning, selectedEnvironmentId]);
+  }, [isRunning, isRunningLibrary, selectedEnvironmentId]);
 
   const counts = useMemo(() => reviewCounts(rows), [rows]);
   const filteredRows = useMemo(
@@ -199,12 +227,45 @@ export function MatchingPanel() {
               candidate.artist ?? "",
               candidate.method,
             ].some((value) => value.toLowerCase().includes(query)),
+          ) ||
+          (row.library_match
+            ? [
+                row.library_match.path,
+                row.library_match.filename,
+                row.library_match.title ?? "",
+                row.library_match.artist ?? "",
+                row.library_match.method,
+              ].some((value) => value.toLowerCase().includes(query))
+            : false) ||
+          row.library_candidates.some((candidate) =>
+            [
+              candidate.path,
+              candidate.filename,
+              candidate.title ?? "",
+              candidate.artist ?? "",
+              candidate.method,
+            ].some((value) => value.toLowerCase().includes(query)),
           );
         if (filter === "all") {
           return matchesText;
         }
         if (filter === "needs_review") {
           return matchesText && (row.status === "missing_audio" || row.status === "ambiguous");
+        }
+        if (filter === "library_needs_review") {
+          return (
+            matchesText &&
+            (row.library_status === "missing_library" ||
+              row.library_status === "ambiguous_library")
+          );
+        }
+        if (
+          filter === "library_matched" ||
+          filter === "missing_library" ||
+          filter === "ambiguous_library" ||
+          filter === "manually_mapped_library"
+        ) {
+          return matchesText && row.library_status === filter;
         }
         return matchesText && row.status === filter;
       }),
@@ -221,6 +282,7 @@ export function MatchingPanel() {
     try {
       const summary = await runMatching(selectedEnvironmentId);
       setRunSummary(summary);
+      setLibraryRunSummary(null);
       setDownloadMatchResult(null);
       setSourceSyncResult(null);
       await refreshReview(selectedEnvironmentId);
@@ -228,6 +290,27 @@ export function MatchingPanel() {
       setError(errorMessage(runError));
     } finally {
       setIsRunning(false);
+    }
+  }
+
+  async function handleRunLibraryMatching() {
+    if (!selectedEnvironmentId) {
+      setError("Select an environment before running library matching.");
+      return;
+    }
+    setIsRunningLibrary(true);
+    setError(null);
+    try {
+      const summary = await runLibraryMatching(selectedEnvironmentId);
+      setLibraryRunSummary(summary);
+      setRunSummary(null);
+      setDownloadMatchResult(null);
+      setSourceSyncResult(null);
+      await refreshReview(selectedEnvironmentId);
+    } catch (runError) {
+      setError(errorMessage(runError));
+    } finally {
+      setIsRunningLibrary(false);
     }
   }
 
@@ -246,6 +329,7 @@ export function MatchingPanel() {
       const result = await matchDownloads(selectedEnvironmentId);
       setDownloadMatchResult(result);
       setRunSummary(null);
+      setLibraryRunSummary(null);
       setSourceSyncResult(null);
       await refreshReview(selectedEnvironmentId);
     } catch (matchError) {
@@ -280,6 +364,34 @@ export function MatchingPanel() {
     }
   }
 
+  async function handleMapLibraryCandidate(
+    row: MatchReviewRow,
+    candidate: LibraryTrackCandidateRead,
+  ) {
+    if (!selectedEnvironmentId) {
+      return;
+    }
+    const key = `${row.song_id}-${candidate.library_track_id}`;
+    setLibraryMappingKey(key);
+    setError(null);
+    try {
+      await createManualLibraryMapping(selectedEnvironmentId, {
+        song_id: row.song_id,
+        library_track_id: candidate.library_track_id,
+      });
+      await refreshReview(selectedEnvironmentId);
+      if (manualLibraryMatchRow?.song_id === row.song_id) {
+        setManualLibraryMatchRow(null);
+        setManualLibraryCandidates([]);
+        setManualLibraryCandidateQuery("");
+      }
+    } catch (mappingError) {
+      setError(errorMessage(mappingError));
+    } finally {
+      setLibraryMappingKey(null);
+    }
+  }
+
   async function openManualMatchModal(row: MatchReviewRow) {
     if (!selectedEnvironmentId) {
       return;
@@ -289,6 +401,17 @@ export function MatchingPanel() {
     setManualCandidateQuery(initialQuery);
     setManualCandidates([]);
     await loadManualCandidates(row, initialQuery);
+  }
+
+  async function openManualLibraryMatchModal(row: MatchReviewRow) {
+    if (!selectedEnvironmentId) {
+      return;
+    }
+    const initialQuery = [row.title, row.artist].filter(Boolean).join(" ");
+    setManualLibraryMatchRow(row);
+    setManualLibraryCandidateQuery(initialQuery);
+    setManualLibraryCandidates([]);
+    await loadManualLibraryCandidates(row, initialQuery);
   }
 
   async function loadManualCandidates(row: MatchReviewRow, query: string) {
@@ -309,10 +432,35 @@ export function MatchingPanel() {
     }
   }
 
+  async function loadManualLibraryCandidates(row: MatchReviewRow, query: string) {
+    if (!selectedEnvironmentId) {
+      return;
+    }
+    setIsSearchingManualLibraryCandidates(true);
+    setError(null);
+    try {
+      setManualLibraryCandidates(
+        await listManualLibraryTrackCandidates(selectedEnvironmentId, row.song_id, query),
+      );
+    } catch (candidateError) {
+      setManualLibraryCandidates([]);
+      setError(errorMessage(candidateError));
+    } finally {
+      setIsSearchingManualLibraryCandidates(false);
+    }
+  }
+
   async function handleManualCandidateSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (manualMatchRow) {
       await loadManualCandidates(manualMatchRow, manualCandidateQuery);
+    }
+  }
+
+  async function handleManualLibraryCandidateSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (manualLibraryMatchRow) {
+      await loadManualLibraryCandidates(manualLibraryMatchRow, manualLibraryCandidateQuery);
     }
   }
 
@@ -361,6 +509,7 @@ export function MatchingPanel() {
       const result = await syncMissingSoundCloudSources(selectedEnvironmentId);
       setSourceSyncResult(result);
       setDownloadMatchResult(null);
+      setLibraryRunSummary(null);
       await refreshReview(selectedEnvironmentId);
     } catch (syncError) {
       setError(errorMessage(syncError));
@@ -450,10 +599,19 @@ export function MatchingPanel() {
               >
                 {isRunning ? "Running" : "Run Matching"}
               </Button>
+              <Button
+                disabled={isRunningLibrary}
+                icon={<Library size={18} />}
+                variant="primary"
+                onClick={handleRunLibraryMatching}
+              >
+                {isRunningLibrary ? "Running" : "Run Library Matching"}
+              </Button>
             </div>
           </section>
 
           {runSummary ? <RunSummary summary={runSummary} /> : null}
+          {libraryRunSummary ? <LibraryRunSummary summary={libraryRunSummary} /> : null}
           {downloadMatchResult ? <DownloadMatchSummary result={downloadMatchResult} /> : null}
           {sourceSyncResult ? <SourceSyncSummary result={sourceSyncResult} /> : null}
 
@@ -504,12 +662,15 @@ export function MatchingPanel() {
                   <ReviewRow
                     key={row.song_id}
                     mappingKey={mappingKey}
+                    libraryMappingKey={libraryMappingKey}
                     row={row}
                     isDiscoveringSource={
                       isDiscoveringSource && sourceDiscoverySongId === row.song_id
                     }
                     onMapCandidate={handleMapCandidate}
+                    onMapLibraryCandidate={handleMapLibraryCandidate}
                     onDiscoverSource={handleDiscoverSource}
+                    onOpenManualLibraryMatch={openManualLibraryMatchModal}
                     onOpenManualMatch={openManualMatchModal}
                     onPreviewAudio={handlePreviewAudio}
                   />
@@ -544,6 +705,22 @@ export function MatchingPanel() {
         onSearch={handleManualCandidateSearch}
       />
 
+      <ManualLibraryMatchModal
+        candidates={manualLibraryCandidates}
+        isMapping={libraryMappingKey}
+        isSearching={isSearchingManualLibraryCandidates}
+        query={manualLibraryCandidateQuery}
+        row={manualLibraryMatchRow}
+        onClose={() => {
+          setManualLibraryMatchRow(null);
+          setManualLibraryCandidates([]);
+          setManualLibraryCandidateQuery("");
+        }}
+        onMapCandidate={handleMapLibraryCandidate}
+        onQueryChange={setManualLibraryCandidateQuery}
+        onSearch={handleManualLibraryCandidateSearch}
+      />
+
       <MiniPreviewPlayer
         audioRef={audioRef}
         isPlaying={isPlaying}
@@ -574,6 +751,11 @@ function ReviewFilters({ counts, filter, onFilterChange }: ReviewFiltersProps) {
     { filter: "missing_audio", label: "Missing", tone: "danger" },
     { filter: "ambiguous", label: "Ambiguous", tone: "warning" },
     { filter: "manually_mapped", label: "Manual", tone: "accent" },
+    { filter: "library_needs_review", label: "Library Review", tone: "warning" },
+    { filter: "library_matched", label: "Library Matched", tone: "success" },
+    { filter: "missing_library", label: "Library Missing", tone: "danger" },
+    { filter: "ambiguous_library", label: "Library Ambiguous", tone: "warning" },
+    { filter: "manually_mapped_library", label: "Library Manual", tone: "accent" },
   ];
 
   return (
@@ -608,6 +790,21 @@ function RunSummary({ summary }: { summary: MatchingRunSummary }) {
       <span>{formatNumber(summary.missing_audio)} missing</span>
       <span>{formatNumber(summary.ambiguous)} ambiguous</span>
       <span>{formatNumber(summary.manually_mapped)} manual</span>
+    </div>
+  );
+}
+
+function LibraryRunSummary({ summary }: { summary: LibraryMatchingRunSummary }) {
+  return (
+    <div className="matching-run-summary">
+      <StatusBadge tone={summary.ambiguous_library > 0 ? "warning" : "success"}>
+        Library Matching Complete
+      </StatusBadge>
+      <span>{formatNumber(summary.total)} songs reviewed</span>
+      <span>{formatNumber(summary.matched)} library matched</span>
+      <span>{formatNumber(summary.missing_library)} missing</span>
+      <span>{formatNumber(summary.ambiguous_library)} ambiguous</span>
+      <span>{formatNumber(summary.manually_mapped_library)} manual</span>
     </div>
   );
 }
@@ -715,9 +912,12 @@ function SourceDiscoveryPanel({
 type ReviewRowProps = {
   row: MatchReviewRow;
   mappingKey: string | null;
+  libraryMappingKey: string | null;
   isDiscoveringSource: boolean;
   onDiscoverSource: (row: MatchReviewRow) => void;
   onMapCandidate: (row: MatchReviewRow, candidate: MatchCandidateRead) => void;
+  onMapLibraryCandidate: (row: MatchReviewRow, candidate: LibraryTrackCandidateRead) => void;
+  onOpenManualLibraryMatch: (row: MatchReviewRow) => void;
   onOpenManualMatch: (row: MatchReviewRow) => void;
   onPreviewAudio: (audioFileId: string, label: string, detail: string) => void;
 };
@@ -725,14 +925,22 @@ type ReviewRowProps = {
 function ReviewRow({
   row,
   mappingKey,
+  libraryMappingKey,
   isDiscoveringSource,
   onDiscoverSource,
   onMapCandidate,
+  onMapLibraryCandidate,
+  onOpenManualLibraryMatch,
   onOpenManualMatch,
   onPreviewAudio,
 }: ReviewRowProps) {
-  const expanded = row.status === "ambiguous" || row.candidates.length > 0;
+  const expanded =
+    row.status === "ambiguous" ||
+    row.candidates.length > 0 ||
+    row.library_status === "ambiguous_library" ||
+    row.library_candidates.length > 0;
   const acceptedMatch = row.match;
+  const acceptedLibraryMatch = row.library_match;
   const sourceLink = bestSourceLink(row.source_discovery);
   return (
     <article className={["matching-row", `matching-row--${row.status}`].join(" ")}>
@@ -745,8 +953,20 @@ function ReviewRow({
           </div>
         </div>
         <span className="matching-row-duration">{formatDuration(row.duration_seconds)}</span>
-        <MatchStatusPill status={row.status} />
+        <div className="matching-status-stack">
+          <MatchStatusPill status={row.status} />
+          {row.library_status ? <LibraryMatchStatusPill status={row.library_status} /> : null}
+        </div>
         <div className="matching-row-actions">
+          {!acceptedLibraryMatch && row.library_status ? (
+            <Button
+              icon={<Library size={15} />}
+              type="button"
+              onClick={() => onOpenManualLibraryMatch(row)}
+            >
+              Map Library Track
+            </Button>
+          ) : null}
           {acceptedMatch ? (
             <button
               className="icon-button"
@@ -829,6 +1049,17 @@ function ReviewRow({
         </div>
       ) : null}
 
+      {acceptedLibraryMatch ? (
+        <div className="accepted-match-row accepted-library-row">
+          <Library size={15} />
+          <span>{acceptedLibraryMatch.path}</span>
+          <em>
+            Library - {confidenceLabel(acceptedLibraryMatch.confidence)} via{" "}
+            {methodLabel(acceptedLibraryMatch.method)}
+          </em>
+        </div>
+      ) : null}
+
       {expanded ? (
         <div className="candidate-list">
           <div className="candidate-list-title">Candidates found in collection</div>
@@ -849,6 +1080,29 @@ function ReviewRow({
               <span>No viable local audio candidates were found.</span>
             </div>
           )}
+          {row.library_status === "ambiguous_library" || row.library_candidates.length > 0 ? (
+            <>
+              <div className="candidate-list-title">Library candidates</div>
+              {row.library_candidates.length > 0 ? (
+                row.library_candidates.map((candidate) => (
+                  <LibraryCandidateCard
+                    candidate={candidate}
+                    isMapping={
+                      libraryMappingKey === `${row.song_id}-${candidate.library_track_id}`
+                    }
+                    key={candidate.library_track_id}
+                    row={row}
+                    onMapCandidate={onMapLibraryCandidate}
+                  />
+                ))
+              ) : (
+                <div className="candidate-empty">
+                  <AlertTriangle size={15} />
+                  <span>No viable library candidates were found.</span>
+                </div>
+              )}
+            </>
+          ) : null}
         </div>
       ) : null}
     </article>
@@ -911,6 +1165,48 @@ function CandidateCard({
         onClick={() => onMapCandidate(row, candidate)}
       >
         {isMapping ? "Mapping" : "Map File"}
+      </Button>
+    </div>
+  );
+}
+
+type LibraryCandidateCardProps = {
+  candidate: LibraryTrackCandidateRead;
+  row: MatchReviewRow;
+  isMapping: boolean;
+  onMapCandidate: (row: MatchReviewRow, candidate: LibraryTrackCandidateRead) => void;
+};
+
+function LibraryCandidateCard({
+  candidate,
+  row,
+  isMapping,
+  onMapCandidate,
+}: LibraryCandidateCardProps) {
+  return (
+    <div className="candidate-card library-candidate-card">
+      <div className="candidate-play candidate-play--static" aria-hidden="true">
+        <Library size={16} />
+      </div>
+      <div className="candidate-body">
+        <strong>{candidate.path}</strong>
+        <span>
+          {candidate.title ?? candidate.filename}
+          {candidate.artist ? ` · ${candidate.artist}` : ""}
+        </span>
+        <div>
+          <em>{confidenceLabel(candidate.confidence)} match</em>
+          <span>Library</span>
+          <span>{methodLabel(candidate.method)}</span>
+          <span>{formatDuration(candidate.duration_seconds)}</span>
+        </div>
+      </div>
+      <Button
+        disabled={isMapping}
+        icon={<Library size={15} />}
+        onClick={() => onMapCandidate(row, candidate)}
+      >
+        {isMapping ? "Mapping" : "Map Track"}
       </Button>
     </div>
   );
@@ -1007,6 +1303,94 @@ function ManualMatchModal({
   );
 }
 
+type ManualLibraryMatchModalProps = {
+  candidates: LibraryTrackCandidateRead[];
+  isMapping: string | null;
+  isSearching: boolean;
+  query: string;
+  row: MatchReviewRow | null;
+  onClose: () => void;
+  onMapCandidate: (row: MatchReviewRow, candidate: LibraryTrackCandidateRead) => void;
+  onQueryChange: (query: string) => void;
+  onSearch: (event: FormEvent<HTMLFormElement>) => void;
+};
+
+function ManualLibraryMatchModal({
+  candidates,
+  isMapping,
+  isSearching,
+  query,
+  row,
+  onClose,
+  onMapCandidate,
+  onQueryChange,
+  onSearch,
+}: ManualLibraryMatchModalProps) {
+  if (!row) {
+    return null;
+  }
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <div
+        className="usb-match-dialog manual-match-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="manual-library-match-title"
+      >
+        <header>
+          <div>
+            <p className="eyebrow">Map library track</p>
+            <h2 id="manual-library-match-title">{row.title}</h2>
+            <p className="muted">
+              {row.artist ?? "Unknown artist"} · {formatDuration(row.duration_seconds)}
+            </p>
+          </div>
+          {row.library_status ? <LibraryMatchStatusPill status={row.library_status} /> : null}
+        </header>
+
+        <form className="usb-match-search" onSubmit={onSearch}>
+          <label className="playlist-search-field playlist-search-field--wide">
+            <Search size={14} />
+            <input
+              aria-label="Search library tracks"
+              placeholder="Search library tracks..."
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+            />
+          </label>
+          <Button disabled={isSearching} type="submit">
+            {isSearching ? "Searching" : "Search"}
+          </Button>
+        </form>
+
+        <div className="usb-candidate-list manual-file-candidate-list">
+          {isSearching ? <LoadingState label="Searching library tracks" /> : null}
+          {!isSearching && candidates.length === 0 ? (
+            <EmptyState
+              title="No library tracks found"
+              description="No active library tracks match this search."
+            />
+          ) : null}
+          {candidates.map((candidate) => (
+            <LibraryCandidateCard
+              candidate={candidate}
+              isMapping={isMapping === `${row.song_id}-${candidate.library_track_id}`}
+              key={candidate.library_track_id}
+              row={row}
+              onMapCandidate={onMapCandidate}
+            />
+          ))}
+        </div>
+
+        <footer>
+          <Button onClick={onClose}>Close</Button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 function MiniPreviewPlayer({
   audioRef,
   isPlaying,
@@ -1079,6 +1463,14 @@ function MatchStatusPill({ status }: { status: MatchStatus }) {
   return <span className={`match-pill match-pill--${pillTone(status)}`}>{matchStatusLabel(status)}</span>;
 }
 
+function LibraryMatchStatusPill({ status }: { status: LibraryMatchStatus }) {
+  return (
+    <span className={`match-pill match-pill--${libraryPillTone(status)}`}>
+      {libraryStatusLabel(status)}
+    </span>
+  );
+}
+
 function reviewCounts(rows: MatchReviewRow[]): Record<ReviewFilter, number> {
   const counts: Record<ReviewFilter, number> = {
     needs_review: 0,
@@ -1087,11 +1479,22 @@ function reviewCounts(rows: MatchReviewRow[]): Record<ReviewFilter, number> {
     missing_audio: 0,
     ambiguous: 0,
     manually_mapped: 0,
+    library_needs_review: 0,
+    library_matched: 0,
+    missing_library: 0,
+    ambiguous_library: 0,
+    manually_mapped_library: 0,
   };
   for (const row of rows) {
     counts[row.status] += 1;
     if (row.status === "missing_audio" || row.status === "ambiguous") {
       counts.needs_review += 1;
+    }
+    if (row.library_status) {
+      counts[row.library_status] += 1;
+      if (row.library_status === "missing_library" || row.library_status === "ambiguous_library") {
+        counts.library_needs_review += 1;
+      }
     }
   }
   return counts;
@@ -1118,6 +1521,29 @@ function matchStatusLabel(status: MatchStatus) {
     return "Manual";
   }
   return status[0].toUpperCase() + status.slice(1);
+}
+
+function libraryPillTone(status: LibraryMatchStatus) {
+  if (status === "library_matched") {
+    return "matched";
+  }
+  if (status === "missing_library") {
+    return "missing";
+  }
+  if (status === "ambiguous_library") {
+    return "ambiguous";
+  }
+  return "manual";
+}
+
+function libraryStatusLabel(status: LibraryMatchStatus) {
+  const labels: Record<LibraryMatchStatus, string> = {
+    library_matched: "Library",
+    missing_library: "No Library",
+    ambiguous_library: "Library Ambiguous",
+    manually_mapped_library: "Library Manual",
+  };
+  return labels[status];
 }
 
 function methodLabel(method: string) {

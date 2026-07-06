@@ -1,7 +1,10 @@
 import { apiGet, apiPost, getApiBaseUrl } from "../../shared/api/http";
 import type {
   ManualMappingCreate,
+  ManualLibraryMappingCreate,
   DownloadMatchRunResultRead,
+  LibraryMatchingRunSummary,
+  LibraryTrackCandidateRead,
   MatchCandidateRead,
   MatchingRunSummary,
   MatchReviewRow,
@@ -11,6 +14,12 @@ import type {
 
 export function runMatching(environmentId: string) {
   return apiPost<MatchingRunSummary>(`/environments/${environmentId}/matching/run`);
+}
+
+export function runLibraryMatching(environmentId: string) {
+  return apiPost<LibraryMatchingRunSummary>(
+    `/environments/${environmentId}/library/matching/run`,
+  );
 }
 
 export function matchDownloads(environmentId: string) {
@@ -37,6 +46,20 @@ export function listManualFileCandidates(
   );
 }
 
+export function listManualLibraryTrackCandidates(
+  environmentId: string,
+  songId: string,
+  query: string,
+) {
+  const params = new URLSearchParams({ song_id: songId });
+  if (query.trim()) {
+    params.set("q", query.trim());
+  }
+  return apiGet<LibraryTrackCandidateRead[]>(
+    `/environments/${environmentId}/library/matching/manual-track-candidates?${params.toString()}`,
+  );
+}
+
 export function discoverSoundCloudTrack(environmentId: string, songId: string) {
   return apiGet<SoundCloudTrackDiscoveryRead>(
     `/environments/${environmentId}/songs/${songId}/soundcloud-discovery`,
@@ -55,6 +78,16 @@ export function createManualMapping(
 ) {
   return apiPost<MatchReviewRow, ManualMappingCreate>(
     `/environments/${environmentId}/matching/manual-mappings`,
+    data,
+  );
+}
+
+export function createManualLibraryMapping(
+  environmentId: string,
+  data: ManualLibraryMappingCreate,
+) {
+  return apiPost<unknown, ManualLibraryMappingCreate>(
+    `/environments/${environmentId}/library/matching/manual-mappings`,
     data,
   );
 }

@@ -27,6 +27,7 @@ from music_manager_backend.domain.entities import (
     PlaylistItem,
     RemotePlaylist,
     SongMaster,
+    SongLibraryLink,
     SyncSnapshot,
 )
 from music_manager_backend.domain.entities.audio_file import AudioFileStatus
@@ -46,6 +47,7 @@ from music_manager_backend.infrastructure.persistence import (
     SqliteRemotePlaylistRepository,
     SqliteScanRunRepository,
     SqliteSongRepository,
+    SqliteSongLibraryLinkRepository,
     SqliteSyncSnapshotRepository,
 )
 
@@ -576,6 +578,61 @@ def test_match_repository_deletes_links_by_audio_file(
 
     assert repository.list_by_song("song_1") == []
     assert repository.list_by_song("song_2") == []
+
+
+def test_song_library_link_repository_round_trips_and_replaces_links(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    SqliteSongRepository(sqlite_connection).save(SongMaster(id="song_1", title="Track"))
+    SqliteLibraryRepository(sqlite_connection).save_default(
+        MusicLibrary(
+            id="default",
+            root_path=Path("/Music/Library"),
+            created_at="2026-07-06T10:00:00+00:00",
+            updated_at="2026-07-06T10:00:00+00:00",
+        )
+    )
+    track_repository = SqliteLibraryTrackRepository(sqlite_connection)
+    for track_id in ("library_track_1", "library_track_2"):
+        track_repository.save(
+            LibraryTrack(
+                id=track_id,
+                library_id="default",
+                canonical_path=Path(f"/Music/Library/{track_id}.mp3"),
+                filename=f"{track_id}.mp3",
+                status=LibraryTrackStatus.ACTIVE,
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+    repository = SqliteSongLibraryLinkRepository(sqlite_connection)
+    automatic = SongLibraryLink(
+        song_id="song_1",
+        library_track_id="library_track_1",
+        method="library_identity_exact",
+        confidence=1.0,
+        created_at="2026-07-06T10:00:00+00:00",
+        updated_at="2026-07-06T10:00:00+00:00",
+    )
+    manual = SongLibraryLink(
+        song_id="song_1",
+        library_track_id="library_track_2",
+        method="manual",
+        confidence=1.0,
+        reviewed=True,
+        created_at="2026-07-06T10:01:00+00:00",
+        updated_at="2026-07-06T10:01:00+00:00",
+    )
+
+    repository.save(automatic)
+    repository.delete_automatic_by_song("song_1")
+    assert repository.list_by_song("song_1") == []
+
+    repository.save(automatic)
+    repository.replace_for_song(manual)
+
+    assert repository.list_by_song("song_1") == [manual]
+    assert repository.list_by_library_track("library_track_2") == [manual]
 
 
 def test_sync_snapshot_repository_round_trips_json_payload(

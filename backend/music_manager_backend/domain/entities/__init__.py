@@ -24,7 +24,13 @@ from music_manager_backend.domain.entities.library import (
     LibraryTrackStatus,
     MusicLibrary,
 )
-from music_manager_backend.domain.entities.matching import MatchCandidate, MatchLink, MatchStatus
+from music_manager_backend.domain.entities.matching import (
+    LibraryMatchStatus,
+    MatchCandidate,
+    MatchLink,
+    MatchStatus,
+    SongLibraryLink,
+)
 from music_manager_backend.domain.entities.playlist import Playlist, PlaylistItem, RemotePlaylist
 from music_manager_backend.domain.entities.scan_run import ScanRun, ScanSummary
 from music_manager_backend.domain.entities.song import SongMaster
@@ -57,6 +63,8 @@ __all__ = [
     "MatchLink",
     "MatchCandidate",
     "MatchStatus",
+    "LibraryMatchStatus",
+    "SongLibraryLink",
     "MusicLibrary",
     "MusicEnvironment",
     "Playlist",

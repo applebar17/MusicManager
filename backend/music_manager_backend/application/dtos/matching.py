@@ -20,6 +20,18 @@ class MatchCandidateRead(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class LibraryTrackCandidateRead(BaseModel):
+    library_track_id: str
+    path: str
+    filename: str
+    title: str | None = None
+    artist: str | None = None
+    duration_seconds: int | None = None
+    method: str
+    confidence: float
+    warnings: list[str] = Field(default_factory=list)
+
+
 class MatchReviewRow(BaseModel):
     song_id: str
     title: str
@@ -28,7 +40,20 @@ class MatchReviewRow(BaseModel):
     status: str
     match: MatchCandidateRead | None = None
     candidates: list[MatchCandidateRead] = []
+    library_status: str | None = None
+    library_match: LibraryTrackCandidateRead | None = None
+    library_candidates: list[LibraryTrackCandidateRead] = []
     source_discovery: SoundCloudTrackDiscoveryRead | None = None
+
+
+class LibraryMatchReviewRow(BaseModel):
+    song_id: str
+    title: str
+    artist: str | None = None
+    duration_seconds: int | None = None
+    status: str
+    match: LibraryTrackCandidateRead | None = None
+    candidates: list[LibraryTrackCandidateRead] = []
 
 
 class MatchingRunSummary(BaseModel):
@@ -38,6 +63,15 @@ class MatchingRunSummary(BaseModel):
     missing_audio: int
     ambiguous: int
     manually_mapped: int
+
+
+class LibraryMatchingRunSummary(BaseModel):
+    environment_id: str
+    total: int
+    matched: int
+    missing_library: int
+    ambiguous_library: int
+    manually_mapped_library: int
 
 
 class DownloadMatchSummaryRead(BaseModel):
@@ -58,3 +92,8 @@ class DownloadMatchRunResultRead(BaseModel):
 class ManualMappingCreate(BaseModel):
     song_id: str
     audio_file_id: str
+
+
+class ManualLibraryMappingCreate(BaseModel):
+    song_id: str
+    library_track_id: str

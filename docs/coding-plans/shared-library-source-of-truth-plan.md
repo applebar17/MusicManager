@@ -207,9 +207,17 @@ Exit criteria:
 
 Goal: make the library the primary match target for remote songs.
 
+Locked Wave 4 decisions:
+
+- Library matching runs in parallel with existing USB/audio-file matching.
+- Existing export behavior does not change until Wave 5.
+- Automatic matching uses normalized title plus exact rounded duration seconds.
+- Manual library mappings override automatic matches and survive reruns.
+- Only active library tracks are eligible.
+
 Deliverables:
 
-- Add `song_library_links` or equivalent mapping table.
+- Add `song_library_links` as the song-to-library-track mapping table.
 - Match SoundCloud songs to library tracks by normalized title plus duration.
 - Preserve manual review for ambiguous matches.
 - Update playlist detail/matching views to show library mapping status.

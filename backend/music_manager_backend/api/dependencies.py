@@ -18,6 +18,7 @@ from music_manager_backend.ports.repositories import (
     RemotePlaylistRepository,
     ScanRunRepository,
     SongRepository,
+    SongLibraryLinkRepository,
     SourceDiscoveryRepository,
     SyncSnapshotRepository,
 )
@@ -101,6 +102,12 @@ def get_playlist_repository(bundle: RepositoryBundleDependency) -> PlaylistRepos
 
 def get_song_repository(bundle: RepositoryBundleDependency) -> SongRepository:
     return bundle.song_repository
+
+
+def get_song_library_link_repository(
+    bundle: RepositoryBundleDependency,
+) -> SongLibraryLinkRepository:
+    return bundle.song_library_link_repository
 
 
 def get_source_discovery_repository(

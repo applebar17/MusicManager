@@ -195,6 +195,10 @@ export type PlaylistItemRead = {
   accepted_audio_filename?: string | null;
   accepted_audio_relative_path?: string | null;
   accepted_audio_warnings: string[];
+  library_match_status: LibraryMatchStatus | null;
+  accepted_library_track_id: string | null;
+  accepted_library_filename: string | null;
+  accepted_library_path: string | null;
   playback_url: string | null;
   source_discovery: SoundCloudTrackDiscoveryRead | null;
 };
@@ -226,6 +230,24 @@ export type MatchCandidateRead = {
   warnings: string[];
 };
 
+export type LibraryMatchStatus =
+  | "library_matched"
+  | "missing_library"
+  | "ambiguous_library"
+  | "manually_mapped_library";
+
+export type LibraryTrackCandidateRead = {
+  library_track_id: string;
+  path: string;
+  filename: string;
+  title: string | null;
+  artist: string | null;
+  duration_seconds: number | null;
+  method: string;
+  confidence: number;
+  warnings: string[];
+};
+
 export type MatchReviewRow = {
   song_id: string;
   title: string;
@@ -234,7 +256,20 @@ export type MatchReviewRow = {
   status: MatchStatus;
   match: MatchCandidateRead | null;
   candidates: MatchCandidateRead[];
+  library_status: LibraryMatchStatus | null;
+  library_match: LibraryTrackCandidateRead | null;
+  library_candidates: LibraryTrackCandidateRead[];
   source_discovery: SoundCloudTrackDiscoveryRead | null;
+};
+
+export type LibraryMatchReviewRow = {
+  song_id: string;
+  title: string;
+  artist: string | null;
+  duration_seconds: number | null;
+  status: LibraryMatchStatus;
+  match: LibraryTrackCandidateRead | null;
+  candidates: LibraryTrackCandidateRead[];
 };
 
 export type MatchingRunSummary = {
@@ -244,6 +279,15 @@ export type MatchingRunSummary = {
   missing_audio: number;
   ambiguous: number;
   manually_mapped: number;
+};
+
+export type LibraryMatchingRunSummary = {
+  environment_id: string;
+  total: number;
+  matched: number;
+  missing_library: number;
+  ambiguous_library: number;
+  manually_mapped_library: number;
 };
 
 export type DownloadMatchSummaryRead = {
@@ -264,6 +308,11 @@ export type DownloadMatchRunResultRead = {
 export type ManualMappingCreate = {
   song_id: string;
   audio_file_id: string;
+};
+
+export type ManualLibraryMappingCreate = {
+  song_id: string;
+  library_track_id: string;
 };
 
 export type UsbMatchedSongRead = {

@@ -21,6 +21,7 @@ from music_manager_backend.api.dependencies import (
     get_remote_playlist_repository,
     get_scan_run_repository,
     get_song_repository,
+    get_song_library_link_repository,
     get_soundcloud_playlist_importer,
     get_soundcloud_track_discovery_provider,
     get_source_discovery_repository,
@@ -42,7 +43,11 @@ from music_manager_backend.application.dtos import (
     ExportPlanRead,
     ExportPlanUpdate,
     LibraryAlignmentRunRead,
+    LibraryMatchingRunSummary,
+    LibraryMatchReviewRow,
     LibraryMetadataImportRunRead,
+    LibraryTrackCandidateRead,
+    ManualLibraryMappingCreate,
     ManualMappingCreate,
     MatchCandidateRead,
     MatchingRunSummary,
@@ -93,6 +98,12 @@ from music_manager_backend.application.use_cases.list_manual_audio_file_candidat
     ListManualAudioFileCandidates,
 )
 from music_manager_backend.application.use_cases.list_match_review import ListMatchReview
+from music_manager_backend.application.use_cases.library_matching import (
+    CreateManualLibraryMapping,
+    ListLibraryMatchReview,
+    ListManualLibraryTrackCandidates,
+    RunLibraryMatching,
+)
 from music_manager_backend.application.use_cases.list_unmanaged_files import ListUnmanagedFiles
 from music_manager_backend.application.use_cases.match_downloads import MatchDownloads
 from music_manager_backend.application.use_cases.manage_playlist_local_items import (
@@ -138,6 +149,7 @@ from music_manager_backend.ports.repositories import (
     RemotePlaylistRepository,
     ScanRunRepository,
     SongRepository,
+    SongLibraryLinkRepository,
     SourceDiscoveryRepository,
     SyncSnapshotRepository,
 )
@@ -207,6 +219,10 @@ PlaylistRepositoryDependency = Annotated[
 SongRepositoryDependency = Annotated[
     SongRepository,
     Depends(get_song_repository),
+]
+SongLibraryLinkRepositoryDependency = Annotated[
+    SongLibraryLinkRepository,
+    Depends(get_song_library_link_repository),
 ]
 SourceDiscoveryRepositoryDependency = Annotated[
     SourceDiscoveryRepository,
@@ -407,6 +423,31 @@ def run_matching(
 
 
 @router.post(
+    "/{environment_id}/library/matching/run",
+    response_model=LibraryMatchingRunSummary,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("run_library_matching"))],
+)
+def run_library_matching(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    song_library_links: SongLibraryLinkRepositoryDependency,
+) -> LibraryMatchingRunSummary:
+    return RunLibraryMatching(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        song_library_links=song_library_links,
+    ).execute(environment_id)
+
+
+@router.post(
     "/{environment_id}/matching/downloads/run",
     response_model=DownloadMatchRunResultRead,
     responses=ERROR_RESPONSES,
@@ -446,6 +487,9 @@ def list_match_review(
     audio_files: AudioFileRepositoryDependency,
     match_links: MatchLinkRepositoryDependency,
     source_discoveries: SourceDiscoveryRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    song_library_links: SongLibraryLinkRepositoryDependency,
 ) -> list[MatchReviewRow]:
     return ListMatchReview(
         environments=environments,
@@ -454,6 +498,33 @@ def list_match_review(
         audio_files=audio_files,
         match_links=match_links,
         source_discoveries=source_discoveries,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        song_library_links=song_library_links,
+    ).execute(environment_id)
+
+
+@router.get(
+    "/{environment_id}/library/matching/review",
+    response_model=list[LibraryMatchReviewRow],
+    responses=ERROR_RESPONSES,
+)
+def list_library_match_review(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    song_library_links: SongLibraryLinkRepositoryDependency,
+) -> list[LibraryMatchReviewRow]:
+    return ListLibraryMatchReview(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        song_library_links=song_library_links,
     ).execute(environment_id)
 
 
@@ -481,6 +552,32 @@ def list_manual_audio_file_candidates(
     ).execute(environment_id, song_id=song_id, query=q)
 
 
+@router.get(
+    "/{environment_id}/library/matching/manual-track-candidates",
+    response_model=list[LibraryTrackCandidateRead],
+    responses=ERROR_RESPONSES,
+)
+def list_manual_library_track_candidates(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    song_library_links: SongLibraryLinkRepositoryDependency,
+    song_id: str = Query(...),
+    q: str = Query(default=""),
+) -> list[LibraryTrackCandidateRead]:
+    return ListManualLibraryTrackCandidates(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        song_library_links=song_library_links,
+    ).execute(environment_id, song_id=song_id, query=q)
+
+
 @router.post(
     "/{environment_id}/matching/manual-mappings",
     response_model=MatchReviewRow,
@@ -503,6 +600,32 @@ def create_manual_mapping(
         audio_files=audio_files,
         match_links=match_links,
     ).execute(environment_id, data.song_id, data.audio_file_id)
+
+
+@router.post(
+    "/{environment_id}/library/matching/manual-mappings",
+    response_model=LibraryMatchReviewRow,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_environment_operation("create_manual_library_mapping"))],
+)
+def create_manual_library_mapping(
+    environment_id: str,
+    data: ManualLibraryMappingCreate,
+    environments: EnvironmentRepositoryDependency,
+    playlists: PlaylistRepositoryDependency,
+    songs: SongRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    song_library_links: SongLibraryLinkRepositoryDependency,
+) -> LibraryMatchReviewRow:
+    return CreateManualLibraryMapping(
+        environments=environments,
+        playlists=playlists,
+        songs=songs,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        song_library_links=song_library_links,
+    ).execute(environment_id, data.song_id, data.library_track_id)
 
 
 @router.get(
@@ -776,6 +899,9 @@ def get_playlist_detail(
     audio_files: AudioFileRepositoryDependency,
     match_links: MatchLinkRepositoryDependency,
     source_discoveries: SourceDiscoveryRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    song_library_links: SongLibraryLinkRepositoryDependency,
 ) -> PlaylistDetailRead:
     return GetPlaylistDetail(
         environments=environments,
@@ -784,6 +910,9 @@ def get_playlist_detail(
         audio_files=audio_files,
         match_links=match_links,
         source_discoveries=source_discoveries,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        song_library_links=song_library_links,
     ).execute(environment_id, playlist_id)
 
 

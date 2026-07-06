@@ -7,8 +7,11 @@ from fastapi.testclient import TestClient
 from music_manager_backend.api.container import AppContainer
 from music_manager_backend.domain.entities import (
     AudioFile,
+    LibraryTrack,
+    LibraryTrackStatus,
     MatchLink,
     MusicEnvironment,
+    MusicLibrary,
     Playlist,
     PlaylistItem,
     SongMaster,
@@ -121,6 +124,98 @@ def test_manual_file_candidates_include_unmapped_usb_and_download_files(
     assert "linked_file" not in rows
 
 
+def test_library_matching_run_review_and_manual_mapping_api(
+    api_client: TestClient,
+) -> None:
+    container = _container(api_client)
+    _seed_matching_data(container)
+    with container.repository_bundle() as repositories:
+        repositories.library_repository.save_default(
+            MusicLibrary(
+                id="default",
+                root_path=Path("/Music/Library"),
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+        repositories.library_track_repository.save(
+            LibraryTrack(
+                id="library_track_1",
+                library_id="default",
+                canonical_path=Path("/Music/Library/track-one.mp3"),
+                filename="track-one.mp3",
+                status=LibraryTrackStatus.ACTIVE,
+                title="Track One",
+                artist="Artist",
+                duration_seconds=180,
+                normalized_title="track one",
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+        repositories.library_track_repository.save(
+            LibraryTrack(
+                id="library_track_2",
+                library_id="default",
+                canonical_path=Path("/Music/Library/track-two-a.mp3"),
+                filename="track-two-a.mp3",
+                status=LibraryTrackStatus.ACTIVE,
+                title="Track Two",
+                artist="Artist",
+                duration_seconds=180,
+                normalized_title="track two",
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+        repositories.library_track_repository.save(
+            LibraryTrack(
+                id="library_track_3",
+                library_id="default",
+                canonical_path=Path("/Music/Library/track-two-b.mp3"),
+                filename="track-two-b.mp3",
+                status=LibraryTrackStatus.ACTIVE,
+                title="Track Two",
+                artist="Artist",
+                duration_seconds=180,
+                normalized_title="track two",
+                created_at="2026-07-06T10:00:00+00:00",
+                updated_at="2026-07-06T10:00:00+00:00",
+            )
+        )
+
+    run_response = api_client.post("/environments/env_1/library/matching/run")
+    review_response = api_client.get("/environments/env_1/library/matching/review")
+    candidates_response = api_client.get(
+        "/environments/env_1/library/matching/manual-track-candidates",
+        params={"song_id": "song_2", "q": "track two"},
+    )
+    manual_response = api_client.post(
+        "/environments/env_1/library/matching/manual-mappings",
+        json={"song_id": "song_2", "library_track_id": "library_track_2"},
+    )
+    combined_review_response = api_client.get("/environments/env_1/matching/review")
+
+    assert run_response.status_code == 200
+    assert run_response.json()["matched"] == 1
+    assert run_response.json()["ambiguous_library"] == 1
+    review = sorted(review_response.json(), key=lambda row: row["song_id"])
+    assert review[0]["status"] == "library_matched"
+    assert review[0]["match"]["library_track_id"] == "library_track_1"
+    assert review[1]["status"] == "ambiguous_library"
+    assert len(review[1]["candidates"]) == 2
+    assert candidates_response.status_code == 200
+    assert {row["library_track_id"] for row in candidates_response.json()} >= {
+        "library_track_2",
+        "library_track_3",
+    }
+    assert manual_response.status_code == 200
+    assert manual_response.json()["status"] == "manually_mapped_library"
+    combined = sorted(combined_review_response.json(), key=lambda row: row["song_id"])
+    assert combined[0]["library_status"] == "library_matched"
+    assert combined[1]["library_status"] == "manually_mapped_library"
+
+
 def test_match_downloads_requires_download_path(api_client: TestClient) -> None:
     container = _container(api_client)
     with container.repository_bundle() as repositories:
@@ -150,10 +245,10 @@ def _seed_matching_data(container: AppContainer, download_path: Path | None = No
             )
         )
         repositories.song_repository.save(
-            SongMaster(id="song_1", title="Track One", artist="Artist")
+            SongMaster(id="song_1", title="Track One", artist="Artist", duration_seconds=180)
         )
         repositories.song_repository.save(
-            SongMaster(id="song_2", title="Track Two", artist="Artist")
+            SongMaster(id="song_2", title="Track Two", artist="Artist", duration_seconds=180)
         )
         repositories.playlist_repository.save(
             Playlist(

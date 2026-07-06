@@ -2297,8 +2297,17 @@ button.playlist-chip.is-active {
   font-variant-numeric: tabular-nums;
 }
 
-.matching-row-actions {
+.matching-status-stack {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.matching-row-actions {
+  align-items: center;
+  display: flex;
+  gap: var(--space-xs);
   justify-content: flex-end;
 }
 
@@ -2524,6 +2533,14 @@ button.playlist-chip.is-active {
 .candidate-play:hover {
   border-color: var(--color-primary);
   background: rgba(172, 199, 255, 0.18);
+}
+
+.candidate-play--static,
+.candidate-play--static:hover {
+  border-color: var(--color-outline-variant);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface-variant);
+  cursor: default;
 }
 
 .candidate-body {

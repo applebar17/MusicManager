@@ -21,6 +21,7 @@ from music_manager_backend.domain.entities import (
     RemotePlaylist,
     ScanRun,
     SongMaster,
+    SongLibraryLink,
     SoundCloudSourceDiscovery,
     SyncSnapshot,
 )
@@ -235,6 +236,23 @@ class MatchLinkRepository(Protocol):
         pass
 
     def replace_for_song(self, match_link: MatchLink) -> None:
+        pass
+
+
+class SongLibraryLinkRepository(Protocol):
+    def save(self, link: SongLibraryLink) -> None:
+        pass
+
+    def list_by_song(self, song_id: str) -> list[SongLibraryLink]:
+        pass
+
+    def list_by_library_track(self, library_track_id: str) -> list[SongLibraryLink]:
+        pass
+
+    def delete_automatic_by_song(self, song_id: str) -> None:
+        pass
+
+    def replace_for_song(self, link: SongLibraryLink) -> None:
         pass
 
 

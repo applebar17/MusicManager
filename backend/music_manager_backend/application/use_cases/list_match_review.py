@@ -9,20 +9,29 @@ from music_manager_backend.application.use_cases.matching_common import (
     candidate_audio_file,
     load_environment_songs,
 )
+from music_manager_backend.application.use_cases.library_matching import (
+    active_library_tracks_by_id,
+    library_match_review_row,
+)
 from music_manager_backend.domain.entities import (
     AudioFile,
+    LibraryTrack,
     MatchCandidate,
     MatchLink,
     MatchStatus,
     MusicEnvironment,
+    SongMaster,
 )
 from music_manager_backend.domain.services.audio_quality import audio_warnings
 from music_manager_backend.domain.services.match_scoring import score_song_files
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
+    LibraryRepository,
+    LibraryTrackRepository,
     MatchLinkRepository,
     PlaylistRepository,
+    SongLibraryLinkRepository,
     SongRepository,
     SourceDiscoveryRepository,
 )
@@ -39,6 +48,9 @@ class ListMatchReview:
         audio_files: AudioFileRepository,
         match_links: MatchLinkRepository,
         source_discoveries: SourceDiscoveryRepository | None = None,
+        libraries: LibraryRepository | None = None,
+        library_tracks: LibraryTrackRepository | None = None,
+        song_library_links: SongLibraryLinkRepository | None = None,
     ) -> None:
         self.environments = environments
         self.playlists = playlists
@@ -46,6 +58,9 @@ class ListMatchReview:
         self.audio_files = audio_files
         self.match_links = match_links
         self.source_discoveries = source_discoveries
+        self.libraries = libraries
+        self.library_tracks = library_tracks
+        self.song_library_links = song_library_links
 
     def execute(self, environment_id: str) -> list[MatchReviewRow]:
         environment = self.environments.get(environment_id)
@@ -61,9 +76,22 @@ class ListMatchReview:
             environment_id=environment_id, audio_files=self.audio_files
         )
         active_file_list = list(active_files.values())
+        library = self.libraries.get_default() if self.libraries is not None else None
+        active_library_tracks = (
+            active_library_tracks_by_id(library.id, self.library_tracks)
+            if library is not None and self.library_tracks is not None
+            else {}
+        )
 
         rows: list[MatchReviewRow] = []
         for song in environment_songs.songs:
+            library_fields = _library_fields(
+                song=song,
+                library_id=library.id if library is not None else None,
+                active_tracks=active_library_tracks,
+                library_tracks=self.library_tracks,
+                song_library_links=self.song_library_links,
+            )
             links = self.match_links.list_by_song(song.id)
             accepted = preferred_match_link(links, active_files)
             if accepted is not None:
@@ -81,6 +109,7 @@ class ListMatchReview:
                         status=status.value,
                         match=_candidate_from_link(accepted, active_files, environment),
                         candidates=[],
+                        **library_fields,
                         source_discovery=(
                             stored_discovery_read(
                                 environment_id=environment_id,
@@ -115,6 +144,7 @@ class ListMatchReview:
                         for candidate in candidates
                         if candidate_audio_file(candidate, active_files) is not None
                     ],
+                    **library_fields,
                     source_discovery=(
                         stored_discovery_read(
                             environment_id=environment_id,
@@ -127,6 +157,34 @@ class ListMatchReview:
                 )
             )
         return rows
+
+
+def _library_fields(
+    *,
+    song: SongMaster,
+    library_id: str | None,
+    active_tracks: dict[str, LibraryTrack],
+    library_tracks: LibraryTrackRepository | None,
+    song_library_links: SongLibraryLinkRepository | None,
+) -> dict[str, object]:
+    if library_id is None or library_tracks is None or song_library_links is None:
+        return {
+            "library_status": None,
+            "library_match": None,
+            "library_candidates": [],
+        }
+    row = library_match_review_row(
+        song=song,
+        library_id=library_id,
+        active_tracks=active_tracks,
+        library_tracks=library_tracks,
+        song_library_links=song_library_links,
+    )
+    return {
+        "library_status": row.status,
+        "library_match": row.match,
+        "library_candidates": row.candidates,
+    }
 
 
 def _candidate_from_link(

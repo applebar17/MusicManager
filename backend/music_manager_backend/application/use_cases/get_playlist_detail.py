@@ -22,8 +22,11 @@ from music_manager_backend.domain.services.audio_quality import audio_warnings
 from music_manager_backend.ports.repositories import (
     AudioFileRepository,
     EnvironmentRepository,
+    LibraryRepository,
+    LibraryTrackRepository,
     MatchLinkRepository,
     PlaylistRepository,
+    SongLibraryLinkRepository,
     SongRepository,
     SourceDiscoveryRepository,
 )
@@ -40,6 +43,9 @@ class GetPlaylistDetail:
         audio_files: AudioFileRepository,
         match_links: MatchLinkRepository,
         source_discoveries: SourceDiscoveryRepository | None = None,
+        libraries: LibraryRepository | None = None,
+        library_tracks: LibraryTrackRepository | None = None,
+        song_library_links: SongLibraryLinkRepository | None = None,
     ) -> None:
         self.environments = environments
         self.playlists = playlists
@@ -47,6 +53,9 @@ class GetPlaylistDetail:
         self.audio_files = audio_files
         self.match_links = match_links
         self.source_discoveries = source_discoveries
+        self.libraries = libraries
+        self.library_tracks = library_tracks
+        self.song_library_links = song_library_links
 
     def execute(self, environment_id: str, playlist_id: str) -> PlaylistDetailRead:
         environment = self.environments.get(environment_id)
@@ -65,6 +74,9 @@ class GetPlaylistDetail:
                 audio_files=self.audio_files,
                 match_links=self.match_links,
                 source_discoveries=self.source_discoveries,
+                libraries=self.libraries,
+                library_tracks=self.library_tracks,
+                song_library_links=self.song_library_links,
             ).execute(environment_id)
         }
         items: list[PlaylistItemRead] = []
@@ -132,9 +144,18 @@ def _playlist_item_read(
     accepted_audio_filename = None
     accepted_audio_relative_path = None
     accepted_audio_warnings: list[str] = []
+    library_match_status = None
+    accepted_library_track_id = None
+    accepted_library_filename = None
+    accepted_library_path = None
 
     if review is not None:
         match_status = review.status
+        library_match_status = review.library_status
+        if review.library_match is not None:
+            accepted_library_track_id = review.library_match.library_track_id
+            accepted_library_filename = review.library_match.filename
+            accepted_library_path = review.library_match.path
         if review.match is not None:
             accepted_audio_file_id = review.match.audio_file_id
             accepted_audio_filename = _accepted_audio_filename(review.match.path)
@@ -175,6 +196,10 @@ def _playlist_item_read(
         accepted_audio_filename=accepted_audio_filename,
         accepted_audio_relative_path=accepted_audio_relative_path,
         accepted_audio_warnings=accepted_audio_warnings,
+        library_match_status=library_match_status,
+        accepted_library_track_id=accepted_library_track_id,
+        accepted_library_filename=accepted_library_filename,
+        accepted_library_path=accepted_library_path,
         playback_url=(
             f"/environments/{environment_id}/playback/audio-files/{accepted_audio_file_id}"
             if accepted_audio_file_id is not None

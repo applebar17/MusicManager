@@ -17,6 +17,7 @@ from music_manager_backend.infrastructure.persistence import (
     SqliteRemotePlaylistRepository,
     SqliteScanRunRepository,
     SqliteSongRepository,
+    SqliteSongLibraryLinkRepository,
     SqliteSourceDiscoveryRepository,
     SqliteSyncSnapshotRepository,
 )
@@ -42,6 +43,7 @@ class SqliteRepositoryBundle:
     remote_playlist_repository: SqliteRemotePlaylistRepository
     scan_run_repository: SqliteScanRunRepository
     song_repository: SqliteSongRepository
+    song_library_link_repository: SqliteSongLibraryLinkRepository
     source_discovery_repository: SqliteSourceDiscoveryRepository
     sync_snapshot_repository: SqliteSyncSnapshotRepository
 
@@ -63,6 +65,7 @@ class SqliteRepositoryBundle:
             remote_playlist_repository=SqliteRemotePlaylistRepository(connection),
             scan_run_repository=SqliteScanRunRepository(connection),
             song_repository=SqliteSongRepository(connection),
+            song_library_link_repository=SqliteSongLibraryLinkRepository(connection),
             source_discovery_repository=SqliteSourceDiscoveryRepository(connection),
             sync_snapshot_repository=SqliteSyncSnapshotRepository(connection),
         )
