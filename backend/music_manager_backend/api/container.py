@@ -8,6 +8,8 @@ from music_manager_backend.infrastructure.persistence import (
     SqliteEnvironmentRepository,
     SqliteExportApplyRunRepository,
     SqliteExportPlanRepository,
+    SqliteLibraryRepository,
+    SqliteLibraryTrackRepository,
     SqliteMatchLinkRepository,
     SqlitePlaylistRepository,
     SqliteRemotePlaylistRepository,
@@ -29,6 +31,8 @@ class SqliteRepositoryBundle:
     environment_repository: SqliteEnvironmentRepository
     export_apply_run_repository: SqliteExportApplyRunRepository
     export_plan_repository: SqliteExportPlanRepository
+    library_repository: SqliteLibraryRepository
+    library_track_repository: SqliteLibraryTrackRepository
     match_link_repository: SqliteMatchLinkRepository
     playlist_repository: SqlitePlaylistRepository
     remote_playlist_repository: SqliteRemotePlaylistRepository
@@ -46,6 +50,8 @@ class SqliteRepositoryBundle:
             environment_repository=SqliteEnvironmentRepository(connection),
             export_apply_run_repository=SqliteExportApplyRunRepository(connection),
             export_plan_repository=SqliteExportPlanRepository(connection),
+            library_repository=SqliteLibraryRepository(connection),
+            library_track_repository=SqliteLibraryTrackRepository(connection),
             match_link_repository=SqliteMatchLinkRepository(connection),
             playlist_repository=SqlitePlaylistRepository(connection),
             remote_playlist_repository=SqliteRemotePlaylistRepository(connection),

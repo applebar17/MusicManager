@@ -9,6 +9,11 @@ from music_manager_backend.domain.entities.export_apply import (
     ExportApplyRunStatus,
 )
 from music_manager_backend.domain.entities.export_plan import ExportPlan, ExportPlanItem
+from music_manager_backend.domain.entities.library import (
+    DEFAULT_LIBRARY_ID,
+    LibraryTrack,
+    MusicLibrary,
+)
 from music_manager_backend.domain.entities.matching import MatchCandidate, MatchLink, MatchStatus
 from music_manager_backend.domain.entities.playlist import Playlist, PlaylistItem, RemotePlaylist
 from music_manager_backend.domain.entities.scan_run import ScanRun, ScanSummary
@@ -27,9 +32,12 @@ __all__ = [
     "ExportApplyRunStatus",
     "ExportPlan",
     "ExportPlanItem",
+    "DEFAULT_LIBRARY_ID",
+    "LibraryTrack",
     "MatchLink",
     "MatchCandidate",
     "MatchStatus",
+    "MusicLibrary",
     "MusicEnvironment",
     "Playlist",
     "PlaylistItem",

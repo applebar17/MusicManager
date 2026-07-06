@@ -46,6 +46,18 @@ export async function apiPatch<TResponse, TBody = unknown>(
   });
 }
 
+export async function apiPut<TResponse, TBody = unknown>(
+  path: string,
+  body: TBody,
+  init?: RequestInit,
+): Promise<TResponse> {
+  return apiRequest<TResponse>(path, {
+    ...init,
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function apiDelete<TResponse>(path: string, init?: RequestInit): Promise<TResponse> {
   return apiRequest<TResponse>(path, { ...init, method: "DELETE" });
 }

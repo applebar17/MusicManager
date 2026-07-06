@@ -14,6 +14,13 @@ def validate_readable_directory(path: Path) -> Path:
     return path
 
 
+def validate_writable_directory(path: Path) -> Path:
+    directory = validate_readable_directory(path)
+    if not os.access(directory, os.W_OK):
+        raise ValidationError(f"Root path is not writable: {path}")
+    return directory
+
+
 def validate_readable_file_inside_root(path: Path, root: Path) -> Path:
     root_path = root.resolve(strict=True)
     file_path = path.resolve(strict=True)

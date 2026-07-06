@@ -10,6 +10,10 @@ from music_manager_backend.infrastructure.persistence.export_apply_repository im
 from music_manager_backend.infrastructure.persistence.export_plan_repository import (
     SqliteExportPlanRepository,
 )
+from music_manager_backend.infrastructure.persistence.library_repository import (
+    SqliteLibraryRepository,
+    SqliteLibraryTrackRepository,
+)
 from music_manager_backend.infrastructure.persistence.match_repository import (
     SqliteMatchLinkRepository,
 )
@@ -39,6 +43,8 @@ __all__ = [
     "SqliteEnvironmentRepository",
     "SqliteExportApplyRunRepository",
     "SqliteExportPlanRepository",
+    "SqliteLibraryRepository",
+    "SqliteLibraryTrackRepository",
     "SqliteMatchLinkRepository",
     "SqlitePlaylistRepository",
     "SqliteRemotePlaylistRepository",

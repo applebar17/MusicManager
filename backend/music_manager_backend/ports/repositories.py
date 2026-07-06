@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Protocol
 
@@ -5,8 +7,10 @@ from music_manager_backend.domain.entities import (
     AudioFile,
     ExportApplyRun,
     ExportPlan,
+    LibraryTrack,
     MatchLink,
     MusicEnvironment,
+    MusicLibrary,
     Playlist,
     RemotePlaylist,
     ScanRun,
@@ -66,6 +70,36 @@ class SongRepository(Protocol):
         pass
 
     def get_by_source_url(self, source_url: str) -> SongMaster | None:
+        pass
+
+
+class LibraryRepository(Protocol):
+    def get_default(self) -> MusicLibrary | None:
+        pass
+
+    def save_default(self, library: MusicLibrary) -> None:
+        pass
+
+
+class LibraryTrackRepository(Protocol):
+    def save(self, track: LibraryTrack) -> None:
+        pass
+
+    def get(self, track_id: str) -> LibraryTrack | None:
+        pass
+
+    def list(self, library_id: str) -> list[LibraryTrack]:
+        pass
+
+    def count(self, library_id: str) -> int:
+        pass
+
+    def get_by_identity(
+        self,
+        library_id: str,
+        normalized_title: str,
+        duration_seconds: int,
+    ) -> list[LibraryTrack]:
         pass
 
 

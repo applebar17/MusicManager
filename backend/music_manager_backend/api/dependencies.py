@@ -9,6 +9,8 @@ from music_manager_backend.ports.repositories import (
     EnvironmentRepository,
     ExportApplyRunRepository,
     ExportPlanRepository,
+    LibraryRepository,
+    LibraryTrackRepository,
     MatchLinkRepository,
     PlaylistRepository,
     RemotePlaylistRepository,
@@ -57,6 +59,14 @@ def get_export_apply_run_repository(
     bundle: RepositoryBundleDependency,
 ) -> ExportApplyRunRepository:
     return bundle.export_apply_run_repository
+
+
+def get_library_repository(bundle: RepositoryBundleDependency) -> LibraryRepository:
+    return bundle.library_repository
+
+
+def get_library_track_repository(bundle: RepositoryBundleDependency) -> LibraryTrackRepository:
+    return bundle.library_track_repository
 
 
 def get_scan_run_repository(bundle: RepositoryBundleDependency) -> ScanRunRepository:

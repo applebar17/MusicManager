@@ -30,6 +30,18 @@ export type EnvironmentUpdate = {
   deprecated_folder_name?: string | null;
 };
 
+export type LibraryRead = {
+  configured: boolean;
+  root_path: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  track_count: number;
+};
+
+export type LibraryConfigure = {
+  root_path: string;
+};
+
 export type ScanSummaryRead = {
   scan_run_id: string;
   environment_id: string;

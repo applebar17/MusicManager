@@ -8,6 +8,7 @@ from music_manager_backend.infrastructure.filesystem.local_audio_scanner import 
 from music_manager_backend.infrastructure.filesystem.path_safety import (
     validate_readable_directory,
     validate_readable_file_inside_root,
+    validate_writable_directory,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "update_export_manifest",
     "validate_readable_directory",
     "validate_readable_file_inside_root",
+    "validate_writable_directory",
 ]

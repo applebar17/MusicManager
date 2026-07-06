@@ -44,6 +44,15 @@ describe("desktop v1 workflow", () => {
 
     expect(await screen.findByText("Environment Overview")).toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: /^library$/i }));
+    expect(await screen.findByText("Source of truth")).toBeInTheDocument();
+    expect(screen.getByText("Not set")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Root path"), "/Users/demo/Music Library");
+    await user.click(screen.getByRole("button", { name: /save library/i }));
+    expect(await screen.findByText("Ready")).toBeInTheDocument();
+    expect(await screen.findByText("Current library: /Users/demo/Music Library")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /dashboard/i }));
+
     await user.click(screen.getByRole("button", { name: /playlists/i }));
     expect(await screen.findByText("No playlists imported yet")).toBeInTheDocument();
 
@@ -105,6 +114,7 @@ describe("desktop v1 workflow", () => {
 function mockFetch() {
   let imported = false;
   let mapped = false;
+  let libraryRootPath: string | null = null;
 
   return (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), apiBaseUrl);
@@ -113,6 +123,16 @@ function mockFetch() {
 
     if (path === "/health" && method === "GET") {
       return jsonResponse({ status: "ok" });
+    }
+
+    if (path === "/library" && method === "GET") {
+      return jsonResponse(libraryResponse(libraryRootPath));
+    }
+
+    if (path === "/library" && method === "PUT") {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { root_path: string };
+      libraryRootPath = body.root_path;
+      return jsonResponse(libraryResponse(libraryRootPath));
     }
 
     if (path === "/environments" && method === "GET") {
@@ -414,6 +434,16 @@ function exportPlan() {
         validation_error_message: null,
       },
     ],
+  };
+}
+
+function libraryResponse(rootPath: string | null) {
+  return {
+    configured: rootPath !== null,
+    created_at: rootPath === null ? null : "2026-07-06T10:00:00+00:00",
+    root_path: rootPath,
+    track_count: 0,
+    updated_at: rootPath === null ? null : "2026-07-06T10:00:00+00:00",
   };
 }
 

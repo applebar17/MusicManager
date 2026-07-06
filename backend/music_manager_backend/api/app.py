@@ -12,7 +12,7 @@ from starlette.responses import Response
 from music_manager_backend.api.container import AppContainer
 from music_manager_backend.api.logging_config import configure_logging
 from music_manager_backend.api.operation_coordinator import OperationCoordinator
-from music_manager_backend.api.routers import environments, health, playback
+from music_manager_backend.api.routers import environments, health, library, playback
 from music_manager_backend.infrastructure.persistence.migration_runner import upgrade_database
 from music_manager_backend.infrastructure.soundcloud import (
     PublicPlaylistImporter,
@@ -57,6 +57,7 @@ def create_app(settings: Settings | None = None, *, run_migrations: bool = True)
     app.middleware("http")(request_logging_middleware)
     app.include_router(health.router)
     app.include_router(environments.router)
+    app.include_router(library.router)
     app.include_router(playback.router)
     logger.info(
         "Started %s environment=%s database_path=%s log_file_path=%s",

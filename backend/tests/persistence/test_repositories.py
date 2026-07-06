@@ -9,8 +9,10 @@ from music_manager_backend.domain.entities import (
     ExportApplyRunStatus,
     ExportPlan,
     ExportPlanItem,
+    LibraryTrack,
     MatchLink,
     MusicEnvironment,
+    MusicLibrary,
     Playlist,
     PlaylistItem,
     RemotePlaylist,
@@ -25,6 +27,8 @@ from music_manager_backend.infrastructure.persistence import (
     SqliteEnvironmentRepository,
     SqliteExportApplyRunRepository,
     SqliteExportPlanRepository,
+    SqliteLibraryRepository,
+    SqliteLibraryTrackRepository,
     SqliteMatchLinkRepository,
     SqlitePlaylistRepository,
     SqliteRemotePlaylistRepository,
@@ -55,6 +59,64 @@ def test_environment_repository_soft_archives(sqlite_connection: sqlite3.Connect
     assert archived.archived_at == "2026-05-22T10:00:00+00:00"
     assert repository.list() == []
     assert repository.list(include_archived=True) == [archived]
+
+
+def test_library_repository_round_trips_singleton_config(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    repository = SqliteLibraryRepository(sqlite_connection)
+    library = MusicLibrary(
+        id="default",
+        root_path=Path("/Music/Library"),
+        created_at="2026-07-06T10:00:00+00:00",
+        updated_at="2026-07-06T10:00:00+00:00",
+    )
+    updated = MusicLibrary(
+        id="default",
+        root_path=Path("/Music/Updated"),
+        created_at="2026-07-06T10:00:00+00:00",
+        updated_at="2026-07-06T11:00:00+00:00",
+    )
+
+    repository.save_default(library)
+    repository.save_default(updated)
+
+    assert repository.get_default() == updated
+
+
+def test_library_track_repository_round_trips_tracks_and_identity(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    SqliteLibraryRepository(sqlite_connection).save_default(
+        MusicLibrary(
+            id="default",
+            root_path=Path("/Music/Library"),
+            created_at="2026-07-06T10:00:00+00:00",
+            updated_at="2026-07-06T10:00:00+00:00",
+        )
+    )
+    repository = SqliteLibraryTrackRepository(sqlite_connection)
+    track = LibraryTrack(
+        id="library_track_1",
+        library_id="default",
+        canonical_path=Path("/Music/Library/track.mp3"),
+        filename="track.mp3",
+        title="Track",
+        artist="Artist",
+        duration_seconds=180,
+        normalized_title="track",
+        file_hash=None,
+        created_at="2026-07-06T10:00:00+00:00",
+        updated_at="2026-07-06T10:00:00+00:00",
+    )
+
+    repository.save(track)
+
+    assert repository.get("library_track_1") == track
+    assert repository.list("default") == [track]
+    assert repository.count("default") == 1
+    assert repository.get_by_identity("default", "track", 180) == [track]
+    assert repository.get_by_identity("default", "track", 181) == []
 
 
 def test_song_repository_preserves_local_overrides(sqlite_connection: sqlite3.Connection) -> None:

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { EnvironmentPanel } from "../features/environments/EnvironmentPanel";
 import { ExportPanel } from "../features/export/ExportPanel";
+import { LibraryPanel } from "../features/library/LibraryPanel";
 import { MatchingPanel } from "../features/matching/MatchingPanel";
 import { PlaylistPanel } from "../features/playlists/PlaylistPanel";
 import { UsbFilesPanel } from "../features/usb/UsbFilesPanel";
@@ -53,6 +54,8 @@ export function Dashboard() {
       ) : null}
       {activeView === "playlists" ? (
         <PlaylistPanel />
+      ) : activeView === "library" ? (
+        <LibraryPanel />
       ) : activeView === "usb" ? (
         <UsbFilesPanel />
       ) : activeView === "matching" ? (

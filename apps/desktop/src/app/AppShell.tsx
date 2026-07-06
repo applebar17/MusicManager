@@ -2,6 +2,7 @@ import {
   ClipboardCheck,
   FolderTree,
   LayoutDashboard,
+  Library,
   ListMusic,
   Music,
   Settings,
@@ -26,6 +27,7 @@ export function AppShell({ children }: AppShellProps) {
     disabled?: boolean;
   }> = [
     { label: "Dashboard", icon: LayoutDashboard, view: "dashboard" },
+    { label: "Library", icon: Library, view: "library" },
     { label: "Playlists", icon: ListMusic, view: "playlists" },
     { label: "USB Files", icon: FolderTree, view: "usb" },
     { label: "Matching Review", icon: ClipboardCheck, view: "matching" },

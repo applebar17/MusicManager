@@ -3,7 +3,14 @@ import type { ReactNode } from "react";
 
 import { loadPreferences, savePreferences } from "../preferences";
 
-export type AppView = "dashboard" | "playlists" | "usb" | "matching" | "export" | "settings";
+export type AppView =
+  | "dashboard"
+  | "library"
+  | "playlists"
+  | "usb"
+  | "matching"
+  | "export"
+  | "settings";
 
 type AppSelection = {
   activeView: AppView;

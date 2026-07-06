@@ -106,14 +106,24 @@ This feature separates three concepts that are currently coupled:
 
 Goal: add a durable shared library concept without changing existing export behavior.
 
+Locked Wave 1 decisions:
+
+- The library is a singleton global source of truth with fixed id `default`.
+- The frontend includes a minimal Library page for setup/status only.
+- The configured root path must be an existing readable and writable folder.
+- Wave 1 does not create folders, scan audio, copy USB files, import metadata, map
+  SoundCloud songs, or change export planning.
+
 Deliverables:
 
-- Add persistence for global app settings or a `libraries` table.
+- Add a singleton `libraries` table.
 - Store library root path and creation timestamp.
 - Add `library_tracks` table with canonical path, title, artist, duration, file hash
   placeholder, and timestamps.
 - Add repositories and domain entities for library settings and library tracks.
 - Add API routes to get/update library configuration.
+- Add a minimal frontend Library navigation page showing configured state, root path,
+  and track count.
 
 Tests:
 

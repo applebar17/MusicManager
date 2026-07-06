@@ -759,6 +759,28 @@ button {
   margin-top: var(--space-xl);
 }
 
+.library-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-lg);
+}
+
+.library-header h2 {
+  margin: 0;
+  color: var(--color-on-surface-strong);
+  font-size: 28px;
+  line-height: 34px;
+}
+
+.library-header p {
+  margin: var(--space-xs) 0 0;
+}
+
+.library-config-panel {
+  max-width: 720px;
+}
+
 .environment-form {
   display: grid;
   gap: var(--space-md);
