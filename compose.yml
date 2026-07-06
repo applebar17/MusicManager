@@ -27,7 +27,7 @@ services:
       # Expose the current macOS user's Downloads folder so download_path values
       # like /Users/<user>/Downloads validate inside the backend container.
       - ${HOME}/Downloads:${HOME}/Downloads:ro
-      - ${HOME}/Desktop/SomeMusic:${HOME}/Desktop/SomeMusic:ro
+      - ${HOME}/Desktop/SomeMusic:${HOME}/Desktop/SomeMusic
 
   frontend:
     build:

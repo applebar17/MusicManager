@@ -786,11 +786,24 @@ button {
   max-width: 920px;
 }
 
+.library-panel-body {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-md);
+}
+
+.library-panel-body--flush-bottom {
+  padding-bottom: 0;
+}
+
+.library-config-form {
+  margin-top: 0;
+}
+
 .library-action-row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
-  padding: var(--space-md);
 }
 
 .library-segmented-nav {
@@ -833,13 +846,15 @@ button {
   max-width: none;
 }
 
+.library-inventory-panel > .empty-state {
+  padding: var(--space-md);
+}
+
 .library-inventory-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-sm);
-  margin-bottom: var(--space-md);
-  padding: 0 var(--space-md);
 }
 
 .library-inventory-toolbar select {
@@ -935,7 +950,6 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-md);
-  padding: 0 var(--space-md) var(--space-md);
 }
 
 .library-metadata-grids h3 {
@@ -961,7 +975,7 @@ button {
 }
 
 .library-issue-list {
-  padding: 0 var(--space-md) var(--space-md);
+  padding: 0;
 }
 
 .library-compact-row {
@@ -995,6 +1009,10 @@ button {
   padding: var(--space-md);
   color: var(--color-on-surface-variant);
   font-size: 13px;
+}
+
+.library-alignment-summary--inline {
+  padding: 0;
 }
 
 .library-alignment-summary span {

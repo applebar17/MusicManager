@@ -527,45 +527,47 @@ function OverviewSection({
     <>
       <Panel className="library-actions-panel">
         <PanelHeader eyebrow="Actions" title="Scan and align" icon={<ScanLine size={18} />} />
-        <div className="library-action-row">
-          <Button
-            icon={<ScanLine size={16} />}
-            onClick={onScan}
-            disabled={!library.configured || isSaving || isScanning || isAligning}
-          >
-            {isScanning ? "Scanning" : "Scan Library"}
-          </Button>
-          <Button
-            variant="primary"
-            icon={<Upload size={16} />}
-            onClick={onAlign}
-            disabled={
-              !library.configured ||
-              !selectedEnvironmentId ||
-              isSaving ||
-              isScanning ||
-              isAligning ||
-              isImportingMetadata
-            }
-          >
-            {isAligning ? "Aligning" : "Align From Selected USB"}
-          </Button>
-          <Button
-            icon={<Database size={16} />}
-            onClick={onMetadataImport}
-            disabled={
-              !library.configured ||
-              !selectedEnvironmentId ||
-              isSaving ||
-              isScanning ||
-              isAligning ||
-              isImportingMetadata
-            }
-          >
-            {isImportingMetadata ? "Importing" : "Import Metadata"}
-          </Button>
+        <div className="library-panel-body">
+          <div className="library-action-row">
+            <Button
+              icon={<ScanLine size={16} />}
+              onClick={onScan}
+              disabled={!library.configured || isSaving || isScanning || isAligning}
+            >
+              {isScanning ? "Scanning" : "Scan Library"}
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Upload size={16} />}
+              onClick={onAlign}
+              disabled={
+                !library.configured ||
+                !selectedEnvironmentId ||
+                isSaving ||
+                isScanning ||
+                isAligning ||
+                isImportingMetadata
+              }
+            >
+              {isAligning ? "Aligning" : "Align From Selected USB"}
+            </Button>
+            <Button
+              icon={<Database size={16} />}
+              onClick={onMetadataImport}
+              disabled={
+                !library.configured ||
+                !selectedEnvironmentId ||
+                isSaving ||
+                isScanning ||
+                isAligning ||
+                isImportingMetadata
+              }
+            >
+              {isImportingMetadata ? "Importing" : "Import Metadata"}
+            </Button>
+          </div>
+          {actionError ? <ErrorBanner title="Library action failed" message={actionError} /> : null}
         </div>
-        {actionError ? <ErrorBanner title="Library action failed" message={actionError} /> : null}
       </Panel>
 
       <Panel className="library-config-panel">
@@ -574,40 +576,42 @@ function OverviewSection({
           title={library.configured ? "Library folder" : "Configure library folder"}
           icon={<Database size={18} />}
         />
-        <form className="environment-form" onSubmit={onSubmit}>
-          <label className="field">
-            <span>Root path</span>
-            <div className="library-path-input-row">
-              <input
-                value={rootPath}
-                onChange={(event) => onRootPathChange(event.target.value)}
-                placeholder="C:\\Music\\Library"
-                disabled={isSaving}
-              />
+        <div className="library-panel-body">
+          <form className="environment-form library-config-form" onSubmit={onSubmit}>
+            <label className="field">
+              <span>Root path</span>
+              <div className="library-path-input-row">
+                <input
+                  value={rootPath}
+                  onChange={(event) => onRootPathChange(event.target.value)}
+                  placeholder="C:\\Music\\Library"
+                  disabled={isSaving}
+                />
+                <Button
+                  type="button"
+                  icon={<FolderOpen size={16} />}
+                  onClick={onPickFolder}
+                  disabled={isSaving}
+                >
+                  Browse
+                </Button>
+              </div>
+            </label>
+            {pickerMessage ? <p className="muted">{pickerMessage}</p> : null}
+            {library.configured ? <p className="muted">Current library: {library.root_path}</p> : null}
+            {saveError ? <ErrorBanner title="Library path rejected" message={saveError} /> : null}
+            <div className="form-actions">
               <Button
-                type="button"
-                icon={<FolderOpen size={16} />}
-                onClick={onPickFolder}
+                type="submit"
+                variant="primary"
+                icon={<Save size={16} />}
                 disabled={isSaving}
               >
-                Browse
+                {isSaving ? "Saving" : "Save Library"}
               </Button>
             </div>
-          </label>
-          {pickerMessage ? <p className="muted">{pickerMessage}</p> : null}
-          {library.configured ? <p className="muted">Current library: {library.root_path}</p> : null}
-          {saveError ? <ErrorBanner title="Library path rejected" message={saveError} /> : null}
-          <div className="form-actions">
-            <Button
-              type="submit"
-              variant="primary"
-              icon={<Save size={16} />}
-              disabled={isSaving}
-            >
-              {isSaving ? "Saving" : "Save Library"}
-            </Button>
-          </div>
-        </form>
+          </form>
+        </div>
       </Panel>
       {latestRun ? <LatestAlignmentPanel run={latestRun} /> : null}
       {latestMetadataRun ? <LatestMetadataPanel run={latestMetadataRun} /> : null}
@@ -649,40 +653,42 @@ function TracksSection({
   return (
     <Panel className="library-inventory-panel">
       <PanelHeader eyebrow="Inventory" title="Tracks" icon={<Database size={18} />} />
-      <div className="library-inventory-toolbar">
-        <label className="playlist-search-field playlist-search-field--wide">
-          <Search size={14} />
-          <input
-            aria-label="Search library tracks"
-            placeholder="Search filename, path, title, artist, or normalized title..."
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-          />
-        </label>
-        <select
-          aria-label="Filter library tracks by status"
-          value={statusFilter}
-          onChange={(event) => onStatusFilterChange(event.target.value as TrackStatusFilter)}
-        >
-          <option value="all">All status</option>
-          <option value="active">Active</option>
-          <option value="missing">Missing</option>
-        </select>
-        <select
-          aria-label="Filter library tracks by mapping"
-          value={mappingFilter}
-          onChange={(event) => onMappingFilterChange(event.target.value as TrackMappingFilter)}
-        >
-          <option value="all">All mapping</option>
-          <option value="mapped">Mapped</option>
-          <option value="unmapped">Unmapped</option>
-        </select>
-        <span>{formatNumber(tracks.length)} of {formatNumber(totalTrackCount)}</span>
-        {focusedLibraryTrackId ? (
-          <Button type="button" onClick={onClearFocus}>
-            Clear Focus
-          </Button>
-        ) : null}
+      <div className="library-panel-body library-panel-body--flush-bottom">
+        <div className="library-inventory-toolbar">
+          <label className="playlist-search-field playlist-search-field--wide">
+            <Search size={14} />
+            <input
+              aria-label="Search library tracks"
+              placeholder="Search filename, path, title, artist, or normalized title..."
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+            />
+          </label>
+          <select
+            aria-label="Filter library tracks by status"
+            value={statusFilter}
+            onChange={(event) => onStatusFilterChange(event.target.value as TrackStatusFilter)}
+          >
+            <option value="all">All status</option>
+            <option value="active">Active</option>
+            <option value="missing">Missing</option>
+          </select>
+          <select
+            aria-label="Filter library tracks by mapping"
+            value={mappingFilter}
+            onChange={(event) => onMappingFilterChange(event.target.value as TrackMappingFilter)}
+          >
+            <option value="all">All mapping</option>
+            <option value="mapped">Mapped</option>
+            <option value="unmapped">Unmapped</option>
+          </select>
+          <span>{formatNumber(tracks.length)} of {formatNumber(totalTrackCount)}</span>
+          {focusedLibraryTrackId ? (
+            <Button type="button" onClick={onClearFocus}>
+              Clear Focus
+            </Button>
+          ) : null}
+        </div>
       </div>
       {tracks.length === 0 ? (
         <EmptyState title="No tracks found" description="No library tracks match the current filters." />
@@ -773,46 +779,47 @@ function MetadataSection({
   return (
     <Panel className="library-inventory-panel">
       <PanelHeader eyebrow="Inventory" title="Metadata" icon={<Database size={18} />} />
-      <div className="library-inventory-toolbar">
-        <label className="playlist-search-field playlist-search-field--wide">
-          <Search size={14} />
-          <input
-            aria-label="Search library metadata"
-            placeholder="Search provider, paths, entry key, or linked track..."
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-          />
-        </label>
-        <select
-          aria-label="Filter metadata by provider"
-          value={providerFilter}
-          onChange={(event) => onProviderFilterChange(event.target.value)}
-        >
-          <option value="all">All providers</option>
-          {providers.map((provider) => (
-            <option key={provider} value={provider}>{provider}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter metadata assets by type"
-          value={assetTypeFilter}
-          onChange={(event) => onAssetTypeFilterChange(event.target.value)}
-        >
-          <option value="all">All asset types</option>
-          {assetTypes.map((assetType) => (
-            <option key={assetType} value={assetType}>{assetType}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter metadata entries by linked track"
-          value={linkFilter}
-          onChange={(event) => onLinkFilterChange(event.target.value as "all" | "linked" | "unlinked")}
-        >
-          <option value="all">All entries</option>
-          <option value="linked">Linked entries</option>
-          <option value="unlinked">Unlinked entries</option>
-        </select>
-      </div>
+      <div className="library-panel-body">
+        <div className="library-inventory-toolbar">
+          <label className="playlist-search-field playlist-search-field--wide">
+            <Search size={14} />
+            <input
+              aria-label="Search library metadata"
+              placeholder="Search provider, paths, entry key, or linked track..."
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+            />
+          </label>
+          <select
+            aria-label="Filter metadata by provider"
+            value={providerFilter}
+            onChange={(event) => onProviderFilterChange(event.target.value)}
+          >
+            <option value="all">All providers</option>
+            {providers.map((provider) => (
+              <option key={provider} value={provider}>{provider}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Filter metadata assets by type"
+            value={assetTypeFilter}
+            onChange={(event) => onAssetTypeFilterChange(event.target.value)}
+          >
+            <option value="all">All asset types</option>
+            {assetTypes.map((assetType) => (
+              <option key={assetType} value={assetType}>{assetType}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Filter metadata entries by linked track"
+            value={linkFilter}
+            onChange={(event) => onLinkFilterChange(event.target.value as "all" | "linked" | "unlinked")}
+          >
+            <option value="all">All entries</option>
+            <option value="linked">Linked entries</option>
+            <option value="unlinked">Unlinked entries</option>
+          </select>
+        </div>
       <div className="library-metadata-grids">
         <section>
           <h3>Assets <span>{formatNumber(assets.length)} of {formatNumber(totalAssetCount)}</span></h3>
@@ -846,6 +853,7 @@ function MetadataSection({
             </div>
           )}
         </section>
+        </div>
       </div>
     </Panel>
   );
@@ -867,26 +875,28 @@ function IssuesSection({
   return (
     <Panel className="library-inventory-panel">
       <PanelHeader eyebrow="Review" title="Issues" icon={<AlertTriangle size={18} />} />
-      {latestRun ? (
-        <div className="library-alignment-summary">
-          <span>{formatNumber(latestRun.skipped_collision_count)} collisions</span>
-          <span>{formatNumber(latestRun.skipped_error_count)} alignment errors</span>
-          <span>{formatNumber(latestRun.warning_count)} warnings</span>
-        </div>
-      ) : null}
-      {issues.length === 0 ? (
-        <EmptyState title="No issues found" description="Current alignment and metadata inventories have no issue rows." />
-      ) : (
-        <div className="library-issue-list">
-          {issues.map((issue) => (
-            <div className="library-alignment-issue" key={issue.id}>
-              <strong>{issue.title}</strong>
-              <span>{issue.message}</span>
-              <small>{issue.detail}</small>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="library-panel-body">
+        {latestRun ? (
+          <div className="library-alignment-summary library-alignment-summary--inline">
+            <span>{formatNumber(latestRun.skipped_collision_count)} collisions</span>
+            <span>{formatNumber(latestRun.skipped_error_count)} alignment errors</span>
+            <span>{formatNumber(latestRun.warning_count)} warnings</span>
+          </div>
+        ) : null}
+        {issues.length === 0 ? (
+          <EmptyState title="No issues found" description="Current alignment and metadata inventories have no issue rows." />
+        ) : (
+          <div className="library-issue-list">
+            {issues.map((issue) => (
+              <div className="library-alignment-issue" key={issue.id}>
+                <strong>{issue.title}</strong>
+                <span>{issue.message}</span>
+                <small>{issue.detail}</small>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </Panel>
   );
 }
