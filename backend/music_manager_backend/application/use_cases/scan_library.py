@@ -14,7 +14,11 @@ from music_manager_backend.infrastructure.filesystem.local_audio_scanner import 
 )
 from music_manager_backend.infrastructure.filesystem.path_safety import validate_readable_directory
 from music_manager_backend.ports.audio_metadata import AudioMetadataReader
-from music_manager_backend.ports.repositories import LibraryRepository, LibraryTrackRepository
+from music_manager_backend.ports.repositories import (
+    LibraryMetadataRepository,
+    LibraryRepository,
+    LibraryTrackRepository,
+)
 from music_manager_backend.shared.errors import NotFoundError
 from music_manager_backend.shared.ids import new_id
 from music_manager_backend.shared.time import utc_now_iso
@@ -26,10 +30,12 @@ class ScanLibrary:
         libraries: LibraryRepository,
         library_tracks: LibraryTrackRepository,
         metadata_reader: AudioMetadataReader,
+        library_metadata: LibraryMetadataRepository | None = None,
     ) -> None:
         self.libraries = libraries
         self.library_tracks = library_tracks
         self.metadata_reader = metadata_reader
+        self.library_metadata = library_metadata
 
     def execute(self) -> LibraryRead:
         library = self.libraries.get_default()
@@ -47,6 +53,21 @@ class ScanLibrary:
             missing_track_count=self.library_tracks.count_by_status(
                 library.id,
                 LibraryTrackStatus.MISSING,
+            ),
+            metadata_asset_count=(
+                self.library_metadata.count_assets(library.id)
+                if self.library_metadata is not None
+                else 0
+            ),
+            metadata_index_entry_count=(
+                self.library_metadata.count_index_entries(library.id)
+                if self.library_metadata is not None
+                else 0
+            ),
+            last_metadata_imported_at=(
+                self.library_metadata.last_imported_at(library.id)
+                if self.library_metadata is not None
+                else None
             ),
         )
 

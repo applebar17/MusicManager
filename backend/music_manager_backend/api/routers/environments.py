@@ -13,6 +13,7 @@ from music_manager_backend.api.dependencies import (
     get_export_apply_run_repository,
     get_export_plan_repository,
     get_library_alignment_run_repository,
+    get_library_metadata_repository,
     get_library_repository,
     get_library_track_repository,
     get_match_link_repository,
@@ -41,6 +42,7 @@ from music_manager_backend.application.dtos import (
     ExportPlanRead,
     ExportPlanUpdate,
     LibraryAlignmentRunRead,
+    LibraryMetadataImportRunRead,
     ManualMappingCreate,
     MatchCandidateRead,
     MatchingRunSummary,
@@ -78,6 +80,9 @@ from music_manager_backend.application.use_cases.get_export_apply_run import Get
 from music_manager_backend.application.use_cases.get_playlist_detail import GetPlaylistDetail
 from music_manager_backend.application.use_cases.import_soundcloud_playlist import (
     ImportSoundCloudPlaylist,
+)
+from music_manager_backend.application.use_cases.import_library_metadata import (
+    ImportLibraryMetadataFromEnvironment,
 )
 from music_manager_backend.application.use_cases.list_audio_files import ListAudioFiles
 from music_manager_backend.application.use_cases.list_environment_playlists import (
@@ -125,6 +130,7 @@ from music_manager_backend.ports.repositories import (
     ExportApplyRunRepository,
     ExportPlanRepository,
     LibraryAlignmentRunRepository,
+    LibraryMetadataRepository,
     LibraryRepository,
     LibraryTrackRepository,
     MatchLinkRepository,
@@ -177,6 +183,10 @@ LibraryTrackRepositoryDependency = Annotated[
 LibraryAlignmentRunRepositoryDependency = Annotated[
     LibraryAlignmentRunRepository,
     Depends(get_library_alignment_run_repository),
+]
+LibraryMetadataRepositoryDependency = Annotated[
+    LibraryMetadataRepository,
+    Depends(get_library_metadata_repository),
 ]
 ScanRunRepositoryDependency = Annotated[
     ScanRunRepository,
@@ -672,6 +682,7 @@ def align_library_from_environment(
     libraries: LibraryRepositoryDependency,
     library_tracks: LibraryTrackRepositoryDependency,
     alignment_runs: LibraryAlignmentRunRepositoryDependency,
+    metadata_repository: LibraryMetadataRepositoryDependency,
 ) -> LibraryAlignmentRunRead:
     return AlignLibraryFromEnvironment(
         environments=environments,
@@ -680,6 +691,30 @@ def align_library_from_environment(
         alignment_runs=alignment_runs,
         scanner_factory=LocalAudioScanner,
         metadata_reader=MetadataReader(),
+        metadata_repository=metadata_repository,
+    ).execute(environment_id)
+
+
+@router.post(
+    "/{environment_id}/library/metadata/import",
+    response_model=LibraryMetadataImportRunRead,
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(guard_library_operation("import_library_metadata"))],
+)
+def import_library_metadata_from_environment(
+    environment_id: str,
+    environments: EnvironmentRepositoryDependency,
+    libraries: LibraryRepositoryDependency,
+    library_tracks: LibraryTrackRepositoryDependency,
+    alignment_runs: LibraryAlignmentRunRepositoryDependency,
+    metadata_repository: LibraryMetadataRepositoryDependency,
+) -> LibraryMetadataImportRunRead:
+    return ImportLibraryMetadataFromEnvironment(
+        environments=environments,
+        libraries=libraries,
+        library_tracks=library_tracks,
+        alignment_runs=alignment_runs,
+        metadata_repository=metadata_repository,
     ).execute(environment_id)
 
 

@@ -13,6 +13,11 @@ from music_manager_backend.domain.entities import (
     LibraryAlignmentItemStatus,
     LibraryAlignmentRun,
     LibraryAlignmentRunStatus,
+    LibraryMetadataAsset,
+    LibraryMetadataAssetStatus,
+    LibraryMetadataImportRun,
+    LibraryMetadataImportRunStatus,
+    LibraryMetadataIndexEntry,
     LibraryTrack,
     LibraryTrackStatus,
     MatchLink,
@@ -33,6 +38,7 @@ from music_manager_backend.infrastructure.persistence import (
     SqliteExportApplyRunRepository,
     SqliteExportPlanRepository,
     SqliteLibraryAlignmentRunRepository,
+    SqliteLibraryMetadataRepository,
     SqliteLibraryRepository,
     SqliteLibraryTrackRepository,
     SqliteMatchLinkRepository,
@@ -197,6 +203,78 @@ def test_library_alignment_repository_round_trips_runs_and_items(
 
     assert repository.get("alignment_1") == (run, (item,))
     assert repository.latest("default") == (run, (item,))
+
+
+def test_library_metadata_repository_round_trips_runs_assets_and_latest_entries(
+    sqlite_connection: sqlite3.Connection,
+) -> None:
+    SqliteEnvironmentRepository(sqlite_connection).save(
+        MusicEnvironment(id="env_1", name="Gig USB", root_path=Path("/Volumes/GIG"))
+    )
+    SqliteLibraryRepository(sqlite_connection).save_default(
+        MusicLibrary(
+            id="default",
+            root_path=Path("/Music/Library"),
+            created_at="2026-07-06T10:00:00+00:00",
+            updated_at="2026-07-06T10:00:00+00:00",
+        )
+    )
+    repository = SqliteLibraryMetadataRepository(sqlite_connection)
+    run = LibraryMetadataImportRun(
+        id="metadata_run_1",
+        library_id="default",
+        environment_id="env_1",
+        status=LibraryMetadataImportRunStatus.COMPLETED,
+        started_at="2026-07-06T10:00:00+00:00",
+        finished_at="2026-07-06T10:00:01+00:00",
+        asset_count=1,
+        index_entry_count=1,
+    )
+    asset = LibraryMetadataAsset(
+        id="metadata_asset_1",
+        run_id="metadata_run_1",
+        library_id="default",
+        provider="tracks_json",
+        asset_type="tracks_json",
+        source_path=Path("/Volumes/GIG/tracks.json"),
+        stored_path=Path("/Music/Library/_music_manager/metadata-assets/metadata_run_1/tracks.json"),
+        size_bytes=123,
+        modified_at=12.5,
+        imported_at="2026-07-06T10:00:00+00:00",
+        status=LibraryMetadataAssetStatus.COPIED,
+    )
+    entry = LibraryMetadataIndexEntry(
+        id="metadata_entry_1",
+        library_id="default",
+        provider="tracks_json",
+        source_asset_id="metadata_asset_1",
+        source_path=Path("/Volumes/GIG/tracks.json"),
+        entry_key="id:track_1",
+        payload_json='{"id":"track_1"}',
+        imported_at="2026-07-06T10:00:00+00:00",
+    )
+    newer_entry = LibraryMetadataIndexEntry(
+        id="metadata_entry_2",
+        library_id="default",
+        provider="tracks_json",
+        source_asset_id="metadata_asset_1",
+        source_path=Path("/Volumes/GIG/tracks.json"),
+        entry_key="id:track_1",
+        payload_json='{"id":"track_1","latest":true}',
+        imported_at="2026-07-06T10:00:02+00:00",
+    )
+
+    repository.save_import_run(run, (asset,), (entry,))
+    repository.save_import_run(run, (asset,), (newer_entry,))
+
+    latest = repository.latest("default")
+    assert latest is not None
+    assert latest[0] == run
+    assert latest[1] == (asset,)
+    assert latest[2] == (newer_entry,)
+    assert repository.count_assets("default") == 1
+    assert repository.count_index_entries("default") == 1
+    assert repository.last_imported_at("default") == "2026-07-06T10:00:01+00:00"
 
 
 def test_song_repository_preserves_local_overrides(sqlite_connection: sqlite3.Connection) -> None:

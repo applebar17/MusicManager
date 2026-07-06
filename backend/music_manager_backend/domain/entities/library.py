@@ -26,6 +26,17 @@ class LibraryAlignmentItemStatus(StrEnum):
     WARNING_IDENTITY_INCOMPLETE = "warning_identity_incomplete"
 
 
+class LibraryMetadataImportRunStatus(StrEnum):
+    COMPLETED = "completed"
+    COMPLETED_WITH_ISSUES = "completed_with_issues"
+    FAILED = "failed"
+
+
+class LibraryMetadataAssetStatus(StrEnum):
+    COPIED = "copied"
+    SKIPPED_ERROR = "skipped_error"
+
+
 @dataclass(frozen=True)
 class MusicLibrary:
     id: str
@@ -87,3 +98,47 @@ class LibraryAlignmentItem:
     artist: str | None = None
     duration_seconds: int | None = None
     normalized_title: str | None = None
+
+
+@dataclass(frozen=True)
+class LibraryMetadataImportRun:
+    id: str
+    library_id: str
+    environment_id: str
+    status: LibraryMetadataImportRunStatus
+    started_at: str
+    alignment_run_id: str | None = None
+    finished_at: str | None = None
+    asset_count: int = 0
+    index_entry_count: int = 0
+    error_count: int = 0
+
+
+@dataclass(frozen=True)
+class LibraryMetadataAsset:
+    id: str
+    run_id: str
+    library_id: str
+    provider: str
+    asset_type: str
+    source_path: Path
+    stored_path: Path | None
+    size_bytes: int
+    modified_at: float
+    imported_at: str
+    status: LibraryMetadataAssetStatus
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+@dataclass(frozen=True)
+class LibraryMetadataIndexEntry:
+    id: str
+    library_id: str
+    provider: str
+    source_asset_id: str
+    source_path: Path
+    entry_key: str
+    payload_json: str
+    imported_at: str
+    library_track_id: str | None = None

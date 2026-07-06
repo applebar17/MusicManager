@@ -37,6 +37,9 @@ export type LibraryRead = {
   updated_at: string | null;
   track_count: number;
   missing_track_count: number;
+  metadata_asset_count: number;
+  metadata_index_entry_count: number;
+  last_metadata_imported_at: string | null;
 };
 
 export type LibraryConfigure = {
@@ -83,6 +86,42 @@ export type LibraryAlignmentRunRead = {
   skipped_error_count: number;
   warning_count: number;
   items: LibraryAlignmentItemRead[];
+  metadata_import: LibraryMetadataImportRunRead | null;
+};
+
+export type LibraryMetadataAssetRead = {
+  id: string;
+  provider: string;
+  asset_type: string;
+  source_path: string;
+  stored_path: string | null;
+  status: string;
+  error_code: string | null;
+  error_message: string | null;
+};
+
+export type LibraryMetadataIndexEntryRead = {
+  id: string;
+  provider: string;
+  source_path: string;
+  library_track_id: string | null;
+  entry_key: string;
+  imported_at: string;
+};
+
+export type LibraryMetadataImportRunRead = {
+  run_id: string;
+  library_id: string;
+  environment_id: string;
+  alignment_run_id: string | null;
+  status: "completed" | "completed_with_issues" | "failed";
+  started_at: string;
+  finished_at: string | null;
+  asset_count: number;
+  index_entry_count: number;
+  error_count: number;
+  assets: LibraryMetadataAssetRead[];
+  index_entries: LibraryMetadataIndexEntryRead[];
 };
 
 export type ScanSummaryRead = {

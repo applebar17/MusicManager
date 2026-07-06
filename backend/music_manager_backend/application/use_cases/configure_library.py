@@ -6,7 +6,11 @@ from music_manager_backend.application.dtos.library import (
 from music_manager_backend.domain.entities.library import DEFAULT_LIBRARY_ID, MusicLibrary
 from music_manager_backend.domain.entities.library import LibraryTrackStatus
 from music_manager_backend.infrastructure.filesystem import validate_writable_directory
-from music_manager_backend.ports.repositories import LibraryRepository, LibraryTrackRepository
+from music_manager_backend.ports.repositories import (
+    LibraryMetadataRepository,
+    LibraryRepository,
+    LibraryTrackRepository,
+)
 from music_manager_backend.shared.time import utc_now_iso
 
 
@@ -15,9 +19,11 @@ class ConfigureLibrary:
         self,
         libraries: LibraryRepository,
         library_tracks: LibraryTrackRepository,
+        library_metadata: LibraryMetadataRepository | None = None,
     ) -> None:
         self.libraries = libraries
         self.library_tracks = library_tracks
+        self.library_metadata = library_metadata
 
     def execute(self, data: LibraryConfigure) -> LibraryRead:
         root_path = validate_writable_directory(data.root_path)
@@ -36,5 +42,20 @@ class ConfigureLibrary:
             missing_track_count=self.library_tracks.count_by_status(
                 library.id,
                 LibraryTrackStatus.MISSING,
+            ),
+            metadata_asset_count=(
+                self.library_metadata.count_assets(library.id)
+                if self.library_metadata is not None
+                else 0
+            ),
+            metadata_index_entry_count=(
+                self.library_metadata.count_index_entries(library.id)
+                if self.library_metadata is not None
+                else 0
+            ),
+            last_metadata_imported_at=(
+                self.library_metadata.last_imported_at(library.id)
+                if self.library_metadata is not None
+                else None
             ),
         )

@@ -10,6 +10,11 @@ from music_manager_backend.domain.entities.library import (
     LibraryAlignmentItemStatus,
     LibraryAlignmentRun,
     LibraryAlignmentRunStatus,
+    LibraryMetadataAsset,
+    LibraryMetadataAssetStatus,
+    LibraryMetadataImportRun,
+    LibraryMetadataImportRunStatus,
+    LibraryMetadataIndexEntry,
     LibraryTrack,
     LibraryTrackStatus,
     MusicLibrary,
@@ -337,6 +342,251 @@ class SqliteLibraryAlignmentRunRepository:
         return [_item_from_row(row) for row in rows]
 
 
+class SqliteLibraryMetadataRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.connection = connection
+
+    def save_import_run(
+        self,
+        run: LibraryMetadataImportRun,
+        assets: tuple[LibraryMetadataAsset, ...] = (),
+        entries: tuple[LibraryMetadataIndexEntry, ...] = (),
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO library_metadata_import_runs (
+                id,
+                library_id,
+                environment_id,
+                alignment_run_id,
+                status,
+                started_at,
+                finished_at,
+                asset_count,
+                index_entry_count,
+                error_count
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                library_id = excluded.library_id,
+                environment_id = excluded.environment_id,
+                alignment_run_id = excluded.alignment_run_id,
+                status = excluded.status,
+                started_at = excluded.started_at,
+                finished_at = excluded.finished_at,
+                asset_count = excluded.asset_count,
+                index_entry_count = excluded.index_entry_count,
+                error_count = excluded.error_count
+            """,
+            (
+                run.id,
+                run.library_id,
+                run.environment_id,
+                run.alignment_run_id,
+                run.status.value,
+                run.started_at,
+                run.finished_at,
+                run.asset_count,
+                run.index_entry_count,
+                run.error_count,
+            ),
+        )
+        if assets:
+            self.connection.execute(
+                """
+                DELETE FROM library_metadata_index_entries
+                WHERE source_asset_id IN (
+                    SELECT id FROM library_metadata_assets WHERE run_id = ?
+                )
+                """,
+                (run.id,),
+            )
+            self.connection.execute(
+                "DELETE FROM library_metadata_assets WHERE run_id = ?",
+                (run.id,),
+            )
+            self.connection.executemany(
+                """
+                INSERT INTO library_metadata_assets (
+                    id,
+                    run_id,
+                    library_id,
+                    provider,
+                    asset_type,
+                    source_path,
+                    stored_path,
+                    size_bytes,
+                    modified_at,
+                    imported_at,
+                    status,
+                    error_code,
+                    error_message
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        asset.id,
+                        asset.run_id,
+                        asset.library_id,
+                        asset.provider,
+                        asset.asset_type,
+                        str(asset.source_path),
+                        str(asset.stored_path) if asset.stored_path is not None else None,
+                        asset.size_bytes,
+                        asset.modified_at,
+                        asset.imported_at,
+                        asset.status.value,
+                        asset.error_code,
+                        asset.error_message,
+                    )
+                    for asset in assets
+                ],
+            )
+        if entries:
+            self.connection.executemany(
+                """
+                INSERT INTO library_metadata_index_entries (
+                    id,
+                    library_id,
+                    provider,
+                    source_asset_id,
+                    source_path,
+                    library_track_id,
+                    entry_key,
+                    payload_json,
+                    imported_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(library_id, provider, entry_key) DO UPDATE SET
+                    id = excluded.id,
+                    source_asset_id = excluded.source_asset_id,
+                    source_path = excluded.source_path,
+                    library_track_id = excluded.library_track_id,
+                    payload_json = excluded.payload_json,
+                    imported_at = excluded.imported_at
+                """,
+                [
+                    (
+                        entry.id,
+                        entry.library_id,
+                        entry.provider,
+                        entry.source_asset_id,
+                        str(entry.source_path),
+                        entry.library_track_id,
+                        entry.entry_key,
+                        entry.payload_json,
+                        entry.imported_at,
+                    )
+                    for entry in entries
+                ],
+            )
+        self.connection.commit()
+
+    def latest(
+        self,
+        library_id: str,
+    ) -> tuple[
+        LibraryMetadataImportRun,
+        tuple[LibraryMetadataAsset, ...],
+        tuple[LibraryMetadataIndexEntry, ...],
+    ] | None:
+        row = self.connection.execute(
+            """
+            SELECT * FROM library_metadata_import_runs
+            WHERE library_id = ?
+            ORDER BY started_at DESC, id DESC
+            LIMIT 1
+            """,
+            (library_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._run_bundle(_metadata_run_from_row(row))
+
+    def latest_by_alignment_run(
+        self,
+        alignment_run_id: str,
+    ) -> tuple[
+        LibraryMetadataImportRun,
+        tuple[LibraryMetadataAsset, ...],
+        tuple[LibraryMetadataIndexEntry, ...],
+    ] | None:
+        row = self.connection.execute(
+            """
+            SELECT * FROM library_metadata_import_runs
+            WHERE alignment_run_id = ?
+            ORDER BY started_at DESC, id DESC
+            LIMIT 1
+            """,
+            (alignment_run_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._run_bundle(_metadata_run_from_row(row))
+
+    def count_assets(self, library_id: str) -> int:
+        row = self.connection.execute(
+            """
+            SELECT COUNT(*) FROM library_metadata_assets
+            WHERE library_id = ? AND status = ?
+            """,
+            (library_id, LibraryMetadataAssetStatus.COPIED.value),
+        ).fetchone()
+        return int(row[0])
+
+    def count_index_entries(self, library_id: str) -> int:
+        row = self.connection.execute(
+            "SELECT COUNT(*) FROM library_metadata_index_entries WHERE library_id = ?",
+            (library_id,),
+        ).fetchone()
+        return int(row[0])
+
+    def last_imported_at(self, library_id: str) -> str | None:
+        row = self.connection.execute(
+            """
+            SELECT MAX(finished_at) FROM library_metadata_import_runs
+            WHERE library_id = ? AND finished_at IS NOT NULL
+            """,
+            (library_id,),
+        ).fetchone()
+        return cast(str | None, row[0])
+
+    def _run_bundle(
+        self,
+        run: LibraryMetadataImportRun,
+    ) -> tuple[
+        LibraryMetadataImportRun,
+        tuple[LibraryMetadataAsset, ...],
+        tuple[LibraryMetadataIndexEntry, ...],
+    ]:
+        return run, tuple(self._assets_for_run(run.id)), tuple(self._entries_for_run(run.id))
+
+    def _assets_for_run(self, run_id: str) -> list[LibraryMetadataAsset]:
+        rows = self.connection.execute(
+            """
+            SELECT * FROM library_metadata_assets
+            WHERE run_id = ?
+            ORDER BY source_path, id
+            """,
+            (run_id,),
+        ).fetchall()
+        return [_metadata_asset_from_row(row) for row in rows]
+
+    def _entries_for_run(self, run_id: str) -> list[LibraryMetadataIndexEntry]:
+        rows = self.connection.execute(
+            """
+            SELECT library_metadata_index_entries.* FROM library_metadata_index_entries
+            JOIN library_metadata_assets
+                ON library_metadata_assets.id = library_metadata_index_entries.source_asset_id
+            WHERE library_metadata_assets.run_id = ?
+            ORDER BY library_metadata_index_entries.entry_key
+            """,
+            (run_id,),
+        ).fetchall()
+        return [_metadata_entry_from_row(row) for row in rows]
+
+
 def _library_from_row(row: sqlite3.Row) -> MusicLibrary:
     return MusicLibrary(
         id=cast(str, row["id"]),
@@ -402,4 +652,52 @@ def _item_from_row(row: sqlite3.Row) -> LibraryAlignmentItem:
         artist=cast(str | None, row["artist"]),
         duration_seconds=cast(int | None, row["duration_seconds"]),
         normalized_title=cast(str | None, row["normalized_title"]),
+    )
+
+
+def _metadata_run_from_row(row: sqlite3.Row) -> LibraryMetadataImportRun:
+    return LibraryMetadataImportRun(
+        id=cast(str, row["id"]),
+        library_id=cast(str, row["library_id"]),
+        environment_id=cast(str, row["environment_id"]),
+        alignment_run_id=cast(str | None, row["alignment_run_id"]),
+        status=LibraryMetadataImportRunStatus(cast(str, row["status"])),
+        started_at=cast(str, row["started_at"]),
+        finished_at=cast(str | None, row["finished_at"]),
+        asset_count=cast(int, row["asset_count"]),
+        index_entry_count=cast(int, row["index_entry_count"]),
+        error_count=cast(int, row["error_count"]),
+    )
+
+
+def _metadata_asset_from_row(row: sqlite3.Row) -> LibraryMetadataAsset:
+    stored_path = cast(str | None, row["stored_path"])
+    return LibraryMetadataAsset(
+        id=cast(str, row["id"]),
+        run_id=cast(str, row["run_id"]),
+        library_id=cast(str, row["library_id"]),
+        provider=cast(str, row["provider"]),
+        asset_type=cast(str, row["asset_type"]),
+        source_path=Path(cast(str, row["source_path"])),
+        stored_path=Path(stored_path) if stored_path is not None else None,
+        size_bytes=cast(int, row["size_bytes"]),
+        modified_at=cast(float, row["modified_at"]),
+        imported_at=cast(str, row["imported_at"]),
+        status=LibraryMetadataAssetStatus(cast(str, row["status"])),
+        error_code=cast(str | None, row["error_code"]),
+        error_message=cast(str | None, row["error_message"]),
+    )
+
+
+def _metadata_entry_from_row(row: sqlite3.Row) -> LibraryMetadataIndexEntry:
+    return LibraryMetadataIndexEntry(
+        id=cast(str, row["id"]),
+        library_id=cast(str, row["library_id"]),
+        provider=cast(str, row["provider"]),
+        source_asset_id=cast(str, row["source_asset_id"]),
+        source_path=Path(cast(str, row["source_path"])),
+        library_track_id=cast(str | None, row["library_track_id"]),
+        entry_key=cast(str, row["entry_key"]),
+        payload_json=cast(str, row["payload_json"]),
+        imported_at=cast(str, row["imported_at"]),
     )

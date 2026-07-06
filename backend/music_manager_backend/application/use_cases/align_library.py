@@ -7,6 +7,9 @@ from music_manager_backend.application.dtos.library import (
     LibraryAlignmentRunRead,
     library_alignment_run_read,
 )
+from music_manager_backend.application.use_cases.import_library_metadata import (
+    ImportLibraryMetadataFromEnvironment,
+)
 from music_manager_backend.application.use_cases.scan_library import (
     discover_audio_files_with_metadata,
     scan_library,
@@ -31,6 +34,7 @@ from music_manager_backend.ports.filesystem import AudioFileScanner
 from music_manager_backend.ports.repositories import (
     EnvironmentRepository,
     LibraryAlignmentRunRepository,
+    LibraryMetadataRepository,
     LibraryRepository,
     LibraryTrackRepository,
 )
@@ -50,11 +54,13 @@ class AlignLibraryFromEnvironment:
         alignment_runs: LibraryAlignmentRunRepository,
         scanner_factory: ScannerFactory,
         metadata_reader: AudioMetadataReader,
+        metadata_repository: LibraryMetadataRepository | None = None,
     ) -> None:
         self.environments = environments
         self.libraries = libraries
         self.library_tracks = library_tracks
         self.alignment_runs = alignment_runs
+        self.metadata_repository = metadata_repository
         self.scanner_factory = scanner_factory
         self.metadata_reader = metadata_reader
 
@@ -124,7 +130,16 @@ class AlignLibraryFromEnvironment:
         )
         item_tuple = tuple(items)
         self.alignment_runs.save(run, item_tuple)
-        return library_alignment_run_read(run, item_tuple)
+        metadata_import = None
+        if self.metadata_repository is not None:
+            metadata_import = ImportLibraryMetadataFromEnvironment(
+                environments=self.environments,
+                libraries=self.libraries,
+                library_tracks=self.library_tracks,
+                alignment_runs=self.alignment_runs,
+                metadata_repository=self.metadata_repository,
+            ).execute(environment_id, alignment_run_id=run.id)
+        return library_alignment_run_read(run, item_tuple, metadata_import=metadata_import)
 
     def _align_file(
         self,
@@ -225,9 +240,11 @@ class GetLatestLibraryAlignmentRun:
         self,
         libraries: LibraryRepository,
         alignment_runs: LibraryAlignmentRunRepository,
+        metadata_repository: LibraryMetadataRepository | None = None,
     ) -> None:
         self.libraries = libraries
         self.alignment_runs = alignment_runs
+        self.metadata_repository = metadata_repository
 
     def execute(self) -> LibraryAlignmentRunRead | None:
         library = self.libraries.get_default()
@@ -237,7 +254,21 @@ class GetLatestLibraryAlignmentRun:
         if latest is None:
             return None
         run, items = latest
-        return library_alignment_run_read(run, items)
+        metadata_import = None
+        if self.metadata_repository is not None:
+            metadata_bundle = self.metadata_repository.latest_by_alignment_run(run.id)
+            if metadata_bundle is not None:
+                metadata_run, metadata_assets, metadata_entries = metadata_bundle
+                from music_manager_backend.application.dtos.library import (
+                    library_metadata_import_run_read,
+                )
+
+                metadata_import = library_metadata_import_run_read(
+                    metadata_run,
+                    metadata_assets,
+                    metadata_entries,
+                )
+        return library_alignment_run_read(run, items, metadata_import=metadata_import)
 
 
 @dataclass

@@ -23,8 +23,12 @@ from music_manager_backend.application.dtos.library import (
     LibraryAlignmentItemRead,
     LibraryAlignmentRunRead,
     LibraryConfigure,
+    LibraryMetadataAssetRead,
+    LibraryMetadataImportRunRead,
+    LibraryMetadataIndexEntryRead,
     LibraryRead,
     library_alignment_run_read,
+    library_metadata_import_run_read,
     library_read,
 )
 from music_manager_backend.application.dtos.matching import (
@@ -79,6 +83,9 @@ __all__ = [
     "LibraryConfigure",
     "LibraryAlignmentItemRead",
     "LibraryAlignmentRunRead",
+    "LibraryMetadataAssetRead",
+    "LibraryMetadataImportRunRead",
+    "LibraryMetadataIndexEntryRead",
     "LibraryRead",
     "DownloadMatchRunResultRead",
     "DownloadMatchSummaryRead",
@@ -109,5 +116,6 @@ __all__ = [
     "export_apply_run_read",
     "export_plan_read",
     "library_alignment_run_read",
+    "library_metadata_import_run_read",
     "library_read",
 ]

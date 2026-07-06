@@ -3,14 +3,20 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { ApiError } from "../../shared/api/http";
-import type { LibraryAlignmentRunRead, LibraryRead } from "../../shared/api/types";
+import type {
+  LibraryAlignmentRunRead,
+  LibraryMetadataImportRunRead,
+  LibraryRead,
+} from "../../shared/api/types";
 import { useAppState } from "../../shared/state";
 import { Button, ErrorBanner, LoadingState, MetricCard, Panel, PanelHeader } from "../../shared/ui";
 import {
   alignLibraryFromEnvironment,
   configureLibrary,
   getLatestLibraryAlignmentRun,
+  getLatestLibraryMetadataImportRun,
   getLibrary,
+  importLibraryMetadataFromEnvironment,
   scanLibrary,
 } from "./api";
 
@@ -23,21 +29,30 @@ export function LibraryPanel() {
   const { selectedEnvironmentId } = useAppState();
   const [state, setState] = useState<LibraryState>({ status: "loading" });
   const [latestRun, setLatestRun] = useState<LibraryAlignmentRunRead | null>(null);
+  const [latestMetadataRun, setLatestMetadataRun] = useState<LibraryMetadataImportRunRead | null>(
+    null,
+  );
   const [rootPath, setRootPath] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [isAligning, setIsAligning] = useState(false);
+  const [isImportingMetadata, setIsImportingMetadata] = useState(false);
 
   const loadLibrary = useCallback(() => {
     setState({ status: "loading" });
     setSaveError(null);
     setActionError(null);
-    void Promise.all([getLibrary(), getLatestLibraryAlignmentRun()])
-      .then(([library, alignmentRun]) => {
+    void Promise.all([
+      getLibrary(),
+      getLatestLibraryAlignmentRun(),
+      getLatestLibraryMetadataImportRun(),
+    ])
+      .then(([library, alignmentRun, metadataRun]) => {
         setRootPath(library.root_path ?? "");
         setLatestRun(alignmentRun);
+        setLatestMetadataRun(metadataRun);
         setState({ status: "ready", library });
       })
       .catch((error: unknown) => {
@@ -108,6 +123,7 @@ export function LibraryPanel() {
     void alignLibraryFromEnvironment(selectedEnvironmentId)
       .then(async (run) => {
         setLatestRun(run);
+        setLatestMetadataRun(run.metadata_import);
         setState({ status: "ready", library: await getLibrary() });
       })
       .catch((error: unknown) => {
@@ -117,6 +133,28 @@ export function LibraryPanel() {
       })
       .finally(() => {
         setIsAligning(false);
+      });
+  };
+
+  const handleMetadataImport = () => {
+    if (!selectedEnvironmentId) {
+      setActionError("Select a USB environment before importing metadata.");
+      return;
+    }
+    setIsImportingMetadata(true);
+    setActionError(null);
+    void importLibraryMetadataFromEnvironment(selectedEnvironmentId)
+      .then(async (run) => {
+        setLatestMetadataRun(run);
+        setState({ status: "ready", library: await getLibrary() });
+      })
+      .catch((error: unknown) => {
+        setActionError(
+          error instanceof ApiError ? error.message : "The metadata import failed.",
+        );
+      })
+      .finally(() => {
+        setIsImportingMetadata(false);
       });
   };
 
@@ -170,6 +208,13 @@ export function LibraryPanel() {
           tone="accent"
           footer={`${formatNumber(state.library.missing_track_count)} missing`}
         />
+        <MetricCard
+          label="Metadata assets"
+          value={formatNumber(state.library.metadata_asset_count)}
+          icon={<Database size={18} />}
+          tone="neutral"
+          footer={`${formatNumber(state.library.metadata_index_entry_count)} indexed entries`}
+        />
       </section>
 
       <Panel className="library-actions-panel">
@@ -191,10 +236,25 @@ export function LibraryPanel() {
               !selectedEnvironmentId ||
               isSaving ||
               isScanning ||
-              isAligning
+              isAligning ||
+              isImportingMetadata
             }
           >
             {isAligning ? "Aligning" : "Align From Selected USB"}
+          </Button>
+          <Button
+            icon={<Database size={16} />}
+            onClick={handleMetadataImport}
+            disabled={
+              !state.library.configured ||
+              !selectedEnvironmentId ||
+              isSaving ||
+              isScanning ||
+              isAligning ||
+              isImportingMetadata
+            }
+          >
+            {isImportingMetadata ? "Importing" : "Import Metadata"}
           </Button>
         </div>
         {actionError ? <ErrorBanner title="Library action failed" message={actionError} /> : null}
@@ -235,6 +295,7 @@ export function LibraryPanel() {
         </form>
       </Panel>
       {latestRun ? <LatestAlignmentPanel run={latestRun} /> : null}
+      {latestMetadataRun ? <LatestMetadataPanel run={latestMetadataRun} /> : null}
     </div>
   );
 }
@@ -276,4 +337,35 @@ function LatestAlignmentPanel({ run }: { run: LibraryAlignmentRunRead }) {
 
 function alignmentTitle(run: LibraryAlignmentRunRead) {
   return run.status === "completed_with_issues" ? "Completed with issues" : "Completed";
+}
+
+function LatestMetadataPanel({ run }: { run: LibraryMetadataImportRunRead }) {
+  const issueAssets = run.assets.filter((asset) => asset.status !== "copied");
+  return (
+    <Panel className="library-alignment-panel">
+      <PanelHeader
+        eyebrow="Latest metadata import"
+        title={run.status === "completed_with_issues" ? "Imported with issues" : "Imported"}
+        icon={<Database size={18} />}
+      />
+      <div className="library-alignment-summary">
+        <span>{formatNumber(run.asset_count)} assets preserved</span>
+        <span>{formatNumber(run.index_entry_count)} index entries</span>
+        <span>{formatNumber(run.error_count)} errors</span>
+      </div>
+      {issueAssets.length > 0 ? (
+        <div className="library-alignment-issues">
+          {issueAssets.map((asset) => (
+            <div className="library-alignment-issue" key={asset.id}>
+              <strong>{asset.provider}</strong>
+              <span>{asset.error_message ?? asset.status}</span>
+              <small>{asset.source_path}</small>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">No metadata import issues in the latest run.</p>
+      )}
+    </Panel>
+  );
 }

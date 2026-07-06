@@ -133,6 +133,10 @@ function mockFetch() {
       return jsonResponse(null);
     }
 
+    if (path === "/library/metadata/import-runs/latest" && method === "GET") {
+      return jsonResponse(null);
+    }
+
     if (path === "/library" && method === "PUT") {
       const body = JSON.parse(String(init?.body ?? "{}")) as { root_path: string };
       libraryRootPath = body.root_path;
@@ -445,6 +449,9 @@ function libraryResponse(rootPath: string | null) {
   return {
     configured: rootPath !== null,
     created_at: rootPath === null ? null : "2026-07-06T10:00:00+00:00",
+    last_metadata_imported_at: null,
+    metadata_asset_count: 0,
+    metadata_index_entry_count: 0,
     missing_track_count: 0,
     root_path: rootPath,
     track_count: 0,

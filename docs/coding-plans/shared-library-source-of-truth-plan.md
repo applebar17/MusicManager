@@ -173,6 +173,16 @@ Exit criteria:
 
 Goal: preserve USB-side metadata during alignment.
 
+Locked Wave 3 decisions:
+
+- Raw metadata assets live under the library root in
+  `_music_manager/metadata-assets`.
+- `tracks.json` is parsed only enough for raw-plus-index compaction; cue/grid
+  interpretation is deferred.
+- Latest import wins at provider plus entry-key level.
+- The Library page shows counts and latest import summary only.
+- Provider-specific metadata interpretation/export remains Wave 7.
+
 Deliverables:
 
 - Discover `tracks.json` files under the USB root.

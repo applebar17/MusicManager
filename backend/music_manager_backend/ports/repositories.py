@@ -9,6 +9,9 @@ from music_manager_backend.domain.entities import (
     ExportPlan,
     LibraryAlignmentItem,
     LibraryAlignmentRun,
+    LibraryMetadataAsset,
+    LibraryMetadataImportRun,
+    LibraryMetadataIndexEntry,
     LibraryTrack,
     LibraryTrackStatus,
     MatchLink,
@@ -130,6 +133,45 @@ class LibraryAlignmentRunRepository(Protocol):
         self,
         library_id: str,
     ) -> tuple[LibraryAlignmentRun, tuple[LibraryAlignmentItem, ...]] | None:
+        pass
+
+
+class LibraryMetadataRepository(Protocol):
+    def save_import_run(
+        self,
+        run: LibraryMetadataImportRun,
+        assets: tuple[LibraryMetadataAsset, ...] = (),
+        entries: tuple[LibraryMetadataIndexEntry, ...] = (),
+    ) -> None:
+        pass
+
+    def latest(
+        self,
+        library_id: str,
+    ) -> tuple[
+        LibraryMetadataImportRun,
+        tuple[LibraryMetadataAsset, ...],
+        tuple[LibraryMetadataIndexEntry, ...],
+    ] | None:
+        pass
+
+    def latest_by_alignment_run(
+        self,
+        alignment_run_id: str,
+    ) -> tuple[
+        LibraryMetadataImportRun,
+        tuple[LibraryMetadataAsset, ...],
+        tuple[LibraryMetadataIndexEntry, ...],
+    ] | None:
+        pass
+
+    def count_assets(self, library_id: str) -> int:
+        pass
+
+    def count_index_entries(self, library_id: str) -> int:
+        pass
+
+    def last_imported_at(self, library_id: str) -> str | None:
         pass
 
 

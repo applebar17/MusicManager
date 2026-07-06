@@ -2,6 +2,7 @@ import { apiGet, apiPost, apiPut } from "../../shared/api/http";
 import type {
   LibraryAlignmentRunRead,
   LibraryConfigure,
+  LibraryMetadataImportRunRead,
   LibraryRead,
 } from "../../shared/api/types";
 
@@ -23,4 +24,14 @@ export function alignLibraryFromEnvironment(environmentId: string) {
 
 export function getLatestLibraryAlignmentRun() {
   return apiGet<LibraryAlignmentRunRead | null>("/library/alignment-runs/latest");
+}
+
+export function importLibraryMetadataFromEnvironment(environmentId: string) {
+  return apiPost<LibraryMetadataImportRunRead>(
+    `/environments/${environmentId}/library/metadata/import`,
+  );
+}
+
+export function getLatestLibraryMetadataImportRun() {
+  return apiGet<LibraryMetadataImportRunRead | null>("/library/metadata/import-runs/latest");
 }

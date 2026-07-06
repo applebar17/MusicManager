@@ -1,9 +1,13 @@
 import sqlite3
+import json
 from pathlib import Path
 
 import pytest
 
 from music_manager_backend.application.use_cases.align_library import AlignLibraryFromEnvironment
+from music_manager_backend.application.use_cases.import_library_metadata import (
+    ImportLibraryMetadataFromEnvironment,
+)
 from music_manager_backend.application.use_cases.scan_library import ScanLibrary
 from music_manager_backend.domain.entities import AudioMetadata, MusicEnvironment
 from music_manager_backend.domain.entities.library import (
@@ -15,6 +19,7 @@ from music_manager_backend.infrastructure.filesystem import LocalAudioScanner
 from music_manager_backend.infrastructure.persistence import (
     SqliteEnvironmentRepository,
     SqliteLibraryAlignmentRunRepository,
+    SqliteLibraryMetadataRepository,
     SqliteLibraryRepository,
     SqliteLibraryTrackRepository,
 )
@@ -193,6 +198,118 @@ def test_alignment_rejects_overlapping_roots(
         _align_use_case(sqlite_connection, _MetadataReader({})).execute("env_1")
 
 
+def test_metadata_import_copies_tracks_json_and_compacts_index(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    library_root, usb_root = _roots(tmp_path)
+    playlist = usb_root / "Playlist"
+    playlist.mkdir()
+    (playlist / "track.mp3").write_bytes(b"audio")
+    tracks_json = playlist / "tracks.json"
+    tracks_json.write_text(
+        json.dumps([{"path": "track.mp3", "title": "Track", "duration_seconds": 180}]),
+        encoding="utf-8",
+    )
+    _save_library(sqlite_connection, library_root)
+    _save_environment(sqlite_connection, usb_root)
+    SqliteLibraryTrackRepository(sqlite_connection).save(
+        LibraryTrack(
+            id="library_track_1",
+            library_id="default",
+            canonical_path=library_root / "track.mp3",
+            filename="track.mp3",
+            status=LibraryTrackStatus.ACTIVE,
+            title="Track",
+            duration_seconds=180,
+            normalized_title="track",
+            created_at="2026-07-06T10:00:00+00:00",
+            updated_at="2026-07-06T10:00:00+00:00",
+        )
+    )
+
+    run = _metadata_use_case(sqlite_connection).execute("env_1")
+
+    assert run.asset_count == 1
+    assert run.index_entry_count == 1
+    assert run.index_entries[0].library_track_id == "library_track_1"
+    assert (
+        library_root
+        / "_music_manager"
+        / "metadata-assets"
+        / run.run_id
+        / "Playlist"
+        / "tracks.json"
+    ).exists()
+    assert (library_root / "_music_manager" / "metadata-index" / "tracks.json").exists()
+
+
+def test_metadata_import_preserves_serato_and_unknown_metadata_assets(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    library_root, usb_root = _roots(tmp_path)
+    serato = usb_root / "_Serato"
+    serato.mkdir()
+    (serato / "database V2").write_text("serato", encoding="utf-8")
+    notes = usb_root / "notes"
+    notes.mkdir()
+    (notes / "prep.txt").write_text("prep", encoding="utf-8")
+    audio_folder = usb_root / "audio-folder"
+    audio_folder.mkdir()
+    (audio_folder / "song.mp3").write_bytes(b"audio")
+    (audio_folder / "cover.jpg").write_bytes(b"cover")
+    _save_library(sqlite_connection, library_root)
+    _save_environment(sqlite_connection, usb_root)
+
+    run = _metadata_use_case(sqlite_connection).execute("env_1")
+    asset_types = {asset.asset_type for asset in run.assets}
+
+    assert "serato_folder" in asset_types
+    assert "unknown_folder" in asset_types
+    assert "unknown_file" in asset_types
+    assert (
+        library_root
+        / "_music_manager"
+        / "metadata-assets"
+        / run.run_id
+        / "_Serato"
+        / "database V2"
+    ).exists()
+    assert not (
+        library_root
+        / "_music_manager"
+        / "metadata-assets"
+        / run.run_id
+        / "audio-folder"
+        / "song.mp3"
+    ).exists()
+
+
+def test_alignment_triggers_metadata_import(
+    sqlite_connection: sqlite3.Connection,
+    tmp_path: Path,
+) -> None:
+    library_root, usb_root = _roots(tmp_path)
+    (usb_root / "track.mp3").write_bytes(b"audio")
+    (usb_root / "tracks.json").write_text(
+        json.dumps([{"filename": "track.mp3", "title": "Track", "duration_seconds": 180}]),
+        encoding="utf-8",
+    )
+    _save_library(sqlite_connection, library_root)
+    _save_environment(sqlite_connection, usb_root)
+
+    run = _align_use_case(
+        sqlite_connection,
+        _MetadataReader({"track.mp3": 180}, titles={"track.mp3": "Track"}),
+        include_metadata=True,
+    ).execute("env_1")
+
+    assert run.metadata_import is not None
+    assert run.metadata_import.asset_count == 1
+    assert run.metadata_import.index_entry_count == 1
+
+
 class _MetadataReader:
     def __init__(
         self,
@@ -249,6 +366,8 @@ def _scan_use_case(
 def _align_use_case(
     connection: sqlite3.Connection,
     metadata_reader: _MetadataReader,
+    *,
+    include_metadata: bool = False,
 ) -> AlignLibraryFromEnvironment:
     return AlignLibraryFromEnvironment(
         environments=SqliteEnvironmentRepository(connection),
@@ -257,4 +376,17 @@ def _align_use_case(
         alignment_runs=SqliteLibraryAlignmentRunRepository(connection),
         scanner_factory=LocalAudioScanner,
         metadata_reader=metadata_reader,
+        metadata_repository=(
+            SqliteLibraryMetadataRepository(connection) if include_metadata else None
+        ),
+    )
+
+
+def _metadata_use_case(connection: sqlite3.Connection) -> ImportLibraryMetadataFromEnvironment:
+    return ImportLibraryMetadataFromEnvironment(
+        environments=SqliteEnvironmentRepository(connection),
+        libraries=SqliteLibraryRepository(connection),
+        library_tracks=SqliteLibraryTrackRepository(connection),
+        alignment_runs=SqliteLibraryAlignmentRunRepository(connection),
+        metadata_repository=SqliteLibraryMetadataRepository(connection),
     )

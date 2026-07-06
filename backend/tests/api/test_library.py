@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from fastapi.testclient import TestClient
 
@@ -14,6 +15,9 @@ def test_get_library_returns_unconfigured_by_default(api_client: TestClient) -> 
         "updated_at": None,
         "track_count": 0,
         "missing_track_count": 0,
+        "metadata_asset_count": 0,
+        "metadata_index_entry_count": 0,
+        "last_metadata_imported_at": None,
     }
 
 
@@ -33,6 +37,9 @@ def test_configure_library_persists_existing_folder(
     assert configured["root_path"] == str(library_root)
     assert configured["track_count"] == 0
     assert configured["missing_track_count"] == 0
+    assert configured["metadata_asset_count"] == 0
+    assert configured["metadata_index_entry_count"] == 0
+    assert configured["last_metadata_imported_at"] is None
     assert configured["created_at"] is not None
     assert configured["updated_at"] is not None
     assert get_response.json() == configured
@@ -87,5 +94,46 @@ def test_align_library_from_environment_copies_usb_audio_and_persists_latest_run
     assert run["scanned_usb_count"] == 1
     assert run["copied_count"] == 1
     assert run["warning_count"] == 1
+    assert run["metadata_import"] is not None
     assert (library_root / "track.mp3").exists()
     assert latest_response.json()["run_id"] == run["run_id"]
+
+
+def test_metadata_import_endpoint_and_latest_summary(
+    api_client: TestClient,
+    tmp_path: Path,
+) -> None:
+    library_root = tmp_path / "library"
+    environment_root = tmp_path / "usb"
+    library_root.mkdir()
+    environment_root.mkdir()
+    (environment_root / "tracks.json").write_text(
+        json.dumps([{"id": "track_1", "title": "Track"}]),
+        encoding="utf-8",
+    )
+    api_client.put("/library", json={"root_path": str(library_root)})
+    environment_id = api_client.post(
+        "/environments",
+        json={"name": "Gig USB", "root_path": str(environment_root)},
+    ).json()["id"]
+
+    response = api_client.post(f"/environments/{environment_id}/library/metadata/import")
+    latest_response = api_client.get("/library/metadata/import-runs/latest")
+    library_response = api_client.get("/library")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["asset_count"] == 1
+    assert body["index_entry_count"] == 1
+    assert latest_response.json()["run_id"] == body["run_id"]
+    library = library_response.json()
+    assert library["metadata_asset_count"] == 1
+    assert library["metadata_index_entry_count"] == 1
+    assert library["last_metadata_imported_at"] is not None
+
+
+def test_metadata_import_rejects_unconfigured_library(api_client: TestClient) -> None:
+    response = api_client.post("/environments/env_1/library/metadata/import")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"

@@ -10,6 +10,7 @@ from music_manager_backend.ports.repositories import (
     ExportApplyRunRepository,
     ExportPlanRepository,
     LibraryAlignmentRunRepository,
+    LibraryMetadataRepository,
     LibraryRepository,
     LibraryTrackRepository,
     MatchLinkRepository,
@@ -70,6 +71,10 @@ def get_library_alignment_run_repository(
     bundle: RepositoryBundleDependency,
 ) -> LibraryAlignmentRunRepository:
     return bundle.library_alignment_run_repository
+
+
+def get_library_metadata_repository(bundle: RepositoryBundleDependency) -> LibraryMetadataRepository:
+    return bundle.library_metadata_repository
 
 
 def get_library_track_repository(bundle: RepositoryBundleDependency) -> LibraryTrackRepository:
