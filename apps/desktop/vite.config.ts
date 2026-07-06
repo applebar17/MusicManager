@@ -11,6 +11,7 @@ export default defineConfig({
     proxy: {
       "/environments": backendProxyTarget,
       "/health": backendProxyTarget,
+      "/library": backendProxyTarget,
     },
   },
   test: {
